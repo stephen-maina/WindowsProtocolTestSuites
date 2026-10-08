@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\..\..\ProtoSDK\MS-SMBD\Smbd.csproj" />
     <ProjectReference Include="..\..\..\..\ProtoSDK\SspiLib\SspiLib.csproj" />
     <ProjectReference Include="..\Adapter\MS-SMBD_ServerAdapter.csproj" />
+    <ProjectReference Include="..\Diagnostics\Microsoft.Protocols.TestSuites.Smbd.Diagnostics.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="MS-SMBD_ServerTestSuite.deployment.ptfconfig">

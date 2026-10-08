@@ -25,6 +25,7 @@
 * [Configuration](#configuration)
     * [Configuring the Test Suite](#configuring-the-test-suite)
         * [Required Configuration Settings](#required-configuration-settings)
+        * [Configure Automated Per-Test Diagnostics](#configure-automated-per-test-diagnostics)
 * [Running Test Cases](#running-test-cases)
     * [Prerequisite of Linux Client Environment](#prerequisite-of-linux-client-environment)
     * [Run the BVT Test Cases](#run-the-bvt-test-cases)
@@ -80,6 +81,7 @@ Use the following quick reference to learn how to complete common tasks.
 | Verify the connection from the driver computer to other computers in the test environment| [Verify Connectivity](#verify-connectivity)| 
 | Setup a SUT| [Setup the SUT](#setup-the-sut)| 
 | Configure the test suite settings| [Configuring the Test Suite](#configuring-the-test-suite)| 
+| Collect a per-test trace and immutable PTF log| [Configure Automated Per-Test Diagnostics](#configure-automated-per-test-diagnostics)|
 | Run a BVT test| [Run the BVT Test](#run-the-bvt-test-cases)| 
 | Run test cases| [Run All Test Cases](#run-all-test-cases) | 
 | Debug test cases| [Debugging Test Cases](#debugging-test-cases)| 
@@ -92,7 +94,7 @@ This section describes the requirements for the test environment that are used t
 ![image2.png](./image/MS-SMBD_ServerUserGuide/image2.png)
 Note 
 
->The requirements in this section only apply to the Windows-based computers in the test environment. Note that the driver computer must use a Windows-based operating system.
+>The requirements in this section apply to Windows-based computers in the test environment. The driver computer can use a supported Windows operating system or Ubuntu 24.04 LTS. Automated per-test capture currently has a concrete backend only when the driver computer runs Windows. Linux driver computers can run the protocol tests, but diagnostics capture reports `ProviderUnsupported` until a Linux capture tool is qualified and a provider is implemented.
 
 ### Network Infrastructure
 
@@ -321,17 +323,33 @@ This section explains how to configure the test environment.
 
 This test suite is installed with default settings. You may need to change these settings if you use a customized test environment or you would like to customize your test runs. 
 
-To change settings, edit the MS-SMBD_ServerTestSuite.deployment.ptfconfig file in the directory <TestSuiteLocation>\\MS-SMBD\\Server-Endpoint\\ _< version #  >_ \\Bin.
+To change environment settings, edit the MS-SMBD_ServerTestSuite.deployment.ptfconfig file in the directory <TestSuiteLocation>\\MS-SMBD\\Server-Endpoint\\ _< version #  >_ \\Bin.
+
+The suite intentionally separates configuration ownership:
+
+* `MS-SMBD_ServerTestSuite.deployment.ptfconfig` describes environment facts,
+  including the SUT `Platform`, the test-driver `DriverPlatform`, host names,
+  and RDMA interface addresses.
+* `MS-SMBD_ServerTestSuite.ptfconfig` is the single authored diagnostics-policy
+  layer. Configure every `Diagnostics.*` property in this file rather than
+  duplicating diagnostics values in the deployment file.
 
 #### Required Configuration Settings
 
-The following table describes the most common configuration properties used in the test suite configuration file and their values. These properties are required to run test. To update them, edit file MS-SMBD_ServerTestSuite.deployment.ptfconfig and MS-SMBD_ServerTestSuite.ptfconfig in directory <TestSuiteLocation>\\MS-SMBD\\Server-Endpoint\\ _< version #  >_ \\Bin.
+The following table describes the most common configuration properties and
+their values. These properties are required to run the tests. Update
+environment and topology values in
+`MS-SMBD_ServerTestSuite.deployment.ptfconfig`; update suite policy, including
+all `Diagnostics.*` values, in `MS-SMBD_ServerTestSuite.ptfconfig`. Both files
+are in `<TestSuiteLocation>\MS-SMBD\Server-Endpoint\<version>\Bin`.
 
 * **SUT Settings.**
 
 | |   |
 | -------------| ------------- |
 |  **Property**|  **Description**| 
+| Platform| The operating system family of the SUT. Use `NonWindows` for a supported Linux SUT, or the applicable supported Windows platform value listed in the deployment configuration.| 
+| DriverPlatform| The operating system family of the computer that runs the test process. Use `NonWindows` for the supported Linux driver, or the applicable supported Windows platform value. Automated diagnostics verifies this value against the actual local runtime before selecting a capture provider.| 
 | SutComputerName| The hostname of SUT.| 
 | | The default value is “SMBD-SUT01”| 
 | DomainName| The domain name of the test network environment. If it non-domain envrionment, use the SutComputerName as Domain Name.| 
@@ -422,6 +440,140 @@ The following settings are the capability of the MS-SMBD protocol.
 | RdmaLayerLoggingEnabled| The switch controls whether verbose RDMA layer log is printed. Set to “true” to print the RDMA layer log, otherwise set to “false”.| 
 | | The default value is “false”.| 
 
+#### Configure Automated Per-Test Diagnostics
+
+Automated diagnostics creates one evidence directory for each test invocation.
+On a Windows driver computer, the suite uses the built-in
+`C:\Windows\System32\netsh.exe` program and its `trace` command. There is no
+separate `netshtrace` download. Starting physical packet capture normally
+requires running Protocol Test Manager or the command-line test runner from an
+elevated Administrator process.
+
+Set `Platform` and `DriverPlatform` independently in
+`MS-SMBD_ServerTestSuite.deployment.ptfconfig`:
+
+| SUT `Platform` | Driver `DriverPlatform` | Current automated capture behavior |
+|---|---|---|
+| Windows value | Windows value | Uses the Windows `NetshTrace` provider. |
+| `NonWindows` | Windows value | Uses the same Windows `NetshTrace` provider; the SUT operating system does not select the local capture backend. |
+| Windows value | `NonWindows` | Valid test topology, but capture reports `ProviderUnsupported` because no Linux backend is qualified. |
+| `NonWindows` | `NonWindows` | Valid test topology, but capture reports `ProviderUnsupported` because no Linux backend is qualified. |
+
+`DriverPlatform` must agree with the operating system that is actually running
+the test process. A missing, unknown, or mismatched value fails closed instead
+of starting the wrong capture tool.
+
+Configure diagnostics only in `MS-SMBD_ServerTestSuite.ptfconfig`. The following
+example enables bounded Windows collection and places the per-test log beside
+the trace:
+
+```xml
+<Property name="Diagnostics.Enabled" value="true" />
+<Property name="Diagnostics.ArtifactRoot" value="C:\WPTS-Diagnostics" />
+<Property name="Diagnostics.Capture.Provider" value="Automatic" />
+<Property name="Diagnostics.Capture.ToolPath" value="" />
+<Property name="Diagnostics.Capture.Targets" value="" />
+<Property name="Diagnostics.Capture.TrafficScope" value="RdmaFocused" />
+<Property name="Diagnostics.Capture.StartTimeout" value="00:00:30" />
+<Property name="Diagnostics.Capture.StopTimeout" value="00:01:00" />
+<Property name="Diagnostics.Capture.MaxDuration" value="00:05:00" />
+<Property name="Diagnostics.Capture.MaxBytes" value="536870912" />
+<Property name="Diagnostics.Capture.Format" value="Native" />
+<Property name="Diagnostics.Logs.NativeEnabled" value="false" />
+<Property name="Diagnostics.Retention" value="KeepAll" />
+```
+
+To collect diagnostics on a Windows driver:
+
+1. In `MS-SMBD_ServerTestSuite.deployment.ptfconfig`, set `Platform` for the
+   SUT and set `DriverPlatform` to the supported Windows value for the driver.
+2. In `MS-SMBD_ServerTestSuite.ptfconfig`, set
+   `Diagnostics.Enabled=true`, configure an absolute local
+   `Diagnostics.ArtifactRoot`, and set the required time and byte bounds.
+3. Leave `Diagnostics.Capture.ToolPath` empty to use the built-in
+   `C:\Windows\System32\netsh.exe`. Leave `Diagnostics.Capture.Targets` empty
+   to use `ClientRNicIp`, or provide one canonical IPv4 address.
+4. Start Protocol Test Manager or the command-line runner as Administrator,
+   then run the tests normally.
+5. Inspect the invocation directory under `Diagnostics.ArtifactRoot`.
+   `capture.etl`, when usable capture succeeds, and `ptf-log.ndjson` are
+   written to the same directory automatically and recorded in
+   `manifest.json`.
+
+On a Linux driver, follow the same configuration ownership rules, set
+`DriverPlatform=NonWindows`, and use a Linux absolute artifact root. The
+protocol tests remain a valid topology, but automated capture currently
+reports `ProviderUnsupported`; do not configure an unqualified capture tool.
+
+| Property | Required behavior |
+|---|---|
+| `Diagnostics.Enabled` | Set to `true` to enable collection. Missing, empty, or `false` leaves diagnostics disabled and creates no diagnostics artifacts. |
+| `Diagnostics.ArtifactRoot` | Absolute local path on the driver computer. Use a drive-qualified path on Windows, such as `C:\WPTS-Diagnostics`, or an absolute path on Linux, such as `/var/tmp/wpts-diagnostics`. UNC paths and relative paths are not accepted. |
+| `Diagnostics.Capture.Provider` | Use `Automatic` for normal operation. On a Windows driver this selects `NetshTrace`. Explicit `NetshTrace` is also accepted on Windows. |
+| `Diagnostics.Capture.ToolPath` | Leave empty to use the built-in Windows path. A Windows override must be an absolute `.exe` path. Do not configure a Linux tool path until that utility has been qualified for the target RDMA environment. |
+| `Diagnostics.Capture.Targets` | Semicolon-separated unique selectors. The current `NetshTrace` provider requires exactly one canonical IPv4 address. When empty, the suite uses `ClientRNicIp` from the deployment configuration. |
+| `Diagnostics.Capture.TrafficScope` | `RdmaFocused` or `Broader`. The value is recorded in evidence. The current Windows provider captures the selected physical IPv4 path; neither value by itself proves RDMA-only filtering or complete SMB Direct visibility. |
+| `Diagnostics.Capture.StartTimeout` | Positive invariant `TimeSpan` in `c` format, for example `00:00:30`. |
+| `Diagnostics.Capture.StopTimeout` | Positive invariant `TimeSpan` in `c` format, for example `00:01:00`. |
+| `Diagnostics.Capture.MaxDuration` | Positive invariant `TimeSpan` safety bound. Reaching the bound stops the invocation-owned session and marks the capture partial. |
+| `Diagnostics.Capture.MaxBytes` | Positive decimal byte limit. The Windows provider converts it to a whole-MiB `netsh` limit and rejects values below one MiB. |
+| `Diagnostics.Capture.Format` | Only `Native` is currently supported. Windows output is ETL; it is not advertised as pcap or pcapng. |
+| `Diagnostics.Logs.NativeEnabled` | Native/driver-log policy metadata. The immutable per-test `ptf-log.ndjson` is finalized regardless of this value. Setting this to `true` does not add or qualify a vendor-specific driver capture. |
+| `Diagnostics.Retention` | Only `KeepAll` is currently supported. The suite does not automatically delete old evidence. |
+
+Linux path parsing is supported, including case-sensitive containment and
+extensionless tool paths. This path support does not mean that Linux packet
+capture is supported. Do not assume that `tcpdump`, `dumpcap`, or another
+utility can observe offloaded RDMA traffic; qualify the installed tool,
+permissions, interfaces, ownership, stop behavior, loss statistics, and actual
+RDMA/RoCE visibility first.
+
+For a runner-managed invocation, evidence is organized beneath the configured
+artifact root by run and test identity. The per-test invocation directory
+contains:
+
+```text
+capture.etl
+ptf-log.ndjson
+manifest.json
+```
+
+`capture.etl` is present only when the Windows provider completes with a usable
+capture. `ptf-log.ndjson` is written automatically to the same invocation
+directory; there is no second log-directory property and no manual copy step.
+The manifest records configuration provenance, artifact hashes, collection
+status, cleanup state, and diagnostics errors. After the command-line runner
+reconciles the test results, run-level evidence is written under
+`runner\runner-evidence.json`.
+
+The existing `MS-SMBD_Log.txt` and `MS-SMBD_Log.xml` files remain mutable,
+suite-wide PTF outputs. They are not copied while active and should not be used
+as substitutes for the invocation-scoped `ptf-log.ndjson`.
+
+Diagnostics failure is recorded separately from the protocol-test outcome.
+For example, an unsupported capture backend does not turn a passing protocol
+test into a failure, and a valid trace does not turn a failing protocol test
+into a pass.
+
+**Troubleshooting**
+
+| Symptom | Check |
+|---|---|
+| No diagnostics directory is created | Confirm `Diagnostics.Enabled` is `true` and every required timeout/limit value is present and valid. |
+| `ProviderUnsupported` on a Linux driver | This is the current expected result; Linux path support exists, but no Linux capture backend is qualified. |
+| `ProviderUnsupported` on a Windows driver | Confirm `DriverPlatform` is a supported Windows value and the test process is actually running on Windows. |
+| Tool missing | Leave `Diagnostics.Capture.ToolPath` empty or verify that the configured absolute `.exe` exists. |
+| Permission denied or capture start failure | Restart Protocol Test Manager or the command-line runner from an elevated Administrator process. |
+| Target rejected | Use one canonical IPv4 address, or leave the property empty and correct `ClientRNicIp`. Do not use abbreviated IPv4, leading-zero IPv4, IPv6, interface names, or multiple selectors with the current Windows provider. |
+| `manifest.json` reports no usable capture | Inspect its diagnostics errors. An ETL is registered only after targeted stop, writer closure, non-empty validation, and hashing succeed. |
+| ETL exists but expected RDMA traffic is absent | Verify the selected client RDMA IPv4 address and the actual NIC/driver path. ETL existence alone does not prove RDMA/RoCE visibility or complete SMB Direct payload capture. |
+
+Capture files and logs can contain file data, protocol payloads, host names, IP
+addresses, and other sensitive environment information. Restrict access to the
+artifact root, review evidence before sharing it, and follow the applicable
+retention policy. Do not assume that a capture is free of credentials or
+secrets merely because configuration values are sanitized in the manifest.
+
 ## Running Test Cases
 
 This test suite includes command files that you can use to run some basic test cases. Each test case verifies the protocol implementation based on a given scenario. 
@@ -484,6 +636,11 @@ Additional log files are used for generating requirement coverage reports and di
 The following instruction provides an example of how to cause log entries for the "Debug" logging sink not to be written into the MS-SMBD_Log.xml file in the current directory:
  < File id="XMLLog" directory=".\    estLog" file="MS-SMBD_Log.xml" format="xml"/ >  
 
+When automated diagnostics is enabled, also inspect the test invocation's
+`manifest.json`, `ptf-log.ndjson`, and, when capture succeeded, `capture.etl`
+under `Diagnostics.ArtifactRoot`. For command-line runner executions,
+`runner\runner-evidence.json` records authoritative test-result reconciliation.
+
 #### Manage the Generation of Log Files
 
 For further information about logging in the Protocol Test Framework (PTF), see the _PTF User Guide_ in the PTF installation directory
@@ -508,6 +665,17 @@ To debug a test case
 This section describes how to capture RDMA traffic when running the MS-SMBD
 Server Test Suite, which can be helpful for troubleshooting and protocol
 analysis in RDMA-based scenarios.
+
+For automated per-test Windows collection, use
+[Configure Automated Per-Test Diagnostics](#configure-automated-per-test-diagnostics).
+The automated provider uses the built-in `netsh.exe`, owns a distinct named
+session for each invocation, and writes `capture.etl` beside
+`ptf-log.ndjson`.
+
+The `Mlx5Cmd.exe` procedure below is a separate, manual NVIDIA/Mellanox
+troubleshooting workflow. It is not selected by the automated diagnostics
+configuration, and its existence does not qualify other NIC vendors or a Linux
+capture backend.
 
 > Note  
 > RDMA traffic is typically offloaded to the network adapter and may not be
@@ -579,4 +747,3 @@ Here we list the RDMA adapter we tested.
 |--------------|--------------------------|------------------------------------------------------------------------|---------------------------------------------------------------------------|
 | Chelsio      | T520-CR                  | [Windows](https://service.chelsio.com/downloads/Microsoft/): Unified Wirev6.16.17.0 <br> | [Windows](https://service.chelsio.com/downloads/Microsoft/Drivers/ChelsioUwire_6.16.17.0_WIN_006.0.106/Chelsio-UnifiedWire-Windows-UserGuide.pdf) <br> |
 | Mellanox     | ConnectX-4 Lx            | [Windows](https://network.nvidia.com/products/adapter-software/ethernet/windows/winof-2/): WinOF-2 26.1.50000 <br> [Linux](https://developer.nvidia.com/doca-downloads?deployment_platform=Host-Server&deployment_package=DOCA-Host&target_os=Linux&Architecture=x86_64&Profile=doca-all&Distribution=Ubuntu&version=24.04&installer_type=deb_local): NVIDIA DOCA 3.3.0 | [Windows](https://docs.nvidia.com/networking/display/nvidiawinof2documentationv26150000/user-manual) <br> [Linux](https://docs.nvidia.com/doca/sdk/doca-installation-guide-for-linux/index.html) |
-

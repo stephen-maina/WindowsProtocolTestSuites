@@ -86,6 +86,17 @@ public ref struct RdmaBufferDescriptorV1
     unsigned __int32 Length; // Size of the registered buffer
 };
 
+// Registered memory region information. Used when the provider does not
+// support memory windows (IND2Adapter::CreateMemoryWindow returns
+// ND_NOT_SUPPORTED): the SMB Direct buffer descriptor is then built directly
+// from the memory region's base address and remote token (R_Key).
+public ref struct RdmaRegisteredMemoryInfo
+{
+    unsigned __int64 Address;     // Base address (VA) of the registered buffer.
+    unsigned __int32 RemoteToken; // Remote token (R_Key) of the memory region.
+    unsigned __int32 Length;      // Usable registered length in bytes.
+};
+
 // Transfer segment
 public ref struct RdmaSegment
 {
@@ -98,6 +109,7 @@ public ref struct RdmaNetworkDirectResult
 {
     unsigned __int32 BytesTransferred; // size of data
     HRESULT Status;                    // status of result
+    int RequestType;                   // ND2_REQUEST_TYPE (for diagnostics)
 };
 
 public ref struct RdmaAddress
@@ -140,25 +152,43 @@ public:
 
     /// <summary>
     /// Remote token (R_Key) of the memory window in host byte order, obtained
-    /// from IND2MemoryWindow::GetRemoteToken and converted from network byte
-    /// order. For NDSPI v2 the token may only become valid after the Bind
-    /// completion has been processed, so this property should be queried after
-    /// waiting for the bind result.
+    /// from IND2MemoryWindow::GetRemoteToken. Mellanox NDSPI v2 returns the
+    /// remote token in network byte order, while Intel iWARP (irdma) returns it
+    /// in host byte order. The caller must use SetReverseToken to indicate
+    /// whether a byte-swap is required. For NDSPI v2 the token may only become
+    /// valid after the Bind completion has been processed, so this property
+    /// should be queried after waiting for the bind result.
     /// </summary>
     property unsigned __int32 RemoteToken
     {
         unsigned __int32 get()
         {
+            unsigned __int32 token = _memoryWindow->GetRemoteToken();
+            if (!_reverseToken)
+            {
+                return token;
+            }
+
             // Mellanox NDSPI v2 returns the remote token in network byte order.
             // Convert it to host byte order so the descriptor matches the rkey
             // the local hardware expects and serializes correctly on the wire.
-            unsigned __int32 token = _memoryWindow->GetRemoteToken();
             return ((token & 0xFF000000) >> 24) |
                    ((token & 0x00FF0000) >> 8)  |
                    ((token & 0x0000FF00) << 8)  |
                    ((token & 0x000000FF) << 24);
         }
     }
+
+    /// <summary>
+    /// Controls whether RemoteToken should be byte-swapped. Set to true when the
+    /// provider returns the token in network byte order (e.g. Mellanox), false
+    /// when it returns host byte order (e.g. Intel iWARP).
+    /// </summary>
+    void SetReverseToken(bool reverse)
+    {
+        _reverseToken = reverse;
+    }
+
 internal:
     /// <summary>
     /// Constructor
@@ -169,6 +199,7 @@ internal:
 
     IND2MemoryWindow *_memoryWindow;
     unsigned __int64 _invalidateResultId;
+    bool _reverseToken;
 };
 
 
@@ -335,6 +366,10 @@ public:
 
     HRESULT CreateMemoryWindow([Out]unsigned __int64 invalidateResult, [Out]RdmaMemoryWindow^% memoryWindow);
 
+    HRESULT GetRegisteredMemory(
+        unsigned __int64 memoryHandler,
+        [Out]RdmaRegisteredMemoryInfo^% info);
+
     HRESULT CreateConnector([Out]RdmaConnector^% connector);
 
     HRESULT Listen(int protocol, unsigned __int16 port, [Out]RdmaListen^% listen);
@@ -351,6 +386,7 @@ internal:
     RdmaMrHandler *_memoryHandlerList;
     OVERLAPPED *_pOverlapped;
     unsigned __int64 _nextInvalidateId;
+    CRITICAL_SECTION *_memoryHandlerLock; // protects _memoryHandlerList
 
     // Local address used to open this adapter. NDSPI v2 requires the
     // connector to be explicitly bound to this address before Connect.

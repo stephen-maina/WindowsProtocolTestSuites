@@ -5,27 +5,27 @@
 
   <Properties>    
     <!--Computer name of system under test (SUT)-->
-    <Property name="SutComputerName" value="SMBD-SUT01" />
+    <Property name="SutComputerName" value="Linux" />
     <!--IP address of R-NIC on SUT-->
-    <Property name="ServerRNicIp" value="192.168.1.12" />
+    <Property name="ServerRNicIp" value="192.168.10.12" />
     <!--IP address of non R-NIC on SUT-->
-    <Property name="ServerNonRNicIp" value="192.168.1.112" />
+    <Property name="ServerNonRNicIp" value="192.168.20.112" />
     <!--
         Domain name where the SUT locates
         If SUT is in WORKGROUP, set it to the value of SutComputerName
     -->
-    <Property name="DomainName" value="SMBD-SUT01" />
+    <Property name="DomainName" value="Linux" />
     <!--User account name of the SUT-->
-    <Property name="SutUserName" value="Administrator" />
+    <Property name="SutUserName" value="administrator" />
     <!--Password for user account which indicated by SutUserName-->
     <Property name="SutPassword" value="Password01!" />
     <!--Name of file share on the SUT-->
     <Property name="ShareFolder" value="SMBDTest" />
     
     <!--IP address of R-NIC on local driver computer-->
-    <Property name="ClientRNicIp" value="192.168.1.11" />
+    <Property name="ClientRNicIp" value="192.168.10.11" />
     <!--IP address of non R-NIC on local driver computer-->
-    <Property name="ClientNonRNicIp" value="192.168.1.111" />
+    <Property name="ClientNonRNicIp" value="192.168.20.111" />
     <!--
         Platform type of the SUT
         NonWindows = 0x00000000,
@@ -42,7 +42,7 @@
         WindowsServerV22H2 = 0x10000012,
         WindowsServer2025 = 0x10000013, 
     -->
-    <Property name="Platform" value="WindowsServer2025"/>
+    <Property name="Platform" value="NonWindows"/>
 	  <!--
         Platform type of the Driver
         NonWindows = 0x00000000,

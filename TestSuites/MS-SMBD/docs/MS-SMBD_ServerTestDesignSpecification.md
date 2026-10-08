@@ -1,6 +1,6 @@
 ﻿###MS-SMBD Protocol Server Test Design Specification
 
-##Contents
+## <a name="_Toc427489478"/>Contents
 * [Contents](#_Toc427489478)
 * [Introduction](#_Toc427489479)
 * [Technical Document Analysis](#_Toc427489480)
@@ -28,6 +28,7 @@
 		* [Technical Difficulties](#_Toc427489502)
 		* [Encryption Consideration](#_Toc427489503)
 		* [Other Considerations](#_Toc427489504)
+		* [Diagnostics Evidence Design](#_TocRdmaDiagnosticsEvidence)
     * [Adapter Design](#_Toc427489505)
 		* [Adapter Overview](#_Toc427489506)
 		* [Technical Feasibility of Adapter Approach](#_Toc427489507)
@@ -110,7 +111,15 @@ It might send bulk of data according to the size of the message.
 ### <a name="_Toc427489486"/>Assumptions, Scope and Constraints
 **Assumptions**
 
-* Test Suite Driver are running in Windows Server 2012 R2 x64 operating system.
+* The SUT and Test Suite Driver operating systems are configured independently.
+  The supported topology matrix includes Windows and Linux SUTs with Windows
+  and Linux Drivers, subject to the protocol adapter and environment
+  requirements for the selected combination.
+* Automated diagnostics capture is a property of the Test Suite Driver, where
+  the test process and capture tool execute. A Windows Driver can use the
+  current `NetshTrace` provider for either SUT operating system. A Linux Driver
+  is a valid protocol-test topology, but no Linux capture provider is qualified
+  or implemented yet.
 * The SUT should support SMB2 dialect 3.x family and SMBD.
 
 **Scope**
@@ -303,7 +312,8 @@ The typical scenario sequence is the following:
 
 #### <a name="_Toc427489497"/>System under Test (SUT)
 From the third party point of view, the SUT is a component that implements MS-SMBD.
-From the Windows implementation point of view, the SUT is Windows Server 2012 R2.
+The SUT can be a Windows or Linux implementation when the selected protocol
+adapter and deployment topology support that operating system.
 
 #### <a name="_Toc427489498"/>Test Suite Environment
 
@@ -311,12 +321,24 @@ From the Windows implementation point of view, the SUT is Windows Server 2012 R2
 
 There are one Test Suite Driver and System Under Test (SUT) in MS-SMBD test environment. Both of them are installed RDMA-capable NIC (R-NIC) and non-RDMA-capable NIC (NIC). All R-NICs and NICs are assigned IPv4 or IPv6 address.
 
+The deployment configuration records the SUT `Platform` and Driver
+`DriverPlatform` independently. Diagnostics provider selection uses
+`DriverPlatform` plus the actual process runtime; it does not infer the Driver
+operating system from the SUT platform.
+
+| SUT platform | Driver platform | Current automated diagnostics behavior |
+|---|---|---|
+| Windows | Windows | Windows `NetshTrace` provider |
+| Linux | Windows | Windows `NetshTrace` provider |
+| Windows | Linux | Protocol topology is valid; diagnostics records `ProviderUnsupported` |
+| Linux | Linux | Protocol topology is valid; diagnostics records `ProviderUnsupported` |
+
 #### <a name="_Toc427489499"/>Test Suite Architecture
 
 ![image5.png](./image/MS-SMBD_ServerTestDesignSpecification/image5.png)
 
 **Server Under Test:** MS-SMB2, MS-SMBD and TCP/IP protocols MUST be implemented on SUT.
-**Test Suite Driver:** There are three main components, including SMBD Test Suite, SMBD and RDMA Test Suite Library. SMBD Test Suite requires SMB2 Test Suite Library to trigger the message sequence on SMBD. And RDMA Test Suite Library use the capability of RDMA NIC with Network Direct User Model Programming Interface (NDSPI). In theory, SMBD test suite can run over all types of RDMA protocols though there are variable RDMA protocols.
+**Test Suite Driver:** There are three main components, including SMBD Test Suite, SMBD and RDMA Test Suite Library. SMBD Test Suite requires SMB2 Test Suite Library to trigger the message sequence on SMBD. The RDMA Test Suite Library uses the capability of the Driver RDMA NIC through the platform-specific transport implementation. Windows uses Network Direct User Model Programming Interface (NDSPI), while Linux uses the `RdmaLinux` transport. In theory, SMBD test suite can run over all types of RDMA protocols though there are variable RDMA protocols.
 
 ### <a name="_Toc427489500"/>Technical Dependencies/Considerations
 
@@ -342,7 +364,65 @@ There is no encryption consideration.
 
 #### <a name="_Toc427489504"/>Other Considerations
 
-* There are no other considerations.
+* Diagnostics collection must not change the protocol verdict. Capture,
+  finalization, or evidence-publication failures are recorded independently in
+  the diagnostics manifest.
+* `MS-SMBD_ServerTestSuite.ptfconfig` is the single authored
+  `Diagnostics.*` policy layer. The deployment PTF owns topology facts such as
+  `Platform`, `DriverPlatform`, hosts, and interface addresses and must not
+  duplicate diagnostics policy.
+* Protocol conformance still requires execution on the selected RDMA hardware
+  and topology. Managed diagnostics regression tests prove software contracts;
+  they do not prove RDMA/RoCE packet visibility, SMB Direct payload
+  completeness, hardware compatibility, or Linux capture support.
+
+#### <a name="_TocRdmaDiagnosticsEvidence"/>Diagnostics Evidence Design
+
+The diagnostics subsystem creates bounded, per-test evidence without adding a
+second protocol verdict or changing the MS-SMBD test-case catalog. It is
+supporting test infrastructure, not a new MS-SMBD protocol scenario.
+
+The reusable implementation is in `TestSuites\Common\Diagnostics`. MS-SMBD
+provides only the thin PTF integration, property mapping, and platform-aware
+provider composition under `TestSuites\MS-SMBD\src\Diagnostics`. A
+representative FileServer portability fixture verifies that the shared
+configuration and lifecycle contracts can be consumed with a different
+property namespace.
+
+When diagnostics is enabled, each test invocation receives a unique identity
+and directory. The lifecycle starts the selected provider before the protocol
+body, records routed PTF entries in `ptf-log.ndjson`, requests stop during
+cleanup, waits for bounded writer closure, hashes finalized artifacts, and
+publishes `manifest.json`. A successful Windows capture adds `capture.etl` in
+the same directory. Runner reconciliation later writes
+`runner\runner-evidence.json` beside the native test result, such as
+`runner\results.trx`.
+
+Diagnostics errors are embedded in `manifest.json`. The implementation does
+not create generic per-test `evidence.json` or
+`diagnostics-errors.ndjson` files. Existing mutable suite-wide
+`MS-SMBD_Log.txt` and `MS-SMBD_Log.xml` sinks are not copied while active.
+
+The managed regression project
+`TestSuites\MS-SMBD\src\Diagnostics.Tests` covers:
+
+| Area | Required behavior |
+|---|---|
+| Configuration and routing | One authored policy layer, validation, redaction, target fallback, and independent SUT/Driver platform handling |
+| Identity and storage | Unique invocation identity, local-root containment, safe names, checkpoints, and Windows/Linux lexical path policies |
+| Provider contracts | Owned handles, bounded start/stop/finalization, exact-session targeting, process failures, and unsupported-provider evidence |
+| Lifecycle and logging | Start/cleanup ordering, PTF log routing, protocol-exception preservation, and idempotent completion |
+| Manifest and integrity | Explicit collection/cleanup states, artifact presence or absence, hashes, closure, and classified diagnostics errors |
+| Runner reconciliation | Authoritative TRX outcome reconciliation and separation of original from derived evidence |
+| Cross-suite portability | Alternate property maps and lifecycle use without an MS-SMBD dependency |
+
+Managed regression passes only when the complete diagnostics test project
+passes with zero failures and the diagnostics runner builds with warnings
+treated as errors. This is a software acceptance gate. Live environment
+acceptance remains separate and must verify elevation or Linux capabilities,
+two-session isolation, targeted stop, output closure, loss/drop behavior,
+actual RDMA/RoCE visibility, SMB Direct payload visibility, and each supported
+NIC/topology combination.
 
 ### <a name="_Toc427489505"/>Adapter Design
 

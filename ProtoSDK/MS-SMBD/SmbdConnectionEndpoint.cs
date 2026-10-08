@@ -46,6 +46,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         private uint completionQueueDepth;
         private List<SmbdMemoryWindow> memoryWindowList;
         /// <summary>
+        /// Cached indicator of whether the RDMA provider supports memory windows.
+        /// null = unknown, true = supported, false = not supported (use MR fallback).
+        /// </summary>
+        private bool? memoryWindowSupported;
+        /// <summary>
         /// Receive and Invalid notification request list. The result of the request is from peer.
         /// </summary>
         private List<SmbdRequest> receiveRequestList;
@@ -132,6 +137,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             this.ndVersion = ndVersion;
             this.rdmaService = RdmaServiceFactory.Create(ndVersion);
             LogEvent(string.Format("Using NDSPI version {0}.", ndVersion));
+            LogEvent("DIAGNOSTIC BUILD: SmbdConnectionEndpoint includes Bind resultId filter, descriptor dump, and requestType.");
             LogEvent("Loading the providers of registered network drivers.");
             initializeStatus = (NtStatus)rdmaService.LoadProviders(out rdmaProvidersList);
 
@@ -295,6 +301,29 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             {
                 // this is the return code of NDSPI
                 return NtStatus.STATUS_NOT_SUPPORTED;
+            }
+
+            // log adapter capabilities for diagnostics
+            NdAdapterInfo adapterInfo;
+            NtStatus queryStatus = (NtStatus)rdmaAdapter.Query(out adapterInfo);
+            if (queryStatus == NtStatus.STATUS_SUCCESS && adapterInfo != null)
+            {
+                LogEvent(string.Format(
+                    "Adapter capabilities: VendorId=0x{0:X4}, DeviceId=0x{1:X4}, " +
+                    "MaxTransferLength={2}, MaxRegistrationSize={3}, MaxWindowSize={4}, " +
+                    "MaxOutboundReadLimit={5}, MaxInboundReadLimit={6}, MaxInlineData={7}",
+                    adapterInfo.VendorId,
+                    adapterInfo.DeviceId,
+                    adapterInfo.MaxTransferLength,
+                    adapterInfo.MaxRegistrationSize,
+                    adapterInfo.MaxWindowSize,
+                    adapterInfo.MaxOutboundReadLimit,
+                    adapterInfo.MaxInboundReadLimit,
+                    adapterInfo.MaxInlineData));
+            }
+            else
+            {
+                LogEvent(string.Format("Adapter Query failed with status {0}", queryStatus));
             }
 
             // create completion queue
@@ -790,6 +819,9 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         public NtStatus RegisterMemoryWindow(uint size, uint flag, bool reversed, out RdmaBufferDescriptor bufferDescriptor)
         {
             bufferDescriptor = new RdmaBufferDescriptor();
+            LogEvent(string.Format(
+                "RegisterMemoryWindow called: size={0}, flag={1}, reversed={2}",
+                size, flag, reversed));
 
 #if LINUX
             if (linuxAdapter == null || !linuxAdapter.IsConnected)
@@ -820,13 +852,26 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 #endif
 
 #if WINDOWS
-            // regiser the buffer
+            // register the buffer
             SmbdMemoryWindow memoryWindow = new SmbdMemoryWindow();
             memoryWindow.IsValid = true;
             NtStatus status = (NtStatus)rdmaAdapter.RegisterMemory(size, out memoryWindow.MemoryHandlerId);
+            LogEvent(string.Format(
+                "RegisterMemoryWindow: RegisterMemory returned {0}, memoryHandlerId=0x{1:X}",
+                status, memoryWindow.MemoryHandlerId));
             if (status != NtStatus.STATUS_SUCCESS)
             {
+                LogEvent(string.Format("RegisterMemoryWindow: RegisterMemory failed with {0}", status));
                 return status;
+            }
+
+            // If a previous call has already determined that memory windows are
+            // unsupported by this provider, skip CreateMemoryWindow and build the
+            // buffer descriptor directly from the registered memory region.
+            if (memoryWindowSupported == false)
+            {
+                LogEvent("RegisterMemoryWindow: provider is cached as memory-window unsupported; using memory-region fallback.");
+                return BuildMemoryRegionDescriptor(memoryWindow.MemoryHandlerId, reversed, out bufferDescriptor);
             }
 
             // create memory window
@@ -835,15 +880,38 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             status = (NtStatus)rdmaAdapter.CreateMemoryWindow(invalidRequest.ResultId,
                 out memoryWindow.RdmaMW);
             memoryWindow.InvalidResultId = invalidRequest.ResultId;
+            LogEvent(string.Format(
+                "RegisterMemoryWindow: CreateMemoryWindow returned {0}, invalidResultId=0x{1:X}",
+                status, memoryWindow.InvalidResultId));
             if (status != NtStatus.STATUS_SUCCESS)
             {
+                if (status == NtStatus.STATUS_NOT_SUPPORTED)
+                {
+                    // Fallback for providers that do not implement memory
+                    // windows (e.g. Intel irdma / E810): advertise the
+                    // registered memory region directly. The MR is registered
+                    // with remote read and write permission, so SMB2
+                    // READ/WRITE over RDMA still works; the remote access
+                    // simply cannot be revoked per operation and stays valid
+                    // until the buffer is deregistered.
+                    memoryWindowSupported = false;
+                    return BuildMemoryRegionDescriptor(memoryWindow.MemoryHandlerId, reversed, out bufferDescriptor);
+                }
+
+                LogEvent(string.Format("RegisterMemoryWindow: CreateMemoryWindow failed with {0}", status));
+                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false, false);
                 return status;
             }
+
+            memoryWindowSupported = true;
+
             // invalid notification request has been submitted
-            requestCount++;
+            Interlocked.Increment(ref requestCount);
             rdmaNotificationSemaphore.Release();
 
             // bind
+            this.LogEvent(string.Format("Binding memory window: size={0}, flag={1}, reversed={2}",
+                size, flag, reversed));
             UInt64 resultId;
             status = (NtStatus)rdmaEndpoint.Bind(
                 memoryWindow.MemoryHandlerId,
@@ -852,25 +920,53 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 reversed,
                 out memoryWindow.BufferDescriptor, out resultId);
 
+            LogEvent(string.Format(
+                "RegisterMemoryWindow: Bind returned {0}, resultId=0x{1:X}",
+                status, resultId));
             if (status != NtStatus.STATUS_SUCCESS)
             {
+                LogEvent(string.Format("RegisterMemoryWindow: Bind failed with {0}", status));
+                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false, true);
                 return status;
             }
+
             lock (locker)
             {
                 this.receiveRequestList.Add(invalidRequest);
             }
 
-            SmbdRequestResult requestResult = GetRequestResult(new TimeSpan(0, 0, 5), RequestType.Bind);
-            this.LogEvent(string.Format("Bind memory window with result id: {0}. And get notification with id: {1}, status: {2}",
+            // NDSPI v2 Bind is asynchronous. Wait for the completion whose result id
+            // matches the Bind request, otherwise a stale Send/Read/Write completion
+            // could be dequeued first and the memory window token would be refreshed
+            // before it is actually valid.
+            SmbdRequestResult requestResult;
+            try
+            {
+                requestResult = otherRequestResult.Dequeue(
+                    new TimeSpan(0, 0, 5),
+                    item => item.ResultId == resultId);
+            }
+            catch (TimeoutException ex)
+            {
+                LogEvent(string.Format(
+                    "RegisterMemoryWindow: Timed out waiting for Bind completion with resultId=0x{0:X}. Exception: {1}",
+                    resultId, ex.Message));
+                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, true, true);
+                return NtStatus.STATUS_TIMEOUT;
+            }
+
+            this.LogEvent(string.Format("Bind memory window with expected result id: {0}. Actual notification id: {1}, status: {2}, requestType={3}",
                 resultId,
                 requestResult.ResultId,
-                requestResult.ResultInfo.Status
+                requestResult.ResultInfo.Status,
+                requestResult.ResultInfo.RequestType
                 ));
 
             status = (NtStatus)requestResult.ResultInfo.Status;
             if (status != NtStatus.STATUS_SUCCESS)
             {
+                LogEvent(string.Format("RegisterMemoryWindow: Bind completion failed with status {0}", status));
+                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, true, true);
                 return status;
             }
 
@@ -879,18 +975,33 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             // now that the bind is complete. For NDSPI v1 the property returns
             // the same token that was already placed in the descriptor.
             memoryWindow.BufferDescriptor.Token = memoryWindow.RdmaMW.RemoteToken;
-            LogEvent(string.Format("Bind completion descriptor: Offset=0x{0:X16}, Token=0x{1:X8}, Length={2}",
+
+            // Dump the descriptor as it will be placed on the wire (little-endian).
+            byte[] descriptorBytes = new byte[16];
+            BitConverter.GetBytes(memoryWindow.BufferDescriptor.Offset).CopyTo(descriptorBytes, 0);
+            BitConverter.GetBytes(memoryWindow.BufferDescriptor.Token).CopyTo(descriptorBytes, 8);
+            BitConverter.GetBytes(memoryWindow.BufferDescriptor.Length).CopyTo(descriptorBytes, 12);
+            string descriptorHex = BitConverter.ToString(descriptorBytes).Replace("-", " ");
+
+            LogEvent(string.Format("Bind completion descriptor: Offset=0x{0:X16}, Token=0x{1:X8}, Length={2}, Bytes=[{3}]",
                 memoryWindow.BufferDescriptor.Offset,
                 memoryWindow.BufferDescriptor.Token,
-                memoryWindow.BufferDescriptor.Length));
+                memoryWindow.BufferDescriptor.Length,
+                descriptorHex));
 
-            this.memoryWindowList.Add(memoryWindow);
+            lock (locker)
+            {
+                this.memoryWindowList.Add(memoryWindow);
+            }
             bufferDescriptor = new RdmaBufferDescriptor
             {
                 Offset = memoryWindow.BufferDescriptor.Offset,
                 Token = memoryWindow.BufferDescriptor.Token,
                 Length = memoryWindow.BufferDescriptor.Length,
             };
+            LogEvent(string.Format(
+                "RegisterMemoryWindow: returning descriptor Offset=0x{0:X16}, Token=0x{1:X8}, Length={2}",
+                bufferDescriptor.Offset, bufferDescriptor.Token, bufferDescriptor.Length));
             return status;
 #endif
         }
@@ -927,33 +1038,151 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 #endif
 
 #if WINDOWS
-            foreach (SmbdMemoryWindow mw in memoryWindowList)
+            SmbdMemoryWindow target = null;
+            lock (locker)
             {
-                if (mw.BufferDescriptor.Token != bufferDescriptor.Token)
+                for (int i = 0; i < memoryWindowList.Count; ++i)
                 {
-                    continue;
-                }
-
-                // get memory window
-                if (mw.IsValid)
-                {
-                    UInt64 resultId;
-                    NtStatus status = (NtStatus)rdmaEndpoint.Invalidate(mw.RdmaMW, out resultId);
-
-                    if (status == NtStatus.STATUS_SUCCESS)
+                    if (memoryWindowList[i].BufferDescriptor.Token == bufferDescriptor.Token)
                     {
-                        requestCount++;
-                        rdmaNotificationSemaphore.Release();
+                        target = memoryWindowList[i];
+                        memoryWindowList.RemoveAt(i);
+                        break;
                     }
                 }
+            }
 
-                rdmaAdapter.DeregisterMemory(mw.MemoryHandlerId);
-                memoryWindowList.Remove(mw);
-
+            if (target == null)
+            {
+                LogEvent(string.Format(
+                    "DeregisterMemoryWindow: no memory window found with token 0x{0:X8}",
+                    bufferDescriptor.Token));
                 return;
+            }
+
+            // get memory window
+            if (target.IsValid)
+            {
+                UInt64 resultId;
+                NtStatus status = (NtStatus)rdmaEndpoint.Invalidate(target.RdmaMW, out resultId);
+
+                if (status == NtStatus.STATUS_SUCCESS)
+                {
+                    Interlocked.Increment(ref requestCount);
+                    rdmaNotificationSemaphore.Release();
+                }
+            }
+
+            rdmaAdapter.DeregisterMemory(target.MemoryHandlerId);
+            if (target.RdmaMW != null)
+            {
+                target.RdmaMW.Dispose();
             }
 #endif
         }
+
+#if WINDOWS
+        /// <summary>
+        /// Builds a buffer descriptor directly from a registered memory region.
+        /// Used as a fallback when the RDMA provider does not support memory windows.
+        /// </summary>
+        private NtStatus BuildMemoryRegionDescriptor(ulong memoryHandler, bool reversed, out RdmaBufferDescriptor bufferDescriptor)
+        {
+            bufferDescriptor = new RdmaBufferDescriptor();
+
+            RdmaRegisteredMemory mrInfo;
+            int mrStatus = rdmaAdapter.GetRegisteredMemory(memoryHandler, out mrInfo);
+            if (mrStatus != 0)
+            {
+                NtStatus deregisterStatus = (NtStatus)rdmaAdapter.DeregisterMemory(memoryHandler);
+                LogEvent(string.Format(
+                    "RegisterMemoryWindow: GetRegisteredMemory failed with 0x{0:X8}; deregistered memory handler 0x{1:X} with status {2}",
+                    mrStatus, memoryHandler, deregisterStatus));
+                return (NtStatus)mrStatus;
+            }
+
+            // The remote token of a memory region is the R_Key the provider hands
+            // out for remote access; it is already in the byte order the peer
+            // consumes and MUST NOT be byte-swapped here. The previous code applied
+            // the 'reversed' swap, which corrupted the R_Key on Intel irdma/E810
+            // (EndianOfBufferDescriptor=BigEndian) and made the server abort the
+            // connection on every READ. The MW path above is unaffected: Bind's
+            // 'reverse' flag lets the provider generate its descriptor in the
+            // requested byte order.
+            if (reversed)
+            {
+                LogEvent("RegisterMemoryWindow: WARNING - memory-region fallback ignores the 'reversed' byte swap; the MR R_Key is placed on the wire as-is. Configure EndianOfBufferDescriptor=LittleEndian for this provider.");
+            }
+            uint token = mrInfo.RemoteToken;
+
+            SmbdMemoryWindow memoryWindow = new SmbdMemoryWindow
+            {
+                MemoryHandlerId = memoryHandler,
+                RdmaMW = null,
+                IsValid = false, // nothing to invalidate without a memory window
+                BufferDescriptor = new RdmaBufferDescriptor
+                {
+                    Offset = mrInfo.Address,
+                    Token = token,
+                    Length = mrInfo.Length,
+                }
+            };
+
+            lock (locker)
+            {
+                this.memoryWindowList.Add(memoryWindow);
+            }
+
+            bufferDescriptor = new RdmaBufferDescriptor
+            {
+                Offset = mrInfo.Address,
+                Token = token,
+                Length = mrInfo.Length,
+            };
+            LogEvent(string.Format(
+                "RegisterMemoryWindow: returning memory-region descriptor Offset=0x{0:X16}, Token=0x{1:X8}, Length={2} (memory window not supported)",
+                bufferDescriptor.Offset, bufferDescriptor.Token, bufferDescriptor.Length));
+            return NtStatus.STATUS_SUCCESS;
+        }
+
+        /// <summary>
+        /// Cleans up resources allocated by RegisterMemoryWindow when it fails
+        /// after memory (and optionally a memory window) has been allocated.
+        /// </summary>
+        private void CleanupFailedRegisterMemoryWindow(
+            SmbdMemoryWindow memoryWindow,
+            SmbdRequest invalidRequest,
+            bool invalidRequestAdded,
+            bool decrementRequestCount)
+        {
+            if (invalidRequestAdded)
+            {
+                lock (locker)
+                {
+                    this.receiveRequestList.RemoveAll(r => r.ResultId == invalidRequest.ResultId);
+                }
+            }
+
+            if (decrementRequestCount)
+            {
+                Interlocked.Decrement(ref requestCount);
+            }
+
+            if (memoryWindow.RdmaMW != null)
+            {
+                memoryWindow.RdmaMW.Dispose();
+                memoryWindow.RdmaMW = null;
+            }
+
+            if (memoryWindow.MemoryHandlerId != 0)
+            {
+                NtStatus deregisterStatus = (NtStatus)rdmaAdapter.DeregisterMemory(memoryWindow.MemoryHandlerId);
+                LogEvent(string.Format(
+                    "RegisterMemoryWindow: deregistered memory handler 0x{0:X} during cleanup with status {1}",
+                    memoryWindow.MemoryHandlerId, deregisterStatus));
+            }
+        }
+#endif
 
         /// <summary>
         /// Write data to memory window
@@ -975,15 +1204,23 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 #endif
 
 #if WINDOWS
-            foreach (SmbdMemoryWindow mw in memoryWindowList)
+            SmbdMemoryWindow target = null;
+            lock (locker)
             {
-                if (mw.BufferDescriptor.Token != bufferDescriptor.Token)
+                foreach (SmbdMemoryWindow mw in memoryWindowList)
                 {
-                    continue;
+                    if (mw.BufferDescriptor.Token == bufferDescriptor.Token)
+                    {
+                        target = mw;
+                        break;
+                    }
                 }
+            }
+
+            if (target != null)
+            {
                 // Local write uses MemoryHandlerId, which is independent of remote MW validity.
-                NtStatus status = (NtStatus)rdmaService.WriteToMemory(mw.MemoryHandlerId, data);
-                return status;
+                return (NtStatus)rdmaService.WriteToMemory(target.MemoryHandlerId, data);
             }
             return NtStatus.STATUS_INVALID_PARAMETER_2;
 #endif
@@ -1021,14 +1258,24 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 #endif
 
 #if WINDOWS
-            foreach (SmbdMemoryWindow mw in memoryWindowList)
+            SmbdMemoryWindow target = null;
+            lock (locker)
             {
-                if (mw.BufferDescriptor.Token != bufferDescriptor.Token)
+                foreach (SmbdMemoryWindow mw in memoryWindowList)
                 {
-                    continue;
+                    if (mw.BufferDescriptor.Token == bufferDescriptor.Token)
+                    {
+                        target = mw;
+                        break;
+                    }
                 }
+            }
+
+            if (target != null)
+            {
                 // Local read uses MemoryHandlerId, which is independent of remote MW validity.
-                NtStatus status = (NtStatus)rdmaService.ReadFromMemory(mw.MemoryHandlerId, data);
+                NtStatus status = (NtStatus)rdmaService.ReadFromMemory(target.MemoryHandlerId, data);
+                LogEvent($"Windows RDMA read completed. Status: {status}");
                 return status;
             }
 
@@ -1226,7 +1473,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                     }
                     // WaitOne for reduce the request count
                     rdmaNotificationSemaphore.WaitOne();
-                    requestCount--;
+                    Interlocked.Decrement(ref requestCount);
 
                     RequestType type = RequestType.None;
                     int segmentIndex = -1;
@@ -1253,11 +1500,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                                         ReceivePostedCount--;
                                         break;
                                     case RequestType.Invalid:
-                                        for (int i = 0; i < memoryWindowList.Count; ++i)
+                                        lock (locker)
                                         {
-                                            if (memoryWindowList[i].InvalidResultId == request.ResultId)
+                                            for (int i = 0; i < memoryWindowList.Count; ++i)
                                             {
-                                                memoryWindowList[i].IsValid = false;
+                                                if (memoryWindowList[i].InvalidResultId == request.ResultId)
+                                                {
+                                                    memoryWindowList[i].IsValid = false;
+                                                }
                                             }
                                         }
                                         break;
@@ -1283,13 +1533,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                     this.LogEvent(
                         string.Format(
                         "1 operation {0} has been finished with result {1} and result Id: {2:X};" +
-                        " Bytes of data transferred is {3}; Segment Index is {4}; Count of work items is {5}",
+                        " requestType={6}; Bytes of data transferred is {3}; Segment Index is {4}; Count of work items is {5}",
                             type,
                             (NtStatus)ndResult.Status,
                             resultId,
                             ndResult.BytesTransferred,
                             segmentIndex,
-                            this.receiveRequestList.Count));
+                            this.receiveRequestList.Count,
+                            ndResult.RequestType));
                 }
             }
         }

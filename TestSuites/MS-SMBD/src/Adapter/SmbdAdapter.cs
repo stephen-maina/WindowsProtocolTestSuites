@@ -35,6 +35,29 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
         public uint Smb2MaxReadSize { get { return client.Smb2MaxReadSize; } }
         public uint Smb2MaxWriteSize { get { return client.Smb2MaxWriteSize; } }
+
+        public Smb2RDMATransformId[] SelectedRdmaTransformIds { get { return client.SelectedRdmaTransformIds; } }
+
+        public SigningAlgorithm SelectedSigningAlgorithm { get { return client.SelectedSigningAlgorithm; } }
+        /// <summary>
+        /// The effective maximum size of a single SMB2 READ over this RDMA channel.
+        /// This is the smaller of the SMB2 negotiated MaxReadSize and the SMBD
+        /// negotiated MaxReadWriteSize, which limits the size of one RDMA transfer.
+        /// </summary>
+        public uint Smb2EffectiveMaxReadSize
+        {
+            get { return Math.Min(client.Smb2MaxReadSize, ServerConnection.MaxReadWriteSize); }
+        }
+
+        /// <summary>
+        /// The effective maximum size of a single SMB2 WRITE over this RDMA channel.
+        /// This is the smaller of the SMB2 negotiated MaxWriteSize and the SMBD
+        /// negotiated MaxReadWriteSize, which limits the size of one RDMA transfer.
+        /// </summary>
+        public uint Smb2EffectiveMaxWriteSize
+        {
+            get { return Math.Min(client.Smb2MaxWriteSize, ServerConnection.MaxReadWriteSize); }
+        }
         #endregion
 
         #region Constructors

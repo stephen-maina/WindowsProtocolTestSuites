@@ -21,6 +21,7 @@ RdmaMemoryWindow::RdmaMemoryWindow(IND2MemoryWindow *memoryWindow, unsigned __in
 {
     _memoryWindow = memoryWindow;
     _invalidateResultId = invalidateResultId;
+    _reverseToken = false;
 }
 
 END_RDMA_NAMESPACE

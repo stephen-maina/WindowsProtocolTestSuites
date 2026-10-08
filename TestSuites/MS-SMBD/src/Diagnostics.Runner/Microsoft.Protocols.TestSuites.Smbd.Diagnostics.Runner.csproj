@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Microsoft.Protocols.TestSuites.Smbd.Diagnostics.RunnerHost</RootNamespace>
+    <AssemblyName>Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Runner</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\..\AssemblyInfo\SharedAssemblyInfo.cs" Link="SharedAssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Common\Diagnostics\Microsoft.Protocols.TestSuites.Diagnostics.csproj" />
+    <ProjectReference Include="..\Diagnostics\Microsoft.Protocols.TestSuites.Smbd.Diagnostics.csproj" />
+  </ItemGroup>
+</Project>

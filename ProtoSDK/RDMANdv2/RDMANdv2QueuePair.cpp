@@ -127,6 +127,12 @@ HRESULT RdmaEndpoint::Bind(
     }
     resultHandler = contextId;
 
+    // Configure whether the remote token needs byte-swapping. This is driver
+    // dependent: Mellanox returns it in network byte order, Intel iWARP returns
+    // it in host byte order. The reverseMemory flag comes from the managed
+    // layer's EndianOfBufferDescriptor configuration.
+    memoryWindow->SetReverseToken(reverseMemory);
+
     result = _queuePair->Bind(
         reinterpret_cast<void*>(contextId),
         mrHandler->MemoryRegion,
@@ -134,6 +140,10 @@ HRESULT RdmaEndpoint::Bind(
         mrHandler->Buffer,
         (SIZE_T)mrHandler->Length,
         (DWORD)flag);
+
+    System::Diagnostics::Trace::WriteLine(System::String::Format(
+        "RDMANdv2::Bind result = 0x{0:X8}, contextId = 0x{1:X}, reverseMemory = {2}, mrRemoteToken = 0x{3:X8}",
+        result, contextId, reverseMemory, mrHandler->RemoteToken));
 
     if (result != ND_SUCCESS)
     {

@@ -9,6 +9,10 @@ $invocationPath =  Split-Path $MyInvocation.MyCommand.Definition -Parent
 
 $script = Join-Path $invocationPath "RunTestCasesByFilter.ps1"
 
-$cmd = "$script -DryRun:`$(`$DryRun.IsPresent)"
+& $script -DryRun:$DryRun.IsPresent
 
-Invoke-Expression $cmd
+# Propagate only the managed diagnostics runner result through this outer wrapper.
+if ($null -ne $global:__SmbdDiagnosticsManagedRunnerExitCode)
+{
+    exit [int]$global:__SmbdDiagnosticsManagedRunnerExitCode
+}

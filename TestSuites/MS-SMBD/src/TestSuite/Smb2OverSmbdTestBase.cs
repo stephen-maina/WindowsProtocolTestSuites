@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Microsoft.Protocols.TestTools;
@@ -44,7 +44,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
         public void ValidateFileContent(byte[] expectedContent)
         {
-            uint sizePerRead = (uint)smbdAdapter.Smb2MaxReadSize;
+            uint sizePerRead;
+            ComputeReadPlan(1, out sizePerRead, out _);
             uint expectedFileSize = (uint)expectedContent.Length;
 
             // SMB2 Read file
@@ -92,6 +93,48 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     "Check content of file");
 
                 offset += sizePerRead;
+            }
+        }
+
+        /// <summary>
+        /// Computes the per-operation SMB2 READ size and the number of READ
+        /// operations for a total read of the effective maximum single RDMA READ
+        /// size. The effective size is the smaller of the SMB2 negotiated
+        /// MaxReadSize and the SMBD negotiated MaxReadWriteSize.
+        /// </summary>
+        /// <param name="requestedOperationCount">Operation count requested by the caller.</param>
+        /// <param name="readSize">Per-operation READ size in bytes.</param>
+        /// <param name="operationCount">Effective number of READ operations.</param>
+        protected void ComputeReadPlan(uint requestedOperationCount, out uint readSize, out uint operationCount)
+        {
+            uint maxSize = smbdAdapter.Smb2EffectiveMaxReadSize;
+            operationCount = requestedOperationCount;
+            readSize = maxSize / operationCount;
+            if (readSize == 0)
+            {
+                readSize = maxSize;
+                operationCount = 1;
+            }
+        }
+
+        /// <summary>
+        /// Computes the per-operation SMB2 WRITE size and the number of WRITE
+        /// operations for a total write of the effective maximum single RDMA WRITE
+        /// size. The effective size is the smaller of the SMB2 negotiated
+        /// MaxWriteSize and the SMBD negotiated MaxReadWriteSize.
+        /// </summary>
+        /// <param name="requestedOperationCount">Operation count requested by the caller.</param>
+        /// <param name="writeSize">Per-operation WRITE size in bytes.</param>
+        /// <param name="operationCount">Effective number of WRITE operations.</param>
+        protected void ComputeWritePlan(uint requestedOperationCount, out uint writeSize, out uint operationCount)
+        {
+            uint maxSize = smbdAdapter.Smb2EffectiveMaxWriteSize;
+            operationCount = requestedOperationCount;
+            writeSize = maxSize / operationCount;
+            if (writeSize == 0)
+            {
+                writeSize = maxSize;
+                operationCount = 1;
             }
         }
     }

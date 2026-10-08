@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <TestSite xmlns="http://schemas.microsoft.com/windows/ProtocolsTest/2007/07/TestConfig"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://schemas.microsoft.com/windows/ProtocolsTest/2007/07/TestConfig http://schemas.microsoft.com/windows/ProtocolsTest/2007/07/TestConfig.xsd">
@@ -10,7 +10,7 @@
     <Property name="SecurityPackageForSmb2UserAuthentication" value="Negotiate"/>
     <!-- Set value for Smb2ConnectionTimeoutInSeconds greater than KeepAliveInterval -->
     <Property name="Smb2ConnectionTimeoutInSeconds" value="125" />
-    <Property name="DisconnectionTimeoutInSeconds" value="12" />
+    <Property name="DisconnectionTimeoutInSeconds" value="15" />
 
     <!-- The TCP port value for SMBD transport -->
     <Property name="SmbdTcpPort" value="445" />
@@ -40,6 +40,25 @@
     <Property name ="ActiveTDI" value="" />
     <!--Set to true, if need RDMA layer verbose logging, otherwise set to false-->
     <Property name ="RdmaLayerLoggingEnabled" value ="false" />
+
+    <!--
+      Per-test diagnostics policy. Diagnostics remain disabled unless explicitly enabled.
+      Durations use the invariant TimeSpan "c" format. Capture targets are separated by semicolons;
+      an empty target list derives only the configured ClientRNicIp.
+    -->
+    <Property name="Diagnostics.Enabled" value="false" />
+    <Property name="Diagnostics.ArtifactRoot" value="" />
+    <Property name="Diagnostics.Capture.Provider" value="Automatic" />
+    <Property name="Diagnostics.Capture.ToolPath" value="" />
+    <Property name="Diagnostics.Capture.Targets" value="" />
+    <Property name="Diagnostics.Capture.TrafficScope" value="RdmaFocused" />
+    <Property name="Diagnostics.Capture.StartTimeout" value="" />
+    <Property name="Diagnostics.Capture.StopTimeout" value="" />
+    <Property name="Diagnostics.Capture.MaxDuration" value="" />
+    <Property name="Diagnostics.Capture.MaxBytes" value="" />
+    <Property name="Diagnostics.Capture.Format" value="Native" />
+    <Property name="Diagnostics.Logs.NativeEnabled" value="false" />
+    <Property name="Diagnostics.Retention" value="KeepAll" />
   </Properties>
   <Adapters>
     <Adapter xsi:type="powershell" name="ISutProtocolControlAdapter" scriptdir=".\SutProtocolControlAdapter" />

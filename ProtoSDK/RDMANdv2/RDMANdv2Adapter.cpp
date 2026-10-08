@@ -22,6 +22,13 @@ RdmaAdapter::~RdmaAdapter()
         _memoryHandlerList = NULL;
     }
 
+    if (_memoryHandlerLock != NULL)
+    {
+        DeleteCriticalSection(_memoryHandlerLock);
+        delete _memoryHandlerLock;
+        _memoryHandlerLock = NULL;
+    }
+
     if (_hAdapterFile != NULL && _hAdapterFile != INVALID_HANDLE_VALUE)
     {
         CloseHandle(_hAdapterFile);
@@ -73,6 +80,20 @@ HRESULT RdmaAdapter::Query([Out]RdmaAdapterInfo^% adapterInformation)
     adapterInformation->LargeRequestThreshold   = (unsigned __int32)info.LargeRequestThreshold;
     adapterInformation->MaxCallerData           = (unsigned __int32)info.MaxCallerData;
     adapterInformation->MaxCalleeData           = (unsigned __int32)info.MaxCalleeData;
+
+    System::Diagnostics::Trace::WriteLine(System::String::Format(
+        "RDMANdv2::Query adapter caps: VendorId=0x{0:X4}, DeviceId=0x{1:X4}, "
+        "MaxTransferLength={2}, MaxRegistrationSize={3}, MaxWindowSize={4}, "
+        "MaxOutboundReadLimit={5}, MaxInboundReadLimit={6}, MaxInlineData={7}",
+        info.VendorId,
+        info.DeviceId,
+        info.MaxTransferLength,
+        info.MaxRegistrationSize,
+        info.MaxWindowSize,
+        info.MaxOutboundReadLimit,
+        info.MaxInboundReadLimit,
+        info.MaxInlineDataSize));
+
     return ND_SUCCESS;
 }
 
@@ -159,6 +180,16 @@ HRESULT RdmaAdapter::RegisterMemory(unsigned __int32 bufferSize, [Out]unsigned _
     newElem->RemoteToken = pMemoryRegion->GetRemoteToken();
     newElem->MagicNumber = RDMA_MAGIC_NUM;
 
+    System::Diagnostics::Trace::WriteLine(System::String::Format(
+        "RDMANdv2::RegisterMemory handler=0x{0:X}, buffer=0x{1:X}, length={2}, "
+        "localToken=0x{3:X8}, remoteToken(MR)=0x{4:X8}",
+        (unsigned __int64)newElem,
+        (unsigned __int64)buffer,
+        bufferSize,
+        newElem->LocalToken,
+        newElem->RemoteToken));
+
+    EnterCriticalSection(_memoryHandlerLock);
     newElem->Prev = _memoryHandlerList;
     newElem->Next = _memoryHandlerList->Next;
     if (_memoryHandlerList->Next != NULL)
@@ -166,6 +197,7 @@ HRESULT RdmaAdapter::RegisterMemory(unsigned __int32 bufferSize, [Out]unsigned _
         _memoryHandlerList->Next->Prev = newElem;
     }
     _memoryHandlerList->Next = newElem;
+    LeaveCriticalSection(_memoryHandlerLock);
 
     memoryHandler = (unsigned __int64)newElem;
     return ND_SUCCESS;
@@ -189,11 +221,14 @@ HRESULT RdmaAdapter::DeregisterMemory(unsigned __int64 memoryHandler)
     elem->MemoryRegion->Release();
     VirtualFree(elem->Buffer, 0, MEM_RELEASE);
 
+    EnterCriticalSection(_memoryHandlerLock);
     elem->Prev->Next = elem->Next;
     if (elem->Next != NULL)
     {
         elem->Next->Prev = elem->Prev;
     }
+    elem->MagicNumber = 0;
+    LeaveCriticalSection(_memoryHandlerLock);
     delete elem;
     return result;
 }
@@ -217,6 +252,29 @@ HRESULT RdmaAdapter::CreateMemoryWindow([Out]unsigned __int64 invalidateResult, 
     invalidateResult = id;
 
     memoryWindow = gcnew RdmaMemoryWindow(pMw, id);
+    return ND_SUCCESS;
+}
+
+HRESULT RdmaAdapter::GetRegisteredMemory(
+    unsigned __int64 memoryHandler,
+    [Out]RdmaRegisteredMemoryInfo^% info)
+{
+    RdmaMrHandler *elem = NULL;
+    HRESULT result = GetMemoryHandler(memoryHandler, &elem);
+    if (result != ND_SUCCESS)
+    {
+        return result;
+    }
+
+    info = gcnew RdmaRegisteredMemoryInfo();
+    info->Address = (unsigned __int64)elem->Buffer;
+    info->RemoteToken = elem->RemoteToken;
+    info->Length = elem->Length;
+
+    System::Diagnostics::Trace::WriteLine(System::String::Format(
+        "RDMANdv2::GetRegisteredMemory handler=0x{0:X}, address=0x{1:X}, remoteToken(MR)=0x{2:X8}, length={3}",
+        memoryHandler, info->Address, info->RemoteToken, info->Length));
+
     return ND_SUCCESS;
 }
 
@@ -273,10 +331,12 @@ HRESULT RdmaAdapter::Listen(int protocol, unsigned __int16 port, [Out]RdmaListen
 
 void RdmaAdapter::ReleaseRegisterMemory()
 {
+    EnterCriticalSection(_memoryHandlerLock);
     while (_memoryHandlerList->Next != NULL)
     {
         DeregisterMemory((unsigned __int64)_memoryHandlerList->Next);
     }
+    LeaveCriticalSection(_memoryHandlerLock);
 }
 
 RdmaAdapter::RdmaAdapter(IND2Adapter *adapter)
@@ -287,6 +347,8 @@ RdmaAdapter::RdmaAdapter(IND2Adapter *adapter)
     memset(_memoryHandlerList, 0, sizeof(RdmaMrHandler));
     _memoryHandlerList->Prev = NULL;
     _memoryHandlerList->Next = NULL;
+    _memoryHandlerLock = new CRITICAL_SECTION;
+    InitializeCriticalSection(_memoryHandlerLock);
 
     _pOverlapped = new OVERLAPPED;
     _pOverlapped->hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);

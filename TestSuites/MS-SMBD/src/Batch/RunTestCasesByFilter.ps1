@@ -8,12 +8,19 @@ param(
 
 $invocationPath =  Split-Path $MyInvocation.MyCommand.Definition -Parent
 
-$script = Join-Path $invocationPath "RunTestCasesByBinariesAndFilter.ps1"
+$script = Join-Path $invocationPath "Invoke-SmbdTestRunner.ps1"
 
 $binaries = @(
     "MS-SMBD_ServerTestSuite.dll"
 )
 
-$cmd = "$script -Binaries `$binaries -Filter `$Filter -DryRun:`$(`$DryRun.IsPresent)"
+& $script `
+    -Binaries $binaries `
+    -Filter $Filter `
+    -DryRun:$DryRun.IsPresent
 
-Invoke-Expression $cmd
+# Disabled and fallback execution retain the historical wrapper exit behavior.
+if ($null -ne $global:__SmbdDiagnosticsManagedRunnerExitCode)
+{
+    exit [int]$global:__SmbdDiagnosticsManagedRunnerExitCode
+}

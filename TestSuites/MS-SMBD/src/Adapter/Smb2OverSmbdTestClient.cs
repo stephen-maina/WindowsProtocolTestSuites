@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Microsoft.Protocols.TestTools.StackSdk;
@@ -120,10 +120,15 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                     NtStatus ret = smbdClient.ReceiveMessage(smb2ConnectionTimeout, out smb2Response);
                     if (ret != NtStatus.STATUS_SUCCESS)
                     {
-                        if (ret == NtStatus.STATUS_IO_TIMEOUT || ret == NtStatus.STATUS_CONNECTION_DISCONNECTED)
-                        {
-                            throw new TimeoutException();
-                        }
+                        // Any failure here means the SMBD connection can no longer
+                        // deliver the response: a timeout, an explicit disconnect,
+                        // or cancelled receives after the server tore the connection
+                        // down. Fail fast with the actual status instead of looping
+                        // through the cancelled completions and then waiting the
+                        // full connection timeout.
+                        throw new TimeoutException(string.Format(
+                            "SMBD ReceiveMessage failed with status 0x{0:X8} while waiting for the SMB2 response.",
+                            (uint)ret));
                     }
                 }
 

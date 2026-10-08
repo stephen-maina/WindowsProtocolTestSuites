@@ -126,6 +126,26 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         private readonly V1.RdmaAdapter adapter;
         public Ndv1Adapter(V1.RdmaAdapter adapter) { this.adapter = adapter; }
 
+        public int Query(out NdAdapterInfo adapterInformation)
+        {
+            V1.RdmaAdapterInfo info;
+            int hr = adapter.Query(out info);
+            adapterInformation = (info == null)
+                ? null
+                : new NdAdapterInfo
+                {
+                    VendorId = info.VendorId,
+                    DeviceId = info.DeviceId,
+                    MaxTransferLength = info.MaxInboundLength,
+                    MaxRegistrationSize = info.MaxRegistrationSize,
+                    MaxWindowSize = info.MaxWindowSize,
+                    MaxOutboundReadLimit = info.MaxOutboundReadLimit,
+                    MaxInboundReadLimit = info.MaxInboundReadLimit,
+                    MaxInlineData = info.MaxInlineData
+                };
+            return hr;
+        }
+
         public int CreateCompletionQueue(uint entrySize, out INativeRdmaCompletionQueue completionQueue)
         {
             V1.RdmaCompletionQueue q;
@@ -158,6 +178,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             int hr = adapter.CreateMemoryWindow(invalidateResult, out w);
             memoryWindow = (w == null) ? null : new Ndv1MemoryWindow(w);
             return hr;
+        }
+
+        public int GetRegisteredMemory(ulong memoryHandler, out RdmaRegisteredMemory registeredMemory)
+        {
+            // NDSPI v1 has no memory-region remote token: remote access always
+            // requires a memory window, so the no-MW fallback cannot be used.
+            registeredMemory = default(RdmaRegisteredMemory);
+            return unchecked((int)NtStatus.STATUS_NOT_SUPPORTED);
         }
 
         public int Listen(int protocol, ushort port, out INativeRdmaListen listen)
@@ -297,7 +325,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             ulong size = Inner.GetResult(out resultHandler, out r);
             requestResult = (r == null)
                 ? default(NdResult)
-                : new NdResult { BytesTransferred = r.BytesTransferred, Status = r.Status };
+                : new NdResult { BytesTransferred = r.BytesTransferred, Status = r.Status, RequestType = -1 };
             return size;
         }
     }
@@ -318,6 +346,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         internal readonly V1.RdmaMemoryWindow Inner;
         public Ndv1MemoryWindow(V1.RdmaMemoryWindow memoryWindow) { Inner = memoryWindow; }
         public uint RemoteToken { get { return Inner.RemoteToken; } }
+
+        public void Dispose()
+        {
+            if (Inner != null)
+            {
+                Inner.Dispose();
+            }
+        }
     }
 
     // ===========================================================================
@@ -403,6 +439,26 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         private readonly V2.RdmaAdapter adapter;
         public Ndv2Adapter(V2.RdmaAdapter adapter) { this.adapter = adapter; }
 
+        public int Query(out NdAdapterInfo adapterInformation)
+        {
+            V2.RdmaAdapterInfo info;
+            int hr = adapter.Query(out info);
+            adapterInformation = (info == null)
+                ? null
+                : new NdAdapterInfo
+                {
+                    VendorId = info.VendorId,
+                    DeviceId = info.DeviceId,
+                    MaxTransferLength = info.MaxInboundLength,
+                    MaxRegistrationSize = info.MaxRegistrationSize,
+                    MaxWindowSize = info.MaxWindowSize,
+                    MaxOutboundReadLimit = info.MaxOutboundReadLimit,
+                    MaxInboundReadLimit = info.MaxInboundReadLimit,
+                    MaxInlineData = info.MaxInlineData
+                };
+            return hr;
+        }
+
         public int CreateCompletionQueue(uint entrySize, out INativeRdmaCompletionQueue completionQueue)
         {
             V2.RdmaCompletionQueue q;
@@ -434,6 +490,21 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             V2.RdmaMemoryWindow w;
             int hr = adapter.CreateMemoryWindow(invalidateResult, out w);
             memoryWindow = (w == null) ? null : new Ndv2MemoryWindow(w);
+            return hr;
+        }
+
+        public int GetRegisteredMemory(ulong memoryHandler, out RdmaRegisteredMemory registeredMemory)
+        {
+            V2.RdmaRegisteredMemoryInfo info;
+            int hr = adapter.GetRegisteredMemory(memoryHandler, out info);
+            registeredMemory = (info == null)
+                ? default(RdmaRegisteredMemory)
+                : new RdmaRegisteredMemory
+                {
+                    Address = info.Address,
+                    RemoteToken = info.RemoteToken,
+                    Length = info.Length
+                };
             return hr;
         }
 
@@ -574,7 +645,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             ulong size = Inner.GetResult(out resultHandler, out r);
             requestResult = (r == null)
                 ? default(NdResult)
-                : new NdResult { BytesTransferred = r.BytesTransferred, Status = r.Status };
+                : new NdResult { BytesTransferred = r.BytesTransferred, Status = r.Status, RequestType = r.RequestType };
             return size;
         }
     }
@@ -595,6 +666,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         internal readonly V2.RdmaMemoryWindow Inner;
         public Ndv2MemoryWindow(V2.RdmaMemoryWindow memoryWindow) { Inner = memoryWindow; }
         public uint RemoteToken { get { return Inner.RemoteToken; } }
+
+        public void Dispose()
+        {
+            if (Inner != null)
+            {
+                Inner.Dispose();
+            }
+        }
     }
 }
 #endif

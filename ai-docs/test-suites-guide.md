@@ -59,6 +59,8 @@ src/
 FileServer/src/
 ├── Common/Adapter/     Smb2FunctionalClient, ISutCommonControlAdapter, ISutProtocolControlAdapter
 ├── Common/TestSuite/   CommonTestBase, CommonTypes, ptfconfig
+├── Common/Diagnostics.Portability.Tests/
+│                       Representative consumer tests for the suite-neutral diagnostics core
 ├── SMB2/TestSuite/     SMB2 test cases organized by feature area
 ├── SMB2/Adapter/       SMB2TestConfig
 ├── FSA/TestSuite/      File System Access (MS-FSA) test cases
@@ -251,6 +253,9 @@ src/
 │   ├── SmbdAdapter.cs          Main SMBD adapter
 │   ├── Smb2OverSmbdTestClient.cs
 │   └── TestConfig.cs
+├── Diagnostics/                 Thin MS-SMBD PTF integration and provider selection
+├── Diagnostics.Tests/           Managed diagnostics regression coverage
+├── Diagnostics.Runner/          Test execution and evidence reconciliation
 └── TestSuite/
     ├── SmbdTestBase.cs         Base for pure SMBD tests
     ├── Smb2OverSmbdTestBase.cs Base for SMB2-over-SMBD tests
@@ -259,6 +264,37 @@ src/
 ```
 
 Requires an RDMA-capable NIC on both client and server. For Windows: uses the C++/CLI `RDMA` adapter in ProtoSDK. For Linux: uses the `RdmaLinux` adapter.
+
+### Shared Diagnostics Evidence Infrastructure
+
+The reusable diagnostics implementation is in
+`TestSuites/Common/Diagnostics/`, outside any protocol-specific suite. It
+provides configuration parsing, invocation identity, artifact storage,
+provider contracts, lifecycle coordination, PTF-log routing, manifests,
+integrity checks, diagnostic-error recording, and runner reconciliation.
+
+MS-SMBD is the first integrated consumer. Its code under
+`TestSuites/MS-SMBD/src/Diagnostics/` maps suite properties, reads the
+independent SUT `Platform` and Driver `DriverPlatform`, and composes the
+provider appropriate for the actual Driver runtime. The current concrete
+provider is Windows `NetshTrace`; Linux Driver topologies report
+`ProviderUnsupported` until a specific Linux capture tool is qualified and a
+provider is implemented.
+
+Do not copy the shared implementation into another suite. Add a suite-specific
+property map and thin lifecycle composition instead. The fixture at
+`TestSuites/FileServer/src/Common/Diagnostics.Portability.Tests/` demonstrates
+alternate property names, disabled zero-side-effect behavior, startup-error
+recording, and explicit no-evidence finalization without an MS-SMBD
+dependency.
+
+The active MS-SMBD integration keeps one authored diagnostics policy surface:
+`MS-SMBD_ServerTestSuite.ptfconfig`. Its deployment PTF owns topology facts
+and does not duplicate `Diagnostics.*` values. Per-test outputs are
+`ptf-log.ndjson`, `manifest.json`, and `capture.etl` when usable capture
+succeeds; runner reconciliation writes `runner/runner-evidence.json`.
+Diagnostics regression tests are supporting infrastructure tests, not protocol
+conformance cases.
 
 ---
 

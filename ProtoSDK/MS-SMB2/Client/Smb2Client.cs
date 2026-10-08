@@ -203,6 +203,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
         private Smb2CompressionInfo compressionInfo;
         private SigningAlgorithm selectedSigningAlgorithm;
         private bool isSigningAlgorithmNegotiated;
+        private Smb2RDMATransformId[] selectedRdmaTransformIds;
         private Smb2Decoder decoder;
 
         private bool disposed;
@@ -354,6 +355,16 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
                 return selectedSigningAlgorithm;
             }
         }
+
+        
+        public Smb2RDMATransformId[] SelectedRdmaTransformIds
+        {
+            get
+            {
+                return selectedRdmaTransformIds;
+            }
+        }
+
         #endregion
 
         #region Constructor
@@ -374,6 +385,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
 
             selectedSigningAlgorithm = SigningAlgorithm.HMAC_SHA256;
             isSigningAlgorithmNegotiated = false;
+
+            selectedSigningAlgorithm = SigningAlgorithm.HMAC_SHA256;
+
+            selectedRdmaTransformIds = new Smb2RDMATransformId[0];
         }
 
         #endregion
@@ -1295,6 +1310,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
 
                     this.selectedSigningAlgorithm = response.NegotiateContext_SIGNING.Value.SigningAlgorithms[0];
                     this.isSigningAlgorithmNegotiated = true;
+                }
+
+                if (response.NegotiateContext_RDMA != null)
+                {
+                    this.selectedRdmaTransformIds = response.NegotiateContext_RDMA.Value.RDMATransformIds ?? new Smb2RDMATransformId[0];
                 }
 
                 // In SMB 311, client use SMB2_ENCRYPTION_CAPABILITIES context to indicate whether it 

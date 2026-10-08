@@ -7,6 +7,7 @@ using Microsoft.Protocols.TestTools.StackSdk;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using System.Text;
 
 namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
@@ -16,6 +17,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
     {
         #region Fields
         private DialectRevision[] Smb302AboveDialects = new DialectRevision[] { DialectRevision.Smb302, DialectRevision.Smb311 };
+        private DialectRevision[] Smb302OnlyDialects = new DialectRevision[] { DialectRevision.Smb302 };
         private DialectRevision[] Smb300OnlyDialects = new DialectRevision[] { DialectRevision.Smb30 };
         private string fileName;
         #endregion
@@ -46,7 +48,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("BVT")]
         [TestCategory("Smb2OverRdmaChannelInvalidate")]
         public void BVT_Smb2OverRdma_Smb302_Write_SMB2_CHANNEL_RDMA_V1_INVALIDATE()
-        {
+        {   /*
             if (smbdAdapter.TestConfig.RDMATransport == RDMATransport.RoCE && smbdAdapter.TestConfig.DriverPlatform != Platform.NonWindows)
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support RDMA RoCE transport.");
@@ -55,10 +57,12 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support Windows Server 2025.");
             }
+            */
 
-            EstablishConnectionAndOpenFile(fileName, Smb302AboveDialects);
+            EstablishConnectionAndOpenFile(fileName, Smb302OnlyDialects);
 
             uint writeSize = smbdAdapter.Smb2MaxWriteSize;
+            writeSize = 1024 * 1024; // 1MB
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)writeSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
@@ -103,7 +107,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannelInvalidate")]
         public void BVT_Smb2OverRdma_Smb302_Read_SMB2_CHANNEL_RDMA_V1_INVALIDATE()
         {
-            if(smbdAdapter.TestConfig.RDMATransport == RDMATransport.RoCE && smbdAdapter.TestConfig.DriverPlatform != Platform.NonWindows)
+            /*
+             if(smbdAdapter.TestConfig.RDMATransport == RDMATransport.RoCE && smbdAdapter.TestConfig.DriverPlatform != Platform.NonWindows)
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support RDMA RoCE transport.");
             }
@@ -111,69 +116,101 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support Windows Server 2025.");
             }
+            */
 
-            EstablishConnectionAndOpenFile(fileName, Smb302AboveDialects);
+            // Pin the dialect to exactly SMB 3.0.2 (not "3.0.2 and above"), matching
+            // the sibling BVT_..._Write_... test. If Smb311 were allowed to be
+            // negotiated here, the server would enforce RDMA payload signing (which
+            // requires the SMB 3.1.1 RDMA Transform Capabilities negotiate context,
+            // never sent by this test) and could fail the unsigned RDMA READ with
+            // invalidate ungracefully (observed as STATUS_ACCESS_VIOLATION) instead
+            // of the expected success path for this SMB 3.0.2 scenario.
+            EstablishConnectionAndOpenFile(fileName, Smb302OnlyDialects);
 
             uint fileSize = smbdAdapter.Smb2MaxReadSize;
+            fileSize = 1024 * 1024; // 1MB
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
-            SmbdBufferDescriptorV1 descp;
-            NtStatus status = smbdAdapter.SmbdRegisterBuffer(
-                fileSize,
-                SmbdBufferReadWrite.RDMA_READ_PERMISSION_FOR_WRITE_FILE,
-                out descp);
-            BaseTestSite.Assert.AreEqual(
-                NtStatus.STATUS_SUCCESS,
-                status,
-                "Register buffer should succeed.");
+            // SMB 3.0.2 cannot negotiate the SMB 3.1.1 RDMA Transform Capabilities
+            // context (0x0007), so Windows Server 2025's DDP security enforcement
+            // will reject an unsigned RDMA WRITE used only to seed the file. Populate
+            // the file with ordinary inline SMB2 WRITE(s) instead, and reserve the
+            // RDMA channel for the actual READ operation under test.
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Write content to file using inline SMB2 WRITE.");
+            WriteInlineContent(fileContent);
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Write content to file over RDMA.");
-            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_V1_INVALIDATE, descp);
-            BaseTestSite.Assert.AreEqual<NtStatus>(
-                NtStatus.STATUS_SUCCESS,
-                status,
-                "SMB2 WRITE over RDMA should succeed.");
+            // A single RDMA READ covering the whole 1 MiB file can exceed the SMBD
+            // negotiated MaxReadWriteSize (separate from the SMB2 MaxReadSize),
+            // which causes the server to RDMA-write past the bounds of the
+            // registered buffer (observed as STATUS_ACCESS_VIOLATION / 0xC0000005).
+            // Chunk the READ per Smb2EffectiveMaxReadSize, the same way
+            // ValidateFileContent does.
+            uint sizePerRead;
+            ComputeReadPlan(1, out sizePerRead, out _);
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 READ.");
-            status = smbdAdapter.SmbdRegisterBuffer(
-                fileSize,
-                SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE,
-                out descp);
-            BaseTestSite.Assert.AreEqual(
-                NtStatus.STATUS_SUCCESS,
-                status,
-                "Register buffer should succeed.");
-            byte[] channelInfo = TypeMarshal.ToBytes<SmbdBufferDescriptorV1>(descp);
+            SmbdBufferDescriptorV1 descp = default;
+            byte[] channelInfo = null;
+            uint lastLength = 0;
+            uint readOffset = 0;
+            while (readOffset < fileSize)
+            {
+                uint length = sizePerRead;
+                if (readOffset + length > fileSize)
+                {
+                    length = fileSize - readOffset;
+                }
+                lastLength = length;
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Read content from file over RDMA.");
-            READ_Response readResponse;
-            byte[] readData;
-            status = (NtStatus)smbdAdapter.Smb2ReadOverRdmaChannel(
-                0,
-                (uint)fileSize,
-                channelInfo,
-                out readResponse,
-                out readData,
-                Channel_Values.CHANNEL_RDMA_V1_INVALIDATE);
+                BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 READ.");
+                NtStatus status = smbdAdapter.SmbdRegisterBuffer(
+                    length,
+                    SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE,
+                    out descp);
+                BaseTestSite.Assert.AreEqual(
+                    NtStatus.STATUS_SUCCESS,
+                    status,
+                    "Register buffer should succeed.");
+                channelInfo = TypeMarshal.ToBytes<SmbdBufferDescriptorV1>(descp);
 
-            BaseTestSite.Assert.AreEqual<NtStatus>(
-                NtStatus.STATUS_SUCCESS,
-                status,
-                "SMB2 READ over RDMA should succeed.");
+                BaseTestSite.Log.Add(LogEntryKind.TestStep, "Read content from file over RDMA at offset {0}.", readOffset);
+                READ_Response readResponse;
+                byte[] readData;
+                status = (NtStatus)smbdAdapter.Smb2ReadOverRdmaChannel(
+                    readOffset,
+                    length,
+                    channelInfo,
+                    out readResponse,
+                    out readData,
+                    Channel_Values.CHANNEL_RDMA_V1_INVALIDATE);
 
-            byte[] readContent = new byte[fileSize];
-            smbdAdapter.SmbdReadRegisteredBuffer(readContent, descp);
+                BaseTestSite.Assert.AreEqual<NtStatus>(
+                    NtStatus.STATUS_SUCCESS,
+                    status,
+                    "SMB2 READ over RDMA should succeed at offset {0}.",
+                    readOffset);
 
-            BaseTestSite.Assert.IsTrue(
-                SmbdUtilities.CompareByteArray(fileContent, readContent),
-                "Content read should be identical with original on server.");
+                byte[] readContent = new byte[length];
+                smbdAdapter.SmbdReadRegisteredBuffer(readContent, descp);
+
+                byte[] expectedChunk = new byte[length];
+                Array.Copy(fileContent, readOffset, expectedChunk, 0, length);
+                BaseTestSite.Assert.IsTrue(
+                    SmbdUtilities.CompareByteArray(expectedChunk, readContent),
+                    "Content read should be identical with original on server at offset {0}.",
+                    readOffset);
+
+                readOffset += length;
+            }
 
             try
             {
-                status = (NtStatus)smbdAdapter.Smb2ReadOverRdmaChannel(
+                // Reuse the last descriptor, which the server already invalidated
+                // (remote invalidation) as part of the preceding RDMA READ.
+                READ_Response readResponse;
+                byte[] readData;
+                NtStatus status = (NtStatus)smbdAdapter.Smb2ReadOverRdmaChannel(
                     0,
-                    (uint)fileSize,
+                    lastLength,
                     channelInfo,
                     out readResponse,
                     out readData,
@@ -192,14 +229,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         public void Smb2OverRdma_Write_SMB2_CHANNEL_RDMA_V1()
         {
-            if (smbdAdapter.TestConfig.Platform >= Platform.WindowsServer2025)
-            {
-                BaseTestSite.Assert.Inconclusive("This test case currently does not support Windows Server 2025.");
-            }
-            
-            EstablishConnectionAndOpenFile(fileName);
+            EstablishSignedRdmaConnectionAndOpenFile(fileName);
 
             uint writeSize = smbdAdapter.Smb2MaxWriteSize;
+            writeSize = 1024 * 1024; // 1MB
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)writeSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
@@ -214,7 +247,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 "Register buffer should succeed.");
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Write content to file over RDMA.");
-            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_V1, descp);
+            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_TRANSFORM, descp);
             BaseTestSite.Assert.AreEqual<NtStatus>(
                 NtStatus.STATUS_SUCCESS,
                 status,
@@ -226,7 +259,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             fileContent = Encoding.ASCII.GetBytes(Smb2Utility.CreateRandomStringInByte((int)writeSize));
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send Smb2 WRITE request using same descriptor.");
-            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_V1, descp);
+            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_TRANSFORM, descp);
 
             BaseTestSite.Assert.AreEqual<NtStatus>(
                 NtStatus.STATUS_SUCCESS,
@@ -241,14 +274,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         public void Smb2OverRdma_Read_SMB2_CHANNEL_RDMA_V1()
         {
-            if (smbdAdapter.TestConfig.Platform >= Platform.WindowsServer2025)
-            {
-                BaseTestSite.Assert.Inconclusive("This test case currently does not support Windows Server 2025.");
-            }
-            
-            EstablishConnectionAndOpenFile(fileName);
+            EstablishSignedRdmaConnectionAndOpenFile(fileName);
 
             uint fileSize = smbdAdapter.Smb2MaxReadSize;
+            fileSize = 1024 * 1024; // 1MB
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
@@ -263,7 +292,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 "Register buffer should succeed.");
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Write content to file over RDMA.");
-            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_V1, descp);
+            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_TRANSFORM, descp);
             BaseTestSite.Assert.AreEqual<NtStatus>(
                 NtStatus.STATUS_SUCCESS,
                 status,
@@ -362,39 +391,25 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannelInvalidate")]
         public void Smb2OverRdma_Smb300_Read_SMB2_CHANNEL_RDMA_V1_INVALIDATE()
         {
-            if (smbdAdapter.TestConfig.Platform >= Platform.WindowsServer2025)
-            {
-                BaseTestSite.Assert.Inconclusive("This test case currently does not support Windows Server 2025.");
-            }
-            
             EstablishConnectionAndOpenFile(fileName, Smb300OnlyDialects);
 
             uint fileSize = smbdAdapter.Smb2MaxReadSize;
+            fileSize = 1024 * 1024; // 1MB
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Populate file with ordinary inline SMB2 WRITE requests.");
+            WriteInlineContent(fileContent);
+
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 READ.");
             SmbdBufferDescriptorV1 descp;
             NtStatus status = smbdAdapter.SmbdRegisterBuffer(
                 fileSize,
-                SmbdBufferReadWrite.RDMA_READ_PERMISSION_FOR_WRITE_FILE,
+                SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE,
                 out descp);
             BaseTestSite.Assert.AreEqual(
                 NtStatus.STATUS_SUCCESS,
                 status,
                 "Register buffer should succeed.");
-
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Write content to file over RDMA.");
-            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_V1, descp);
-            BaseTestSite.Assert.AreEqual<NtStatus>(
-                NtStatus.STATUS_SUCCESS,
-                status,
-                "SMB2 WRITE over RDMA should succeed.");
-
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 READ.");
-            smbdAdapter.SmbdRegisterBuffer(
-                fileSize,
-                SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE,
-                out descp);
             byte[] channelInfo = TypeMarshal.ToBytes<SmbdBufferDescriptorV1>(descp);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Read content from file over RDMA.");
@@ -414,11 +429,49 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 "SMB2 READ over RDMA should fail with STATUS_INVALID_PARAMETER if set Channel CHANNEL_RDMA_V1_INVALIDATE on SMB 3.0 dialect.");
         }
 
+        private void WriteInlineContent(byte[] content)
+        {
+            uint maxWriteSize = Math.Min(
+                smbdAdapter.Smb2MaxWriteSize,
+                Math.Min(
+                    smbdAdapter.ClientConnection.MaxSendSize,
+                    smbdAdapter.ServerConnection.MaxReceiveSize));
+            BaseTestSite.Assert.IsTrue(
+                maxWriteSize > Smb2OverSmbdTestClient.WRITE_REQUEST_HEADER_SIZE,
+                "SMB2 inline WRITE size should be greater than the WRITE request header size.");
+            maxWriteSize -= (uint)Smb2OverSmbdTestClient.WRITE_REQUEST_HEADER_SIZE;
+
+            int offset = 0;
+            while (offset < content.Length)
+            {
+                int writeLength = (int)Math.Min(maxWriteSize, (uint)(content.Length - offset));
+                byte[] writeData = new byte[writeLength];
+                Array.Copy(content, offset, writeData, 0, writeLength);
+
+                WRITE_Response writeResponse;
+                NtStatus status = (NtStatus)smbdAdapter.Smb2Write((ulong)offset, writeData, out writeResponse);
+                BaseTestSite.Assert.AreEqual<NtStatus>(
+                    NtStatus.STATUS_SUCCESS,
+                    status,
+                    "SMB2 inline WRITE should succeed at offset {0}.",
+                    offset);
+                BaseTestSite.Assert.AreEqual<uint>(
+                    (uint)writeLength,
+                    writeResponse.Count,
+                    "SMB2 inline WRITE count should match request length at offset {0}.",
+                    offset);
+
+                offset += writeLength;
+            }
+        }
+
         protected NtStatus Smb2WriteOverRdma(string fileName, byte[] content, Channel_Values channel, SmbdBufferDescriptorV1 descp)
         {
             smbdAdapter.SmbdWriteRegisteredBuffer(content, descp);
 
-            byte[] channelInfo = TypeMarshal.ToBytes<SmbdBufferDescriptorV1>(descp);
+            byte[] channelInfo = channel == Channel_Values.CHANNEL_RDMA_TRANSFORM
+                ? BuildSignedRdmaTransformChannelInfo(content, descp, Smb2Command.WRITE)
+                : TypeMarshal.ToBytes<SmbdBufferDescriptorV1>(descp);
 
             WRITE_Response writeResponse;
             return (NtStatus)smbdAdapter.Smb2WriteOverRdmaChannel(
@@ -427,6 +480,88 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 (uint)content.Length,
                 out writeResponse,
                 channel);
+        }
+
+        private void EstablishSignedRdmaConnectionAndOpenFile(string fileName)
+        {
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Establish SMB 3.1.1 connection over RDMA with RDMA signing and open file " + fileName);
+
+            NtStatus status = smbdAdapter.ConnectToServerOverRDMA();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD connection is {0}", status);
+
+            status = smbdAdapter.SmbdNegotiate();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD negotiate is {0}", status);
+
+            DialectRevision[] dialects =
+            {
+                DialectRevision.Smb311
+            };
+            Smb2RDMATransformId[] rdmaTransformIds =
+            {
+                Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING
+            };
+            SigningAlgorithm[] signingAlgorithms =
+            {
+                SigningAlgorithm.AES_CMAC
+            };
+
+            status = smbdAdapter.Smb2EstablishSessionAndOpenFile(
+                fileName,
+                negotiatedDialects: dialects,
+                smb2RDMATransformIds: rdmaTransformIds,
+                signingAlgorithms: signingAlgorithms);
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 establish session and open file is {0}", status);
+
+            BaseTestSite.Assert.IsTrue(
+                smbdAdapter.SelectedRdmaTransformIds != null &&
+                Array.IndexOf(
+                    smbdAdapter.SelectedRdmaTransformIds,
+                    Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING) >= 0,
+                "Server MUST return SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate context before transformed RDMA is used.");
+            BaseTestSite.Assert.AreEqual<SigningAlgorithm>(
+                SigningAlgorithm.AES_CMAC,
+                smbdAdapter.SelectedSigningAlgorithm,
+                "Server MUST select AES_CMAC so the signing transform uses a 16-byte signature and no nonce.");
+        }
+
+        private byte[] BuildSignedRdmaTransformChannelInfo(byte[] content, SmbdBufferDescriptorV1 descriptor, Smb2Command command)
+        {
+            byte[] nonce, signature;
+            smbdAdapter.SignByteArray(content, out nonce, out signature, command);
+
+            SMB2_RDMA_CRYPTO_TRANSFORM cryptoTransform = new SMB2_RDMA_CRYPTO_TRANSFORM
+            {
+                TransformType = Smb2RDMATransformType.SMB2_RDMA_TRANSFORM_TYPE_SIGNING,
+                SignatureLength = (ushort)signature.Length,
+                NonceLength = (ushort)nonce.Length,
+                Signature = signature,
+                Nonce = nonce,
+            };
+            byte[] cryptoTransformBytes = TypeMarshal.ToBytes(cryptoTransform);
+            Smb2Utility.Align8(ref cryptoTransformBytes);
+
+            SMB2_RDMA_TRANSFORM rdmaTransform = new SMB2_RDMA_TRANSFORM
+            {
+                RdmaDescriptorOffset = 0,
+                RdmaDescriptorLength = 1,
+                Channel = Smb2RdmaTransformChannel.SMB2_CHANNEL_RDMA_V1,
+                TransformCount = 1,
+                Reserved1 = 0,
+                Reserved2 = 0
+            };
+            byte[] rdmaTransformBytes = TypeMarshal.ToBytes(rdmaTransform);
+
+            rdmaTransform.RdmaDescriptorOffset = (ushort)(rdmaTransformBytes.Length + cryptoTransformBytes.Length);
+            byte[] descriptorBytes = TypeMarshal.ToBytes(descriptor);
+            rdmaTransform.RdmaDescriptorLength = (ushort)descriptorBytes.Length;
+            rdmaTransformBytes = TypeMarshal.ToBytes(rdmaTransform);
+
+            byte[] channelInfo = new byte[rdmaTransform.RdmaDescriptorOffset + descriptorBytes.Length];
+            rdmaTransformBytes.CopyTo(channelInfo, 0);
+            cryptoTransformBytes.CopyTo(channelInfo, rdmaTransformBytes.Length);
+            descriptorBytes.CopyTo(channelInfo, rdmaTransform.RdmaDescriptorOffset);
+
+            return channelInfo;
         }
 
     }

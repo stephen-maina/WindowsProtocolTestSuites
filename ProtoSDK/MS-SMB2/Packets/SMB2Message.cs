@@ -3539,7 +3539,20 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
         ///  ignore it on receipt.
         /// </summary>
         [StaticSize(4)]
-        public uint Reserved2;
+        public READ_Response_Flags_Values2 Reserved2;
+    }
+
+    public enum READ_Response_Flags_Values2 : uint
+    {
+        /// <summary>
+        /// No flags are set.
+        /// </summary>
+        SMB2_READFLAG_RESPONSE_NONE = 0x00000000,
+
+        /// <summary>
+        /// The Buffer field of the response contains an SMB2_RDMA_TRANSFORM structure.
+        /// </summary>
+        SMB2_READFLAG_RESPONSE_RDMA_TRANSFORM = 0x00000001
     }
 
     /// <summary>
@@ -5137,6 +5150,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
 
     public enum SigningAlgorithm : short
     {
+
+        NONE = -1,
         /// <summary>
         /// HMAC-SHA256 signing algorithm
         /// </summary>

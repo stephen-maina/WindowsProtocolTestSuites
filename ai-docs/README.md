@@ -13,6 +13,7 @@ This directory contains AI-friendly documentation for the Windows Protocol Test 
 | [ptm-guide.md](ptm-guide.md) | Protocol Test Manager (PTM): architecture, web API, how to add test suite support |
 | [build-and-setup.md](build-and-setup.md) | Prerequisites, build commands, environment setup, how to run tests |
 | [contribution-guide.md](contribution-guide.md) | Step-by-step guide for AI contributors: branching, code placement, conventions, PR process |
+| [rdma-diagnostics-evidence-specification.md](rdma-diagnostics-evidence-specification.md) | RDMA capture/log evidence implementation handoff, user decisions, source references, qualification gates, and completion checklists |
 
 ## Quick Start for AI Contributors
 

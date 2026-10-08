@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Microsoft.Protocols.TestSuites.Smbd.Adapter;
@@ -43,7 +43,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Positive")]
         [TestCategory("Signing")]
         [TestCategory("Smb2OverRdmaChannel")]
-        [Description("Verify SMB2 can read file with large size over RDMA channel with AES_GMAC signing")]
+        [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel with AES_GMAC signing")]
         public void Smb2OverRdmaChannelTransform_Signing_ReadLargeFile_AES_GMAC()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
@@ -56,9 +56,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Positive")]
         [TestCategory("Signing")]
         [TestCategory("Smb2OverRdmaChannel")]
-        [Description("Verify SMB2 can read file with large size over RDMA channel with AES_CMAC signing")]
+        [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel with AES_CMAC signing")]
         public void Smb2OverRdmaChannelTransform_Signing_ReadLargeFile_AES_CMAC()
-        {
+        {   
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
             ReadOverRdma_Signing(
                 smb2RdmaTransformIds: smb2RdmaTransformIds,
@@ -69,7 +69,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Positive")]
         [TestCategory("Signing")]
         [TestCategory("Smb2OverRdmaChannel")]
-        [Description("Verify SMB2 can write file with large size over RDMA channel with AES_GMAC signing")]
+        [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel with AES_GMAC signing")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_AES_GMAC()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
@@ -83,7 +83,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Positive")]
         [TestCategory("Signing")]
         [TestCategory("Smb2OverRdmaChannel")]
-        [Description("Verify SMB2 can write file with large size over RDMA channel with AES_CMAC signing")]
+        [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel with AES_CMAC signing")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_AES_CMAC()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
@@ -157,16 +157,19 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         #region Common Methods
 
         /// <summary>
-        /// Read file content over RDMA. The file content will be read with specific number of operations. 
-        /// The total size of the read content is SMB2 negotiated MaxReadSize, so content size 
-        /// in each SMB2 READ request is ( MaxReadSize / operationCount )
-        /// 
+        /// Read file content over RDMA. The file content will be read with a specific number of operations.
+        /// The total size of the read content is the effective maximum single RDMA READ size, which is the
+        /// smaller of the SMB2 negotiated MaxReadSize and the SMBD negotiated MaxReadWriteSize. Content size
+        /// in each SMB2 READ request is ( effectiveMaxReadSize / operationCount ).
         /// </summary>
         /// <param name="operationCount">Count of SMB2 READ operations.</param>
         /// <param name="enableEncryption">Enable encryption in the Smb2 Connection</param>
         /// <param name="enableSigning">Enable signing in the Smb2 connection</param>
         /// <param name="signingAlgorithm">The signing algorithm to use for the Smb2 connection</param>
         /// <param name="smb2RdmaTransformIds">The RDMA_TRANSFORM_IDs to use for NegotiateContext</param>
+        /// A DWORD named SmbDirectDataPlacementSecurity at HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters
+        //  controls whether the server supports the SMB2_RDMA_TRANSFORM_SIGNING transform type. If this value is set to 0, the server does not support the SMB2_RDMA_TRANSFORM_SIGNING transform type. If this value is set to 1, the server supports the SMB2_RDMA_TRANSFORM_SIGNING transform type.
+        //  Error you'll see SMB2_READFLAG_RESPONSE_RDMA_TRANSFORM bit MUST be set in the Flags field of the READ response. Flags is SMB2_READFLAG_RESPONSE_NONE
         public void ReadOverRdma_Signing(
             uint operationCount = 1,
             Smb2RDMATransformId[] smb2RdmaTransformIds = null,
@@ -188,17 +191,38 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 enableSigning: enableSigning,
                 enableEncryption: enableEncryption);
 
-            uint readSize = smbdAdapter.Smb2MaxReadSize / operationCount;
+
+            // Per MS-SMB2 3.3.5.12 the server only transforms the read payload when Connection.RDMATransformIds
+            // is not empty, so a server that did not accept the negotiate context makes this scenario untestable.
+            BaseTestSite.Assume.IsTrue(
+                smbdAdapter.SelectedRdmaTransformIds.Contains(Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING),
+                "Server MUST return SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate " +
+                "context for this scenario. Connection.RDMATransformIds is [{0}].",
+                string.Join(", ", smbdAdapter.SelectedRdmaTransformIds));
+
+           
+
+            BaseTestSite.Assert.AreEqual<SigningAlgorithm>(
+                signingAlgorithm,
+                smbdAdapter.SelectedSigningAlgorithm,
+                "Negotiated signing algorithm is {0}", smbdAdapter.SelectedSigningAlgorithm);
+
+
+            uint readSize;
+            uint effectiveOperationCount;
+            ComputeReadPlan(operationCount, out readSize, out effectiveOperationCount);
             BaseTestSite.Log.Add(LogEntryKind.Debug, "ReadSize is {0}", readSize);
-            BaseTestSite.Log.Add(LogEntryKind.Debug, "Read operation count: {0}", operationCount);
+            BaseTestSite.Log.Add(LogEntryKind.Debug, "Read operation count: {0}", effectiveOperationCount);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send each read request according to SMB2 read file limit.");
-            for (int i = 0; i < operationCount; ++i)
+            for (int i = 0; i < effectiveOperationCount; ++i)
             {
-                // SMB2 Read file
+                // SMB2 Read file. The last request covers any remainder so the
+                // total read equals the effective maximum single RDMA READ size.
+                uint length = (uint)Math.Min(readSize, smbdAdapter.Smb2MaxReadSize - (uint)i * readSize);
                 SmbdBufferDescriptorV1 descp;
                 smbdAdapter.SmbdRegisterBuffer(
-                    readSize,
+                    length,
                     SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE,
                     out descp);
                 byte[] channelInfo = TypeMarshal.ToBytes(descp);
@@ -208,7 +232,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 byte[] readData;
                 NtStatus status = (NtStatus)smbdAdapter.Smb2ReadOverRdmaChannel(
                     (UInt64)i * readSize,
-                    (uint)readSize,
+                    (uint)length,
                     channelInfo,
                     out readResponse,
                     out readData
@@ -218,7 +242,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     status,
                     "Status of SMB2 Read File is {0}", status);
                 BaseTestSite.Assert.AreEqual<uint>(
-                    (uint)readSize,
+                    (uint)length,
                     readResponse.DataRemaining,
                     "DataRemaining in READ response is {0}", readResponse.DataRemaining);
 
@@ -230,6 +254,18 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 var rdmaTransformDataLength = 16;  // sizeof(SMB2_RDMA_TRANSFORM)
                 var expectedDataLength = signingAlgorithm == SigningAlgorithm.AES_GMAC ? 56 : 40;  // sizeof(SMB2_RDMA_CRYPTO_TRANSFORM) with/without Nonce
                 var cryptoTransformDataLength = expectedDataLength - rdmaTransformDataLength;
+
+
+                // MS-SMB2 3.3.5.12: when Connection.RDMATransformIds is not empty and the request is signed, the
+                // server signs the RDMA payload and returns SMB2_RDMA_TRANSFORM followed by SMB2_RDMA_CRYPTO_TRANSFORM
+                // in the response Buffer, flagged by SMB2_READFLAG_RESPONSE_RDMA_TRANSFORM.
+                // Reserved2_Values is Read Response Flags
+                BaseTestSite.Assert.AreEqual<READ_Response_Flags_Values2>(
+                    READ_Response_Flags_Values2.SMB2_READFLAG_RESPONSE_RDMA_TRANSFORM,
+                    readResponse.Reserved2,
+                    "SMB2_READFLAG_RESPONSE_RDMA_TRANSFORM bit MUST be set in the Flags field of the READ response. Flags is {0}",
+                    readResponse.Reserved2);
+
 
                 BaseTestSite.Assert.AreEqual<int>(
                     expectedDataLength,
@@ -252,6 +288,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     cryptoTransform.TransformType,
                     "SMB2_RDMA_TRANSFORM TransformCount is {0}", rdmaTransform.TransformCount);
 
+                cryptoTransformBytes = readData.Skip(rdmaTransformDataLength).ToArray();
+                cryptoTransform = TypeMarshal.ToStruct<SMB2_RDMA_CRYPTO_TRANSFORM>(cryptoTransformBytes);
+                BaseTestSite.Assert.AreEqual<Smb2RDMATransformType>(
+                    Smb2RDMATransformType.SMB2_RDMA_TRANSFORM_TYPE_SIGNING,
+                    cryptoTransform.TransformType,
+                    "SMB2_RDMA_CRYPTO_TRANSFORM TransformType is {0}", cryptoTransform.TransformType);
+
                 if (signingAlgorithm == SigningAlgorithm.AES_CMAC)
                 {
                     BaseTestSite.Assert.AreEqual<uint>(
@@ -273,12 +316,12 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         }
 
         /// <summary>
-        /// Write file content over RDMA. The file content will be writen with specific number of operations. 
-        /// The total size of the write content is SMB2 negotiated MaxWriteize, so content size 
-        /// in each SMB2 WRITE request is ( MaxWriteSize / operationCount )
-        /// 
+        /// Write file content over RDMA. The file content will be written with a specific number of operations.
+        /// The total size of the write content is the effective maximum single RDMA WRITE size, which is the
+        /// smaller of the SMB2 negotiated MaxWriteSize and the SMBD negotiated MaxReadWriteSize. Content size
+        /// in each SMB2 WRITE request is ( effectiveMaxWriteSize / operationCount ).
         /// </summary>
-        /// <param name="operationCount">Count of SMB2 READ operations.</param>
+        /// <param name="operationCount">Count of SMB2 WRITE operations.</param>
         /// <param name="enableEncryption">Enable encryption in the Smb2 Connection</param>
         /// <param name="enableSigning">Enable signing in the Smb2 connection</param>
         /// <param name="signingAlgorithm">The signing algorithm to use for the Smb2 connection</param>
@@ -312,8 +355,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 enableSigning,
                 enableEncryption);
 
-            uint writeSize = smbdAdapter.Smb2MaxWriteSize / operationCount;
-            uint totalSize = writeSize * operationCount;
+            uint writeSize;
+            uint effectiveOperationCount;
+            ComputeWritePlan(operationCount, out writeSize, out effectiveOperationCount);
+            uint totalSize = (uint)Math.Min((ulong)writeSize * effectiveOperationCount, smbdAdapter.Smb2MaxWriteSize);
 
             // SMB2 Write file
             byte[] fileContent = Encoding.ASCII.GetBytes(Smb2Utility.CreateRandomStringInByte((int)writeSize));
@@ -327,8 +372,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 signature[2] = temp;
             }
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send each write request according SMB2 write file limit with operationCount == " + operationCount);
-            for (int i = 0; i < operationCount; ++i)
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send each write request according SMB2 write file limit with operationCount == " + effectiveOperationCount);
+            for (int i = 0; i < effectiveOperationCount; ++i)
             {
                 // register memory and get buffer descriptor
                 SmbdBufferDescriptorV1 descp;

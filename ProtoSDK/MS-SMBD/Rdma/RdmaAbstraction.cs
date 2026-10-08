@@ -67,6 +67,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
     {
         public uint BytesTransferred;
         public int Status;
+        public int RequestType; // ND2_REQUEST_TYPE (for diagnostics)
     }
 
     /// <summary>
@@ -79,9 +80,38 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
     }
 
     /// <summary>
-    /// Version-neutral memory window handle.
+    /// Version-neutral adapter capability information (mirrors RdmaAdapterInfo).
     /// </summary>
-    public interface INativeRdmaMemoryWindow
+    public class NdAdapterInfo
+    {
+        public int VendorId;
+        public int DeviceId;
+        public uint MaxTransferLength;
+        public uint MaxRegistrationSize;
+        public uint MaxWindowSize;
+        public uint MaxOutboundReadLimit;
+        public uint MaxInboundReadLimit;
+        public uint MaxInlineData;
+    }
+
+    /// <summary>
+    /// Version-neutral description of a registered memory region. Used as a
+    /// fallback when the provider does not support memory windows: the SMB
+    /// Direct buffer descriptor is built directly from these fields.
+    /// </summary>
+    public struct RdmaRegisteredMemory
+    {
+        public ulong Address;     // Base address (VA) of the registered buffer.
+        public uint RemoteToken;  // Remote token (R_Key) of the memory region.
+        public uint Length;       // Usable registered length in bytes.
+    }
+
+    /// <summary>
+    /// Version-neutral memory window handle. Implements IDisposable so the
+    /// SMBD layer can release the underlying native memory window promptly on
+    /// error paths instead of waiting for finalization.
+    /// </summary>
+    public interface INativeRdmaMemoryWindow : IDisposable
     {
         /// <summary>
         /// Remote token (R_Key) of the memory window.
@@ -173,11 +203,20 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
     /// </summary>
     public interface INativeRdmaAdapter
     {
+        int Query(out NdAdapterInfo adapterInformation);
         int CreateCompletionQueue(uint entrySize, out INativeRdmaCompletionQueue completionQueue);
         int CreateConnector(out INativeRdmaConnector connector);
         int RegisterMemory(uint bufferSize, out ulong memoryHandler);
         int DeregisterMemory(ulong memoryHandler);
         int CreateMemoryWindow(ulong invalidateResult, out INativeRdmaMemoryWindow memoryWindow);
+
+        /// <summary>
+        /// Returns the base address, remote token (R_Key) and length of a
+        /// previously registered memory region. NDSPI v1 providers return
+        /// ND_NOT_SUPPORTED because v1 has no memory-region remote token.
+        /// </summary>
+        int GetRegisteredMemory(ulong memoryHandler, out RdmaRegisteredMemory registeredMemory);
+
         int Listen(int protocol, ushort port, out INativeRdmaListen listen);
     }
 
@@ -192,5 +231,33 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         int LoadProviders(out INativeRdmaProviderInfo[] providers);
         int WriteToMemory(ulong memoryHandler, byte[] buffer);
         int ReadFromMemory(ulong memoryHandler, byte[] buffer);
+    }
+
+    /// <summary>
+    /// Helpers for building SMB Direct buffer descriptors in a version-neutral way.
+    /// </summary>
+    public static class RdmaBufferDescriptorUtility
+    {
+        /// <summary>
+        /// Reverses the byte order of a 32-bit value. Used to convert a remote
+        /// token (R_Key) between host byte order and the wire byte order required
+        /// by the SMB Direct buffer descriptor. This mirrors the byte-swap logic
+        /// applied by RdmaMemoryWindow.RemoteToken in the NDSPI v2 wrapper.
+        /// </summary>
+        public static uint SwapUInt32Bytes(uint value)
+        {
+            return ((value & 0xFF000000) >> 24) |
+                   ((value & 0x00FF0000) >> 8)  |
+                   ((value & 0x0000FF00) << 8)  |
+                   ((value & 0x000000FF) << 24);
+        }
+
+        /// <summary>
+        /// Reverses the byte order of a 32-bit value only when requested.
+        /// </summary>
+        public static uint SwapUInt32Bytes(uint value, bool reverse)
+        {
+            return reverse ? SwapUInt32Bytes(value) : value;
+        }
     }
 }
