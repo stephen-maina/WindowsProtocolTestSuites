@@ -483,6 +483,8 @@ the trace:
 <Property name="Diagnostics.Retention" value="KeepAll" />
 <Property name="Diagnostics.SessionName" value="" />
 <Property name="Diagnostics.Retention.MaxSessions" value="0" />
+<Property name="Diagnostics.Capture.RdmaSniffer.Enabled" value="true" />
+<Property name="Diagnostics.Capture.RdmaSniffer.ToolPath" value="" />
 ```
 
 To collect diagnostics on a Windows driver:
@@ -524,6 +526,8 @@ reports `ProviderUnsupported`; do not configure an unqualified capture tool.
 | `Diagnostics.Retention` | Only `KeepAll` is currently supported for evidence inside a session. Use `Diagnostics.Retention.MaxSessions` to prune whole sessions. |
 | `Diagnostics.SessionName` | Optional name of the run folder under `Diagnostics.ArtifactRoot`. Empty creates `session-<yyyyMMdd-HHmmss>` for each run so runs never overwrite each other. A fixed name such as `baseline` is reused by later runs, whose per-test folders accumulate in it. `{timestamp}` in the value is replaced by the run start time, for example `nightly-{timestamp}`. Characters other than letters, digits, `.`, `-` and `_` become `_`. |
 | `Diagnostics.Retention.MaxSessions` | `0` (default) keeps every session. A positive `N` keeps the current session plus the newest sessions, up to `N` in total, and deletes older session folders when a run starts. Only direct subfolders of the artifact root that contain a `.wpts-session` marker are ever deleted. |
+| `Diagnostics.Capture.RdmaSniffer.Enabled` | `true` also runs the Mellanox/NVIDIA NIC sniffer (`Mlx5Cmd -Sniffer`) for every test and writes `rdma.pcap` next to `capture.etl`. `netsh trace` cannot see RDMA traffic because it bypasses the Windows network stack; the NIC sniffer sees the RoCEv2 packets (UDP 4791). Best effort: if `Mlx5Cmd.exe` or a matching adapter is missing, or the sniffer fails, the test still runs with the netsh capture only. Missing or non-`true` values disable it. |
+| `Diagnostics.Capture.RdmaSniffer.ToolPath` | Optional absolute path to `Mlx5Cmd.exe`. Empty uses `C:\Program Files\Mellanox\MLNX_WinOF2\Management Tools\Mlx5Cmd.exe`. The sniffer runs on the Mellanox/NVIDIA adapter whose subnet contains the capture target (`ClientRNicIp` by default), with a file-size limit derived from `Diagnostics.Capture.MaxBytes`. |
 
 Linux path parsing is supported, including case-sensitive containment and
 extensionless tool paths. This path support does not mean that Linux packet
@@ -543,9 +547,13 @@ contains:
 
 ```text
 capture.etl
+rdma.pcap
 ptf-log.ndjson
 manifest.json
 ```
+
+`rdma.pcap` is present only when `Diagnostics.Capture.RdmaSniffer.Enabled=true`
+and the sniffer produced packets.
 
 `capture.etl` is present only when the Windows provider completes with a usable
 capture. `ptf-log.ndjson` is written automatically to the same invocation

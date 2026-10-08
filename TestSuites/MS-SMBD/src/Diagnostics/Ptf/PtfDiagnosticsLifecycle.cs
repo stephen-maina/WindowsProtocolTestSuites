@@ -25,6 +25,8 @@ public static class PtfDiagnosticsLifecycle
     private const string CurrentTestCaseName = "CurrentTestCaseName";
     private const string DriverPlatformPropertyName = "DriverPlatform";
     private const string UnknownInvocation = "MS-SMBD.UnknownInvocation";
+    private const string RdmaSnifferEnabledProperty = "Diagnostics.Capture.RdmaSniffer.Enabled";
+    private const string RdmaSnifferToolPathProperty = "Diagnostics.Capture.RdmaSniffer.ToolPath";
 
     private static readonly DiagnosticsConfigurationPolicy ConfigurationPolicy =
         new(new[] { NetshTraceCaptureProvider.ProviderIdentifier });
@@ -112,6 +114,7 @@ public static class PtfDiagnosticsLifecycle
                         DiagnosticsRuntimePlatformDetector.Detect)();
                 ICaptureProvider provider = SelectCaptureProvider(
                     effectiveProperties[DriverPlatformPropertyName],
+                    effectiveProperties,
                     runtimePlatform,
                     capture,
                     captureProviderFactory);
@@ -129,6 +132,7 @@ public static class PtfDiagnosticsLifecycle
 
     private static ICaptureProvider SelectCaptureProvider(
         string? configuredDriverPlatform,
+        NameValueCollection effectiveProperties,
         DiagnosticsRuntimePlatform runtimePlatform,
         DiagnosticsCaptureConfiguration capture,
         Func<DiagnosticsCaptureConfiguration, ICaptureProvider>?
@@ -173,7 +177,7 @@ public static class PtfDiagnosticsLifecycle
         }
 
         return captureProviderFactory is null
-            ? CreateCaptureProvider(capture)
+            ? CreateCaptureProvider(capture, effectiveProperties)
             : captureProviderFactory(capture);
     }
 
@@ -207,7 +211,8 @@ public static class PtfDiagnosticsLifecycle
     }
 
     private static ICaptureProvider CreateCaptureProvider(
-        DiagnosticsCaptureConfiguration capture)
+        DiagnosticsCaptureConfiguration capture,
+        NameValueCollection effectiveProperties)
     {
         if (string.Equals(
                 capture.Provider.Value,
@@ -218,11 +223,27 @@ public static class PtfDiagnosticsLifecycle
                 NetshTraceCaptureProvider.ProviderIdentifier,
                 StringComparison.Ordinal))
         {
-            return new NetshTraceCaptureProvider(
+            var netsh = new NetshTraceCaptureProvider(
                 capture.ToolPath.Value ??
                     NetshTraceCaptureProvider.DefaultExecutablePath,
                 capture.StartTimeout.Value,
                 capture.StopTimeout.Value);
+            if (!bool.TryParse(
+                    effectiveProperties[RdmaSnifferEnabledProperty],
+                    out bool snifferEnabled) ||
+                !snifferEnabled)
+            {
+                return netsh;
+            }
+
+            string? snifferPath = effectiveProperties[RdmaSnifferToolPathProperty];
+            return new AuxiliaryCaptureProvider(
+                netsh,
+                new Mlx5SnifferCaptureProvider(
+                    string.IsNullOrWhiteSpace(snifferPath)
+                        ? Mlx5SnifferCaptureProvider.DefaultExecutablePath
+                        : snifferPath.Trim(),
+                    capture.StartTimeout.Value));
         }
 
         return new UnsupportedCaptureProvider();

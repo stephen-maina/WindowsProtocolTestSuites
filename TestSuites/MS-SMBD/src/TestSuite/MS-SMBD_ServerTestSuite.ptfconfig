@@ -75,6 +75,14 @@
     -->
     <Property name="Diagnostics.SessionName" value="" />
     <Property name="Diagnostics.Retention.MaxSessions" value="0" />
+    <!--
+      RDMA traffic bypasses the Windows network stack, so capture.etl (netsh) cannot see it.
+      When enabled, the Mellanox/NVIDIA NIC sniffer (Mlx5Cmd -Sniffer) also writes rdma.pcap
+      next to capture.etl for each test. Best effort: if the tool or adapter is not found, the test
+      still runs with the netsh capture only. ToolPath empty uses the WinOF-2 default location.
+    -->
+    <Property name="Diagnostics.Capture.RdmaSniffer.Enabled" value="true" />
+    <Property name="Diagnostics.Capture.RdmaSniffer.ToolPath" value="" />
   </Properties>
   <Adapters>
     <Adapter xsi:type="powershell" name="ISutProtocolControlAdapter" scriptdir=".\SutProtocolControlAdapter" />
