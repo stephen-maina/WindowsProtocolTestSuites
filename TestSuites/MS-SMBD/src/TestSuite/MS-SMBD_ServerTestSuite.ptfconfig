@@ -14,11 +14,16 @@
 
     <!-- The TCP port value for SMBD transport -->
     <Property name="SmbdTcpPort" value="445" />
-    <!--SMBD parameters that initialized on connection-->
+    <!--
+      SMBD parameters that initialized on connection.
+      Observed against the Linux SUT: a MaxFragmentedSize of 131072 (128 KiB) makes the server drop the
+      connection during SMBD negotiate (client sees STATUS_CANCELLED); 262144 negotiates successfully.
+      Tests read these values from this file; they are not hardcoded in the test cases.
+    -->
     <Property name="ReceiveCreditMax" value="255" />
     <Property name="SendCreditTarget" value="255" />
     <Property name="MaxSendSize" value="1364" />
-    <Property name="MaxFragmentedSize" value="131072" />
+    <Property name="MaxFragmentedSize" value="262144" />
     <Property name="MaxReceiveSize" value="8192" />
     <Property name="KeepAliveInterval" value="120" />
 
@@ -46,19 +51,30 @@
       Durations use the invariant TimeSpan "c" format. Capture targets are separated by semicolons;
       an empty target list derives only the configured ClientRNicIp.
     -->
-    <Property name="Diagnostics.Enabled" value="false" />
-    <Property name="Diagnostics.ArtifactRoot" value="" />
+    <Property name="Diagnostics.Enabled" value="true" />
+    <Property name="Diagnostics.ArtifactRoot" value="C:\WPTS-Diagnostics" />
     <Property name="Diagnostics.Capture.Provider" value="Automatic" />
     <Property name="Diagnostics.Capture.ToolPath" value="" />
     <Property name="Diagnostics.Capture.Targets" value="" />
     <Property name="Diagnostics.Capture.TrafficScope" value="RdmaFocused" />
-    <Property name="Diagnostics.Capture.StartTimeout" value="" />
-    <Property name="Diagnostics.Capture.StopTimeout" value="" />
-    <Property name="Diagnostics.Capture.MaxDuration" value="" />
-    <Property name="Diagnostics.Capture.MaxBytes" value="" />
+    <Property name="Diagnostics.Capture.StartTimeout" value="00:00:30" />
+    <Property name="Diagnostics.Capture.StopTimeout" value="00:01:00" />
+    <Property name="Diagnostics.Capture.MaxDuration" value="00:05:00" />
+    <Property name="Diagnostics.Capture.MaxBytes" value="536870912" />
     <Property name="Diagnostics.Capture.Format" value="Native" />
     <Property name="Diagnostics.Logs.NativeEnabled" value="false" />
     <Property name="Diagnostics.Retention" value="KeepAll" />
+    <!--
+      Session grouping: every run writes to <ArtifactRoot>\<SessionName>\tests\<test>__<id>\ so each test
+      case has its own folder holding capture.etl, manifest.json and ptf-log.ndjson together.
+        SessionName: empty = new "session-<yyyyMMdd-HHmmss>" per run (runs never overwrite each other).
+                     A fixed name (e.g. "baseline") is reused by later runs; "{timestamp}" is replaced by
+                     the run start time, e.g. "nightly-{timestamp}".
+        MaxSessions: 0 = keep every session; N > 0 = after a run starts, delete the oldest session folders
+                     (only folders containing a .wpts-session marker) so at most N remain.
+    -->
+    <Property name="Diagnostics.SessionName" value="" />
+    <Property name="Diagnostics.Retention.MaxSessions" value="0" />
   </Properties>
   <Adapters>
     <Adapter xsi:type="powershell" name="ISutProtocolControlAdapter" scriptdir=".\SutProtocolControlAdapter" />

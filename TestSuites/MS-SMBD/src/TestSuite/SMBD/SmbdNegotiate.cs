@@ -36,10 +36,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify SMBD negotiate request is working as expected using accepted values.")]
         public void BVT_SmbdNegotiate_Basic()
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
 
             // test purpose: Verify SMBD negotiate request is working as expected using accepted values.
             SmbdNegotiateResponse response;
@@ -56,10 +56,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify SMBD negotiate will be successful when PreferredSendSize field is zero.")]
         public void SmbdNegotiate_PreferredSendSizeWithZero()
         {
-            const ushort CREDIT_REQUESTED = 10;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
             const uint PREFERRED_SEND_SIZE = 0;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             SmbdNegotiateResponse response;
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "SMBD negotiate with PreferredSendSize field set to zero.");
@@ -82,10 +82,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify SMBD negotiate will be successful when PreferredSendSize field is less than 128 bytes.")]
         public void SmbdNegotiate_PreferredSendSizeLessThan128()
         {
-            const ushort CREDIT_REQUESTED = 10;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
             const uint ExpectedSendSize = 128;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             uint preferredSendSize;
             SmbdNegotiateResponse response;
             
@@ -125,9 +125,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify the server will terminate the connection when PreferredSendSize field is maximum value of unsigned integer.")]
         public void SmbdNegotiate_PreferredSendSizeMaxValue()
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             uint preferredSendSize;
             SmbdNegotiateResponse response;
 
@@ -158,10 +158,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify server can receive SMBD negotiate request with 512 bytes, 20 bytes of SMBD Negotiate request and 492 redundancy bytes.")]
         public void SmbdNegotiate_Redundancy()
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             const int NEGOTIATE_SIZE = 512; // it is the size of receive size after server accept the connection
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Connect to server over RDMA.");
@@ -212,10 +212,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify server is still available if client disconnect RDMA after SMBD negotiate")]
         public void SmbdNegotiate_DisconnectAfterNegotiate()
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
 
             SmbdNegotiateResponse response;
             BasicNegotiate(
@@ -240,10 +240,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify server will terminate the connection if received negotiate message is less than 20 bytes.")]
         public void SmbdNegotiate_UncompletedMessage()
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
 
             #region Create a negotiate message, Sends only 19 bytes of negotiate message to peer
             
@@ -351,9 +351,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdNegotiate_NegativeParameter_CreditsRequested()
         {
             const ushort ExpectedCredit = 0;
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             ushort creditsRequested = ExpectedCredit;
 
             // CreditRequested = 0
@@ -391,10 +391,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify the server will terminate the connection when MaxReceiveSize field is less than 128 bytes.")]
         public void SmbdNegotiate_NegativeParameter_MaxReceiveSize()
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const uint MAX_SEND_SIZE = 1024;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             const uint ExpectedReceiveSize = 128;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             uint maxReceiveSize;
             SmbdNegotiateResponse response;
 
@@ -433,9 +433,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify the server will terminate the connection when MaxFragmentedSize field is less than 131,072 bytes.")]
         public void SmbdNegotiate_NegativeParameter_MaxFragmentedSize()
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_RECEIVE_SIZE = 1024;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
             const uint ExpectedFragmentedSize = 131072;
             uint fragmentedSize;
             SmbdNegotiateResponse response;
@@ -494,10 +494,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [Description("Verify server will terminate connection after 5 seconds when RDMA connection is established.")]
         public void SmbdNegotiate_NegotiationTimer_Timeout()
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Connect to server over RDMA");
             NtStatus ret = smbdAdapter.ConnectToServerOverRDMA();
@@ -610,11 +610,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             SmbdVersion minVer,
             SmbdVersion maxVer)
         {
-            const ushort CREDIT_REQUESTED = 10;
-            const ushort RECEIVE_CREDIT_MAX = 10;
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_RECEIVE_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 131072;
+            ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
+            ushort RECEIVE_CREDIT_MAX = (ushort)SmbdTestConfig.ReceiveCreditMax;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Connect to server over RDMA");
             NtStatus status = smbdAdapter.ConnectToServerOverRDMA();

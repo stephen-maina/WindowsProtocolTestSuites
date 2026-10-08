@@ -81,6 +81,21 @@ public static class PtfDiagnosticsLifecycle
                         identity.RunId,
                         "tests");
                 }
+                else
+                {
+                    // Validate the configured root before creating session folders in it.
+                    using (ArtifactStore.Open(
+                        artifactRoot,
+                        sourceRoot,
+                        normalizedBuildOutputRoot))
+                    {
+                    }
+
+                    artifactRoot = PtfSessionLayout.PrepareTestsRoot(
+                        artifactRoot,
+                        effectiveProperties,
+                        DateTimeOffset.Now);
+                }
 
                 using ArtifactStore artifactStore = ArtifactStore.Open(
                     artifactRoot,

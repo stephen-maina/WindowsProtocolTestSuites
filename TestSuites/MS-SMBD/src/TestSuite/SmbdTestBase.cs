@@ -23,6 +23,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         private DiagnosticsInvocationLifecycle diagnosticsLifecycle;
         protected SmbdAdapter smbdAdapter;
         protected List<string> fileNameList;
+
+        /// <summary>
+        /// SMBD parameters read from the ptfconfig file. Tests must use these instead of hardcoded values.
+        /// </summary>
+        protected TestConfig SmbdTestConfig
+        {
+            get { return smbdAdapter.TestConfig; }
+        }
         #endregion
 
         #region Test Initialization and Cleanup

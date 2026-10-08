@@ -40,9 +40,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void BVT_SmbdDataTransfer_Basic_SendSmallBytesOfData()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -91,9 +91,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void BVT_SmbdDataTransfer_Basic_SendModerateBytesData()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 Kib
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -186,9 +186,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_VariableLengthSegment()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -250,9 +250,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_SmallLengthSegment()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -288,9 +288,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_Redundancy()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -340,9 +340,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_ReceiveMaxReceiveSize()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             Initialize_ReceiveSmbdDataTransferTestCase(
                 MAX_SEND_SIZE,
@@ -365,9 +365,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_UncompletedMessage()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
             const int UNCOMPLETE_SIZE = 19;
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Connect to server over RDMA");
@@ -411,9 +411,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         {
             const int EXPECTED_DATA_OFFSET = 24;
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -485,9 +485,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         {
             const int EXPECTED_DATA_OFFSET = 24;
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             const int DATA_OFFSET_BASE_ADDRESS = 12;
 
@@ -520,9 +520,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_NegativeParameter_DataLength_AgainstMessageLength()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             const int DATA_LENGTH_BASE_ADDRESS = 16;
 
@@ -901,9 +901,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_NegativeParameter_RemainingDataLength_Zero()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 Kib
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -951,9 +951,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_NegativeParameter_RemainingDataLength_AgainstFragmentReassemblyRemaining()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 Kib
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -992,9 +992,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_IdleConnection_Client()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -1078,9 +1078,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_IdleConnection_Server()
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -1204,9 +1204,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
             
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             byte[] smb2WriteRequest;
             byte[] fileContent;
@@ -1825,9 +1825,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             bool useMaxFragmentedSize = false)
         {
             // define data for test case
-            const uint MAX_SEND_SIZE = 1024;
-            const uint MAX_FRAGMENT_SIZE = 128 * 1024; // 128 KiB
-            const uint MAX_RECEIVE_SIZE = 1024;
+            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
+            uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Connect to server over RDMA.");
             NtStatus status = smbdAdapter.ConnectToServerOverRDMA();

@@ -481,6 +481,8 @@ the trace:
 <Property name="Diagnostics.Capture.Format" value="Native" />
 <Property name="Diagnostics.Logs.NativeEnabled" value="false" />
 <Property name="Diagnostics.Retention" value="KeepAll" />
+<Property name="Diagnostics.SessionName" value="" />
+<Property name="Diagnostics.Retention.MaxSessions" value="0" />
 ```
 
 To collect diagnostics on a Windows driver:
@@ -519,7 +521,9 @@ reports `ProviderUnsupported`; do not configure an unqualified capture tool.
 | `Diagnostics.Capture.MaxBytes` | Positive decimal byte limit. The Windows provider converts it to a whole-MiB `netsh` limit and rejects values below one MiB. |
 | `Diagnostics.Capture.Format` | Only `Native` is currently supported. Windows output is ETL; it is not advertised as pcap or pcapng. |
 | `Diagnostics.Logs.NativeEnabled` | Native/driver-log policy metadata. The immutable per-test `ptf-log.ndjson` is finalized regardless of this value. Setting this to `true` does not add or qualify a vendor-specific driver capture. |
-| `Diagnostics.Retention` | Only `KeepAll` is currently supported. The suite does not automatically delete old evidence. |
+| `Diagnostics.Retention` | Only `KeepAll` is currently supported for evidence inside a session. Use `Diagnostics.Retention.MaxSessions` to prune whole sessions. |
+| `Diagnostics.SessionName` | Optional name of the run folder under `Diagnostics.ArtifactRoot`. Empty creates `session-<yyyyMMdd-HHmmss>` for each run so runs never overwrite each other. A fixed name such as `baseline` is reused by later runs, whose per-test folders accumulate in it. `{timestamp}` in the value is replaced by the run start time, for example `nightly-{timestamp}`. Characters other than letters, digits, `.`, `-` and `_` become `_`. |
+| `Diagnostics.Retention.MaxSessions` | `0` (default) keeps every session. A positive `N` keeps the current session plus the newest sessions, up to `N` in total, and deletes older session folders when a run starts. Only direct subfolders of the artifact root that contain a `.wpts-session` marker are ever deleted. |
 
 Linux path parsing is supported, including case-sensitive containment and
 extensionless tool paths. This path support does not mean that Linux packet
@@ -529,7 +533,12 @@ permissions, interfaces, ownership, stop behavior, loss statistics, and actual
 RDMA/RoCE visibility first.
 
 For a runner-managed invocation, evidence is organized beneath the configured
-artifact root by run and test identity. The per-test invocation directory
+artifact root by run and test identity. Outside the runner (for example
+`dotnet test` or Protocol Test Manager) the layout is
+`<ArtifactRoot>\<session>\tests\<test name>__<invocation id>\`: every test case
+invocation gets its own folder, the folder name ends in the test class and
+method, and the invocation id keeps repeated runs of the same test apart. The
+per-test invocation directory
 contains:
 
 ```text

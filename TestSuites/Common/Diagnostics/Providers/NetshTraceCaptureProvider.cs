@@ -26,8 +26,10 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
     public const string OutputFileName = "capture.etl";
 
     private const long BytesPerMebibyte = 1024 * 1024;
+    private const string EtwSessionSuffix = "-NetTrace-1";
 
     private readonly string executablePath;
+    private readonly string statusExecutablePath;
     private readonly TimeSpan startCommandTimeout;
     private readonly TimeSpan stopCommandTimeout;
     private readonly IProcessCommandRunner commandRunner;
@@ -59,6 +61,9 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
         this.executablePath = ProviderContractValidation.RequireText(
             executablePath,
             nameof(executablePath));
+        statusExecutablePath = Path.Combine(
+            Path.GetDirectoryName(this.executablePath) ?? string.Empty,
+            "logman.exe");
         this.startCommandTimeout =
             ProviderContractValidation.ValidatePositiveTimeout(
                 startCommandTimeout,
@@ -605,21 +610,30 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        // "netsh trace show status" cannot address a named session on current
+        // Windows builds; the session is visible to ETW as "<name>-NetTrace-1".
         return commandRunner.RunAsync(
-            CreateStartInfo(
-                "trace",
-                "show",
-                "status",
-                $"sessionname={sessionName}"),
+            CreateStartInfoFor(
+                statusExecutablePath,
+                "query",
+                $"{sessionName}{EtwSessionSuffix}",
+                "-ets"),
             timeout,
             cancellationToken);
     }
 
     private ProcessStartInfo CreateStartInfo(params string[] arguments)
     {
+        return CreateStartInfoFor(executablePath, arguments);
+    }
+
+    private static ProcessStartInfo CreateStartInfoFor(
+        string fileName,
+        params string[] arguments)
+    {
         var startInfo = new ProcessStartInfo
         {
-            FileName = executablePath,
+            FileName = fileName,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -683,9 +697,8 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
         ProcessCommandResult result)
     {
         return result.Status == ProcessCommandStatus.Completed &&
-            result.ExitCode is 0 or 1 &&
-            (ContainsStatusValue(result, "no trace session") ||
-                ContainsStatusValue(result, "no active trace session"));
+            result.ExitCode is not 0 &&
+            ContainsStatusValue(result, "Data Collector Set was not found");
     }
 
     private static bool StatusProvesExpectedSession(

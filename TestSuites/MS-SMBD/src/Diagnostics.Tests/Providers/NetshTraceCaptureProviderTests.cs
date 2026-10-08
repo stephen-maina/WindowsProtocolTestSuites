@@ -33,10 +33,7 @@ public sealed class NetshTraceCaptureProviderTests
             new[] { "10.1.2.3" },
             maxBytes: (8 * Mebibyte) + 4095);
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(
-            Completed(
-                exitCode: 1,
-                stdout: "There is no trace session currently in progress."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(Completed());
         NetshTraceCaptureProvider provider = CreateProvider(runner);
 
@@ -61,12 +58,7 @@ public sealed class NetshTraceCaptureProviderTests
             runner.ExecutableProbes.All(
                 path => string.Equals(path, NetshPath, StringComparison.Ordinal)));
         Assert.AreEqual(4, runner.Commands.Count);
-        AssertCommand(
-            runner.Commands[0],
-            "trace",
-            "show",
-            "status",
-            $"sessionname={sessionName}");
+        AssertStatusCommand(runner.Commands[0], sessionName);
         AssertCommand(
             runner.Commands[1],
             "trace",
@@ -82,12 +74,7 @@ public sealed class NetshTraceCaptureProviderTests
             "overwrite=no",
             "correlation=disabled",
             "IPv4.Address=10.1.2.3");
-        AssertCommand(
-            runner.Commands[2],
-            "trace",
-            "show",
-            "status",
-            $"sessionname={sessionName}");
+        AssertStatusCommand(runner.Commands[2], sessionName);
         AssertCommand(
             runner.Commands[3],
             "trace",
@@ -107,7 +94,7 @@ public sealed class NetshTraceCaptureProviderTests
             testIdentity:
                 @"Provider & trace stop sessionname=foreign ..\..\escape.etl");
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(Completed());
         runner.Enqueue(Completed());
         NetshTraceCaptureProvider provider = CreateProvider(
@@ -122,7 +109,9 @@ public sealed class NetshTraceCaptureProviderTests
 
         Assert.AreEqual(CaptureProviderStopStatus.Stopped, stop.Status);
         Assert.AreEqual(3, runner.Commands.Count);
-        Assert.AreEqual(HostileExecutable, runner.Commands[0].FileName);
+        Assert.AreEqual(
+            @"C:\Program Files\Tracing & Tools\logman.exe",
+            runner.Commands[0].FileName);
         Assert.IsTrue(runner.Commands.All(command => !command.UseShellExecute));
         Assert.IsTrue(runner.Commands.All(command => command.CreateNoWindow));
         Assert.IsTrue(
@@ -137,10 +126,9 @@ public sealed class NetshTraceCaptureProviderTests
         CollectionAssert.AreEqual(
             new[]
             {
-                "trace",
-                "show",
-                "status",
-                $"sessionname={start.Handle.SessionId}",
+                "query",
+                $"{start.Handle.SessionId}-NetTrace-1",
+                "-ets",
             },
             runner.Commands[0].Arguments.ToArray());
         CollectionAssert.AreEqual(
@@ -240,11 +228,29 @@ public sealed class NetshTraceCaptureProviderTests
     }
 
     [TestMethod]
+    public async Task StartAsync_PreflightOtherNonzeroFailureReturnsStartFailedWithoutStart()
+    {
+        using NetshProviderTestContext context = NetshProviderTestContext.Create();
+        var runner = new FakeProcessCommandRunner();
+        runner.Enqueue(Completed(exitCode: 1, stdout: "The parameter is incorrect."));
+        NetshTraceCaptureProvider provider = CreateProvider(runner);
+
+        CaptureProviderStartResult result =
+            await provider.StartAsync(context.Request, CancellationToken.None);
+
+        Assert.IsFalse(result.IsStarted);
+        Assert.AreEqual(CaptureProviderFailureCode.StartFailed, result.FailureCode);
+        Assert.AreEqual(1, runner.Commands.Count);
+        Assert.IsFalse(
+            runner.Commands.Any(command => command.Arguments.Contains("start")));
+    }
+
+    [TestMethod]
     public async Task StartAsync_NonzeroStartReturnsStartFailed()
     {
         using NetshProviderTestContext context = NetshProviderTestContext.Create();
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(Completed(exitCode: 1, stderr: "controlled failure"));
         NetshTraceCaptureProvider provider = CreateProvider(runner);
 
@@ -262,9 +268,9 @@ public sealed class NetshTraceCaptureProviderTests
     {
         using NetshProviderTestContext context = NetshProviderTestContext.Create();
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(ProcessCommandResult.TimedOut(spawnedProcessTerminated: true));
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         NetshTraceCaptureProvider provider = CreateProvider(runner);
 
         CaptureProviderStartResult result =
@@ -285,7 +291,7 @@ public sealed class NetshTraceCaptureProviderTests
         using NetshProviderTestContext context = NetshProviderTestContext.Create();
         var runner = new FakeProcessCommandRunner();
         string expectedSession = ExpectedSessionName(context.Request.Identity);
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(ProcessCommandResult.TimedOut(spawnedProcessTerminated: true));
         runner.Enqueue(
             Completed(stdout: RunningStatus(expectedSession, context.OutputPath)));
@@ -310,7 +316,7 @@ public sealed class NetshTraceCaptureProviderTests
     {
         using NetshProviderTestContext context = NetshProviderTestContext.Create();
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(Completed());
         runner.Enqueue(Completed());
         NetshTraceCaptureProvider provider = CreateProvider(runner);
@@ -373,7 +379,7 @@ public sealed class NetshTraceCaptureProviderTests
     {
         using NetshProviderTestContext context = NetshProviderTestContext.Create();
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(Completed());
         runner.Enqueue(Completed());
         NetshTraceCaptureProvider provider = CreateProvider(runner);
@@ -411,7 +417,7 @@ public sealed class NetshTraceCaptureProviderTests
     {
         using NetshProviderTestContext context = NetshProviderTestContext.Create();
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(Completed());
         runner.Enqueue(Completed());
         NetshTraceCaptureProvider provider = CreateProvider(runner);
@@ -462,7 +468,7 @@ public sealed class NetshTraceCaptureProviderTests
         using NetshProviderTestContext context = NetshProviderTestContext.Create(
             maxDuration: TimeSpan.FromSeconds(30));
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(Completed());
         runner.Enqueue(Completed());
         NetshTraceCaptureProvider provider = CreateProvider(
@@ -492,7 +498,7 @@ public sealed class NetshTraceCaptureProviderTests
         using NetshProviderTestContext context = NetshProviderTestContext.Create(
             maxDuration: TimeSpan.FromSeconds(30));
         var runner = new FakeProcessCommandRunner();
-        runner.Enqueue(Completed(stdout: "No active trace session."));
+        runner.Enqueue(NoSession());
         runner.Enqueue(Completed());
         runner.Enqueue(Completed());
         NetshTraceCaptureProvider provider = CreateProvider(
@@ -549,6 +555,13 @@ public sealed class NetshTraceCaptureProviderTests
         return ProcessCommandResult.Completed(exitCode, stdout, stderr);
     }
 
+    private static ProcessCommandResult NoSession()
+    {
+        return Completed(
+            exitCode: -2144337918,
+            stdout: "Data Collector Set was not found.");
+    }
+
     private static string ExpectedSessionName(InvocationIdentity identity)
     {
         return $"WPTS_{identity.InvocationId}";
@@ -557,9 +570,22 @@ public sealed class NetshTraceCaptureProviderTests
     private static string RunningStatus(string sessionName, string outputPath)
     {
         return
-            $"Session Name: {sessionName}{Environment.NewLine}" +
-            $"Status: Running{Environment.NewLine}" +
-            $"Trace File: {outputPath}{Environment.NewLine}";
+            $"Name:                 {sessionName}-NetTrace-1{Environment.NewLine}" +
+            $"Status:               Running{Environment.NewLine}" +
+            $"Root Path:            {Path.GetDirectoryName(outputPath)}{Environment.NewLine}" +
+            $"Output Location:      {outputPath}{Environment.NewLine}";
+    }
+
+    private static void AssertStatusCommand(
+        ObservedCommand command,
+        string sessionName)
+    {
+        Assert.AreEqual(@"C:\Windows\System32\logman.exe", command.FileName);
+        Assert.IsFalse(command.UseShellExecute);
+        Assert.IsTrue(command.CreateNoWindow);
+        CollectionAssert.AreEqual(
+            new[] { "query", $"{sessionName}-NetTrace-1", "-ets" },
+            command.Arguments.ToArray());
     }
 
     private static void AssertCommand(

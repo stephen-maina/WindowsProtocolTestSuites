@@ -110,19 +110,21 @@ public sealed class InvocationIdentity
 
     private static string CreateDisplayName(string testIdentity)
     {
-        StringBuilder builder = new(Math.Min(testIdentity.Length, MaximumDisplayNameLength));
+        // Keep the tail so the class and method name (the distinguishing part
+        // of a fully qualified test name) survive truncation.
+        StringBuilder builder = new(testIdentity.Length);
 
         foreach (char character in testIdentity)
         {
-            if (builder.Length == MaximumDisplayNameLength)
-            {
-                break;
-            }
-
             builder.Append(IsSafeDisplayCharacter(character) ? character : '_');
         }
 
-        string displayName = builder.ToString().TrimEnd('.', ' ');
+        string displayName = builder.Length > MaximumDisplayNameLength
+            ? builder.ToString(
+                builder.Length - MaximumDisplayNameLength,
+                MaximumDisplayNameLength)
+            : builder.ToString();
+        displayName = displayName.TrimStart('.', ' ').TrimEnd('.', ' ');
         if (displayName.Length == 0)
         {
             displayName = "test";
