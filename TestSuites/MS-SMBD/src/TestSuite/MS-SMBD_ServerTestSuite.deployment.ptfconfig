@@ -5,7 +5,7 @@
 
   <Properties>    
     <!--Computer name of system under test (SUT)-->
-    <Property name="SutComputerName" value="Linux" />
+    <Property name="SutComputerName" value="192.168.10.12" />
     <!--IP address of R-NIC on SUT-->
     <Property name="ServerRNicIp" value="192.168.10.12" />
     <!--IP address of non R-NIC on SUT-->
@@ -14,7 +14,7 @@
         Domain name where the SUT locates
         If SUT is in WORKGROUP, set it to the value of SutComputerName
     -->
-    <Property name="DomainName" value="Linux" />
+    <Property name="DomainName" value="192.168.10.12" />
     <!--User account name of the SUT-->
     <Property name="SutUserName" value="administrator" />
     <!--Password for user account which indicated by SutUserName-->
