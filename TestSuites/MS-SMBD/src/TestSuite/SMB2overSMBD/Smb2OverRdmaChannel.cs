@@ -122,12 +122,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 smbdAdapter.TestConfig.TestFileName_LargeFile,
                 rdmaTransformIds,
                 signingAlgorithms);
-            BaseTestSite.Assert.IsTrue(
+            // RDMA transform is optional ([MS-SMB2] 2.2.3.1.7 / 3.3.5.4): skip when the server does not select it.
+            BaseTestSite.Assume.IsTrue(
                 smbdAdapter.SelectedRdmaTransformIds != null &&
                 Array.IndexOf(
                     smbdAdapter.SelectedRdmaTransformIds,
                     Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING) >= 0,
-                "Server MUST return SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate context before a transformed WRITE is sent.");
+                "Server does not select SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate context.");
             BaseTestSite.Assert.AreEqual<SigningAlgorithm>(
                 SigningAlgorithm.AES_CMAC,
                 smbdAdapter.SelectedSigningAlgorithm,
@@ -651,12 +652,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             };
 
             InitSmbdConnectionForTestCases(fileName, rdmaTransformIds);
-            BaseTestSite.Assert.IsTrue(
+            // RDMA transform is optional ([MS-SMB2] 2.2.3.1.7 / 3.3.5.4): skip when the server does not select it.
+            BaseTestSite.Assume.IsTrue(
                 smbdAdapter.SelectedRdmaTransformIds != null &&
                 Array.IndexOf(
                     smbdAdapter.SelectedRdmaTransformIds,
                     Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING) >= 0,
-                "Server MUST return SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate context before a transformed WRITE is sent.");
+                "Server does not select SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate context.");
 
             uint writeSize;
             uint effectiveOperationCount;

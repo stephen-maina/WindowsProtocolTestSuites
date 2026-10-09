@@ -513,14 +513,16 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             InitSmbdConnectionForTestCases(
                 smbdAdapter.TestConfig.TestFileName_LargeFile,
                 smb2RdmaTransformIds,
+                addDefaultEncryption: false,
                 encryptionAlgorithms: encryptionAlgorithms);
 
-            BaseTestSite.Assert.IsTrue(
+            // RDMA transform is optional ([MS-SMB2] 3.3.5.4): skip when the server does not select it.
+            BaseTestSite.Assume.IsTrue(
                 smbdAdapter.SelectedRdmaTransformIds != null &&
                 Array.IndexOf(
                     smbdAdapter.SelectedRdmaTransformIds,
                     Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION) >= 0,
-                "Server must select SMB2_RDMA_TRANSFORM_ENCRYPTION.");
+                "Server does not select SMB2_RDMA_TRANSFORM_ENCRYPTION.");
 
             uint readSize;
             uint effectiveOperationCount;

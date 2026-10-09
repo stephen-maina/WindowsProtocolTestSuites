@@ -392,6 +392,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 enableSigning,
                 enableEncryption);
 
+            // RDMA transform is optional ([MS-SMB2] 3.3.5.4): skip when the client offered SIGNING but the server did not select it.
+            if (smb2RdmaTransformIds != null && smb2RdmaTransformIds.Contains(Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING))
+            {
+                BaseTestSite.Assume.IsTrue(
+                    smbdAdapter.SelectedRdmaTransformIds != null &&
+                    smbdAdapter.SelectedRdmaTransformIds.Contains(Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING),
+                    "Server does not select SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate context.");
+            }
+
             uint writeSize;
             uint effectiveOperationCount;
             ComputeWritePlan(operationCount, out writeSize, out effectiveOperationCount);

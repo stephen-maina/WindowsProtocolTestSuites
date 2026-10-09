@@ -55,7 +55,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         {   // TODO(spec): the final assertion (connection MUST be terminated when the invalidated descriptor is reused) is not specified;
             // MS-SMBD 3.1.4.2 says the token SHOULD be passed to the provider and MAY be ignored if remote invalidation is unsupported,
             // and the effect of using an invalidated token is RDMA-provider behavior, not normative. Also the Inconclusive guards are commented out.
-            /*
+            // Control run on Windows Server 2025 over RoCE (Mellanox ConnectX-4 Lx) fails: the NDSPI provider has no memory-window
+            // support for remote invalidation, so the RDMA transfer is rejected (WRITE: STATUS_INVALID_PARAMETER, READ: 0xC0000005).
             if (smbdAdapter.TestConfig.RDMATransport == RDMATransport.RoCE && smbdAdapter.TestConfig.DriverPlatform != Platform.NonWindows)
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support RDMA RoCE transport.");
@@ -64,7 +65,6 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support Windows Server 2025.");
             }
-            */
 
             EstablishConnectionAndOpenFile(fileName, Smb302OnlyDialects);
 
@@ -120,9 +120,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         {
             // TODO(spec): the final assertion (connection MUST be terminated when the invalidated descriptor is reused) is not specified;
             // MS-SMBD 3.1.4.2 says the token SHOULD be passed to the provider and MAY be ignored, and the effect of a stale token is
-            // RDMA-provider behavior, not normative. Inconclusive guards are commented out.
-            /*
-             if(smbdAdapter.TestConfig.RDMATransport == RDMATransport.RoCE && smbdAdapter.TestConfig.DriverPlatform != Platform.NonWindows)
+            // RDMA-provider behavior, not normative. Guarded as in the Write variant (see control run on Windows Server 2025 over RoCE).
+            if (smbdAdapter.TestConfig.RDMATransport == RDMATransport.RoCE && smbdAdapter.TestConfig.DriverPlatform != Platform.NonWindows)
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support RDMA RoCE transport.");
             }
@@ -130,7 +129,6 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support Windows Server 2025.");
             }
-            */
 
             // Pin the dialect to exactly SMB 3.0.2 (not "3.0.2 and above"), matching
             // the sibling BVT_..._Write_... test. If Smb311 were allowed to be
@@ -544,12 +542,12 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 signingAlgorithms: signingAlgorithms);
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 establish session and open file is {0}", status);
 
-            BaseTestSite.Assert.IsTrue(
+            BaseTestSite.Assume.IsTrue(
                 smbdAdapter.SelectedRdmaTransformIds != null &&
                 Array.IndexOf(
                     smbdAdapter.SelectedRdmaTransformIds,
                     Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING) >= 0,
-                "Server MUST return SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate context before transformed RDMA is used.");
+                "Server does not select SMB2_RDMA_TRANSFORM_SIGNING (optional per [MS-SMB2] 3.3.5.4).");
             BaseTestSite.Assert.AreEqual<SigningAlgorithm>(
                 SigningAlgorithm.AES_CMAC,
                 smbdAdapter.SelectedSigningAlgorithm,
