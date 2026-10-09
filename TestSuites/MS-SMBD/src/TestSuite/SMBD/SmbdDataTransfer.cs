@@ -37,6 +37,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("BVT")]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify SMBD data transfer message can transfer small data as payload")]
+        // [MS-SMBD] 3.1.5.4 / 3.1.5.8: a single Data Transfer message (DataOffset 24, 8-byte aligned,
+        // RemainingDataLength 0) carrying an upper-layer payload MUST be accepted and passed to the upper layer.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.4 Sending a Data Transfer Message; [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void BVT_SmbdDataTransfer_Basic_SendSmallBytesOfData()
         {
             // define data for test case
@@ -88,6 +92,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify higher-layer can transfer moderate size data over SMBD."
                     + "And SUT can receive several segments of one fragment and reassemble several SMBD Data Transfer message.")]
+        // [MS-SMBD] 3.1.5.4 / 3.1.5.8 / 3.1.5.9: a payload split into several segments (RemainingDataLength = bytes not yet sent)
+        // MUST be reassembled by the receiver; when new credits are available the receiver MUST promptly send an
+        // empty Data Transfer message with CreditsGranted set to the number of new credits.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.4 Sending a Data Transfer Message; [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; [MS-SMBD] 3.1.5.9 Managing Credits Prior to Sending")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void BVT_SmbdDataTransfer_Basic_SendModerateBytesData()
         {
             // define data for test case
@@ -183,6 +192,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Send moderate size data over SMBD in several segments and DataLength in each segment is variable. Verify SUT can receive all segments and reassemble data correctly.")]
+        // [MS-SMBD] 3.1.5.8: the receiver appends each segment (DataOffset/DataLength) to Connection.FragmentReassemblyBuffer;
+        // FragmentReassemblyRemaining is set from the first RemainingDataLength and reduced by each DataLength, and the buffer is
+        // passed up when RemainingDataLength is 0. The spec allows segments of any DataLength (including 0).
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_VariableLengthSegment()
         {
             // define data for test case
@@ -203,8 +217,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send first empty message with RemainingDataLength set to the size of data.");
             #region Send first empty message with RemainingDataLength = size of data
+            // [MS-SMBD] Section 3.1.5.1: CreditsRequested is set to Connection.SendCreditTarget (SendCreditTarget ptfconfig property).
             NtStatus status = (NtStatus)smbdAdapter.SmbdSendDataTransferMessage(
-                        255,
+                        (ushort)SmbdTestConfig.SendCreditTarget,
                         1,
                         SmbdDataTransfer_Flags.NONE,
                         (uint)smb2WriteRequest.Length,
@@ -247,6 +262,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("SmbdDataTransfer")]
         [Description("Send MaxFragmentSize data over SMBD in several segments and DataLength in each segment is 1 byte."
                     + "So there are a large number of SMBD Data Transfer messages in one fragment. Verify SUT can receive all segments and reassemble data correctly.")]
+        // [MS-SMBD] 3.1.5.8: many 1-byte segments (each padded with trailing bytes to the server's MaxReceiveSize) MUST be reassembled
+        // correctly; trailing bytes beyond DataOffset + DataLength are permitted (only the sum <= message length is verified).
+        // Note: the Description mentions MaxFragmentSize data but the test uses ModerateFileSizeInByte.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_SmallLengthSegment()
         {
             // define data for test case
@@ -285,6 +305,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify server can receive SMBD Data Transfer message with redundancy bytes at the end of SMBD Data Transfer message.")]
+        // [MS-SMBD] 3.1.5.8: the receiver verifies only that DataOffset + DataLength <= received message length, so bytes after
+        // the payload are tolerated; 2.2.3 Padding MUST be ignored by the receiver.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; [MS-SMBD] 2.2.3 Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_Redundancy()
         {
             // define data for test case
@@ -304,7 +328,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 out smb2WriteRequest);
 
             SmbdDataTransferMessage dataTransferMessage = new SmbdDataTransferMessage();
-            dataTransferMessage.CreditsRequested = 255;
+            dataTransferMessage.CreditsRequested = (ushort)SmbdTestConfig.SendCreditTarget; // [MS-SMBD] Section 3.1.5.1
             dataTransferMessage.CreditsGranted = 1;
             dataTransferMessage.Flags = SmbdDataTransfer_Flags.NONE;
             dataTransferMessage.DataOffset = 24;
@@ -337,6 +361,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Make server send MaxReceiveSize size data. Verify the parameters DataLength, DataOffset and DataRemainingLength in received SMBD Data Transfer message")]
+        // [MS-SMBD] 3.1.5.4: when sending, DataOffset MUST be 8-byte aligned, DataOffset + DataLength MUST NOT exceed
+        // Connection.MaxSendSize, and RemainingDataLength is the total not yet sent (0 in the final segment).
+        // The test checks alignment and DataLength + RemainingDataLength per message; it does not assert DataOffset == 24 (only a SHOULD).
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.4 Sending a Data Transfer Message; [MS-SMBD] 2.2.3 Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_ReceiveMaxReceiveSize()
         {
             // define data for test case
@@ -362,6 +391,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify server will terminate the connection if received data transfer message is less than 20 bytes.")]
+        // [MS-SMBD] 3.1.5.8: the receiver MUST verify the received message is at least 20 bytes; otherwise it MUST terminate
+        // the connection and cease processing.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_UncompletedMessage()
         {
             // define data for test case
@@ -407,6 +440,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify the connection will be terminated if DataOffset is not 8-byte aligned.")]
+        // [MS-SMBD] 3.1.5.8 / 2.2.3: DataOffset MUST be 8-byte aligned; if the received DataOffset is not aligned the
+        // receiver MUST terminate the connection.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; [MS-SMBD] 2.2.3 Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_NegativeParameter_DataOffset_Against8ByteAligned()
         {
             const int EXPECTED_DATA_OFFSET = 24;
@@ -481,6 +518,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify the connection will be terminated if DataOffset + DataLength is greater than message length. "
                     + "In this case, only change DataOffset to terminate the connection.")]
+        // [MS-SMBD] 3.1.5.8: the receiver MUST verify DataOffset + DataLength <= received message length, otherwise terminate.
+        // Scenario 2 (uint.MaxValue) is additionally not 8-byte aligned, so it also trips the alignment check (still terminates).
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_NegativeParameter_DataOffset_AgainstMessageLength()
         {
             const int EXPECTED_DATA_OFFSET = 24;
@@ -517,6 +558,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify the connection will be terminated if (DataOffset + DataLength) is greater than the length of the SMBD message. "
                     + "In this test case, update only DataLength to terminate the connection")]
+        // [MS-SMBD] 3.1.5.8: the receiver MUST verify DataOffset + DataLength <= received message length, otherwise terminate.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_NegativeParameter_DataLength_AgainstMessageLength()
         {
             // define data for test case
@@ -562,18 +606,28 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify the connection will be terminated if (DataOffset + DataLength) is greater than the length of the SMBD message. "
                     + "In this test case, update only DataLength to terminate the connection.")]
+        // [MS-SMBD] 3.1.5.7 / 3.1.5.9: the receiver posts receive buffers of Connection.MaxReceiveSize and the sender's
+        // Connection.MaxSendSize is capped to the peer's MaxReceiveSize. 3.1.5.8 has no explicit "message <= MaxReceiveSize" check.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.7 Receiving a Negotiate Response Message; [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; [MS-SMBD] 3.1.5.9 Managing Credits Prior to Sending")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdDataTransfer_NegativeParameter_DataLength_AgainstMaxReceiveSize()
         {
+            // TODO(spec): 3.1.5.8 does not list a message-size > MaxReceiveSize check among its terminate conditions; termination here
+            // stems from RDMA receive-buffer overflow (3.1.5.9), which is provider behavior, not a normative SMBD verification. The
+            // Description (copied from the DataLength test) also does not match the scenario, and the Windows <6> branch is not normative.
+            // Re-describe as an RDMA-level expectation or drop the termination assertion.
             // define data for test case, get the server's capability
             uint MAX_SEND_SIZE;
-            if (smbdAdapter.TestConfig.Platform == Platform.WindowsServer2012R2 || smbdAdapter.TestConfig.Platform == Platform.WindowsServer2016)
+            if (smbdAdapter.TestConfig.IsWindowsServer2012R2OrLater)
             {
-                // Windows Server 2012 R2, Windows Server 2016, and Windows Server operating system fail the request 
-                // with STATUS_INSUFFICIENT_RESOURCES if the PreferredSendSize field is greater than 8136.
-                MAX_SEND_SIZE = 8136;
+                // Windows-specific product behavior, [MS-SMBD] Appendix A <6> (Section 3.1.5.6): Windows Server 2012 R2
+                // and later fail the request with STATUS_INSUFFICIENT_RESOURCES if PreferredSendSize is greater than
+                // 8136; the limit is taken from the WindowsMaxPreferredSendSize ptfconfig property.
+                MAX_SEND_SIZE = smbdAdapter.TestConfig.WindowsMaxPreferredSendSize;
             }
             else
             {
+                // The specification defines no upper bound for PreferredSendSize.
                 MAX_SEND_SIZE = uint.MaxValue;
             }
 
@@ -663,18 +717,29 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify the connection will be terminated if (DataOffset + DataLength) is greater than the length of the SMBD message. "
                     + "In this test case, update only DataLength to terminate the connection.")]
+        // [MS-SMBD] 3.1.5.8: the receiver MUST verify DataLength + RemainingDataLength <= the maximum fragmented size
+        // (spec text says "Connection.MaxFragmentSize"; the abstract data model defines MaxFragmentedRecvSize), else terminate.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; [MS-SMBD] 3.1.5.4 Sending a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdDataTransfer_NegativeParameter_AgainstMaxFragmentedSize()
         {
+            // TODO(spec): the per-message RemainingDataLength is altered according to the implementation-specific
+            // CheckDataLengthRemainingDataLength ptfconfig flag (not a spec concept), and the first segment already violates the
+            // 3.1.5.8 sum check so later sends/credit-grant asserts may race with termination. The Description is copied from
+            // another test, and the "MaxFragmentedSize" referenced by 3.1.5.8 is the ambiguous "Connection.MaxFragmentSize".
+            // Simplify to a single message (see RemainingDataLength_AgainstMaxFragmentedSize) and fix the description.
             // define data for test case, get the server's capability
             uint MAX_SEND_SIZE;
-            if (smbdAdapter.TestConfig.Platform == Platform.WindowsServer2012R2 || smbdAdapter.TestConfig.Platform == Platform.WindowsServer2016)
+            if (smbdAdapter.TestConfig.IsWindowsServer2012R2OrLater)
             {
-                // Windows Server 2012 R2, Windows Server 2016, and Windows Server operating system fail the request 
-                // with STATUS_INSUFFICIENT_RESOURCES if the PreferredSendSize field is greater than 8136.
-                MAX_SEND_SIZE = 8136;
+                // Windows-specific product behavior, [MS-SMBD] Appendix A <6> (Section 3.1.5.6): Windows Server 2012 R2
+                // and later fail the request with STATUS_INSUFFICIENT_RESOURCES if PreferredSendSize is greater than
+                // 8136; the limit is taken from the WindowsMaxPreferredSendSize ptfconfig property.
+                MAX_SEND_SIZE = smbdAdapter.TestConfig.WindowsMaxPreferredSendSize;
             }
             else
             {
+                // The specification defines no upper bound for PreferredSendSize.
                 MAX_SEND_SIZE = uint.MaxValue;
             }
 
@@ -877,6 +942,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify the connection will be terminated if the summery, the current DataRemainingLength and DataLength field exceed Connection.MaxFragmentedSize. "
                     + "In this test case, update only DataRemainingLength to terminate the connection.")]
+        // [MS-SMBD] 3.1.5.8: the receiver MUST verify DataLength + RemainingDataLength <= Connection max fragmented size
+        // (spec wording: "Connection.MaxFragmentSize"); otherwise it MUST terminate the connection.
+        // The test is skipped (Inconclusive) on Windows Server 2025 - a platform-specific exclusion, not a spec statement.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_NegativeParameter_RemainingDataLength_AgainstMaxFragmentedSize()
         {
             if (smbdAdapter.TestConfig.Platform >= Platform.WindowsServer2025)
@@ -898,6 +968,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify the connection will be terminated if RemainingDataLength is zero and Connection.FragmentReassemblyRemaining is NOT equal to the received DataLength.")]
+        // [MS-SMBD] 3.1.5.8: when RemainingDataLength is 0 and Connection.FragmentReassemblyRemaining (after being reduced by the
+        // received DataLength) is still greater than zero, the receiver MUST terminate the connection.
+        // Requires at least 3 segments for the "last 2nd message" scenario (depends on ModerateFileSizeInByte / MaxSendSize).
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_NegativeParameter_RemainingDataLength_Zero()
         {
             // define data for test case
@@ -948,8 +1023,16 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify the connection will be terminated if RemainingDataLength + DataLength is greater than Connection.FragmentReassemblyRemaining.")]
+        // [MS-SMBD] 3.1.5.8: the only normative reassembly checks are DataLength + RemainingDataLength <= max fragmented size
+        // and FragmentReassemblyRemaining == 0 when RemainingDataLength is 0.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdDataTransfer_NegativeParameter_RemainingDataLength_AgainstFragmentReassemblyRemaining()
         {
+            // TODO(spec): 3.1.5.8 does not require terminating when RemainingDataLength + DataLength exceeds
+            // FragmentReassemblyRemaining (for a non-first segment the field is only reduced by DataLength, RemainingDataLength is not
+            // compared). The test is gated by the implementation-specific CheckDataLengthRemainingDataLength flag; it asserts behavior the
+            // spec does not define. Remove, or mark as implementation-specific.
             // define data for test case
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
@@ -989,8 +1072,16 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify server will response when receive SMBD Data Transfer message with flag SMB_DIRECT_RESPONSE_REQUESTED.")]
+        // [MS-SMBD] 3.1.5.8: on receiving SMB_DIRECT_RESPONSE_REQUESTED the receiver MUST set KeepaliveRequested = PENDING and promptly
+        // send a Data Transfer message (3.1.5.1).
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; [MS-SMBD] 3.1.5.1 Sending Upper Layer Messages")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdDataTransfer_IdleConnection_Client()
         {
+            // TODO(spec): the prompt response itself is normative, but the test also asserts Flags == NONE and CreditsGranted > 0.
+            // Literal 3.1.5.8 + 3.1.5.1 (KeepaliveRequested PENDING => Flags MUST be RESPONSE_REQUESTED) would set the flag on the
+            // response, and CreditsGranted may legitimately be 0 (3.1.5.1/3.1.5.9). Relax these assertions (or note spec ambiguity);
+            // the final Buffer.Length == Reserved assert is also meaningless.
             // define data for test case
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
@@ -1075,8 +1166,16 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify server will send SMBD Data Transfer message with SMB_DIRECT_RESPONSE_REQUESTED flag when Idle Connection Timer is expired.")]
+        // [MS-SMBD] 3.1.6.2: when the Idle Connection Timer expires and KeepaliveRequested is NONE, the peer SHOULD set it to PENDING and
+        // SHOULD send an (empty) Data Transfer message with SMB_DIRECT_RESPONSE_REQUESTED (3.1.5.1: Flags MUST then carry the flag).
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.6.2 Idle Connection Timer; [MS-SMBD] 3.1.5.1 Sending Upper Layer Messages; [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdDataTransfer_IdleConnection_Server()
         {
+            // TODO(spec): keepalive sending is only a SHOULD, and the keepalive interval (ptfconfig KeepAliveInterval) and the post-send
+            // timer (Windows <4>: 5 s, IDLE_CONNECTION_TIMEOUT) are implementation-specific, not normative for ksmbd. The test also
+            // asserts Flags == NONE on the reply to a RESPONSE_REQUESTED message, which conflicts with the literal 3.1.5.8/3.1.5.1 text.
+            // Treat as implementation-specific or relax timing/flag assertions.
             // define data for test case
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
@@ -1128,8 +1227,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             Thread.Sleep(TimeSpan.FromSeconds(SmbdConnection.IDLE_CONNECTION_TIMEOUT - 1));
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send response message to server with flag SMB_DIRECT_RESPONSE_REQUESTED");
+            // [MS-SMBD] Section 3.1.5.1: CreditsRequested is set to Connection.SendCreditTarget (SendCreditTarget ptfconfig property).
             smbdAdapter.SmbdSendDataTransferMessage(
-                255,
+                (ushort)SmbdTestConfig.SendCreditTarget,
                 1,
                 SmbdDataTransfer_Flags.SMB_DIRECT_RESPONSE_REQUESTED,
                 0,
@@ -1196,8 +1296,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
         [Description("Verify server will terminate connection when no response for SMBD Data Transfer message with SMB_DIRECT_RESPONSE_REQUESTED flag.")]
+        // [MS-SMBD] 3.1.6.2: when the Idle Connection Timer expires and KeepaliveRequested is not NONE (keepalive sent, no reply), the
+        // local peer SHOULD terminate the connection.
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.6.2 Idle Connection Timer; [MS-SMBD] 3.1.5.1 Sending Upper Layer Messages")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdDataTransfer_IdleConnection_Server_Timeout()
         {
+            // TODO(spec): termination on keepalive timeout is only a SHOULD, and the wait time (IDLE_CONNECTION_TIMEOUT, matching the
+            // Windows <4> 5 s value) is implementation-specific; the test asserts it as a hard requirement. The test is also skipped on
+            // Windows Server 2025 (platform-specific, not spec-based).
             if (smbdAdapter.TestConfig.Platform >= Platform.WindowsServer2025)
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support Windows Server 2025.");
@@ -1585,7 +1692,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             bool withRedundancyBytes = false)
         {
             int offset = 0;
-            int startSize = 128;
+            // [MS-SMBD] Section 3.1.5.6: the smallest valid message size is the normative 128-byte MaxReceiveSize floor.
+            int startSize = (int)SmbdConnection.FLOOR_MAX_RECEIVE_SIZE;
             bool isAdd = false;
             NtStatus status;
 
@@ -1635,7 +1743,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     offset += currentSize;
 
                     SmbdDataTransferMessage smbdDataTransferMessage = new SmbdDataTransferMessage();
-                    smbdDataTransferMessage.CreditsRequested = 255;
+                    smbdDataTransferMessage.CreditsRequested = (ushort)SmbdTestConfig.SendCreditTarget; // [MS-SMBD] Section 3.1.5.1
                     smbdDataTransferMessage.CreditsGranted = 1;
                     smbdDataTransferMessage.Flags = SmbdDataTransfer_Flags.NONE;
                     smbdDataTransferMessage.RemainingDataLength = (uint)(data.Length - offset);
@@ -1788,7 +1896,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     out smb2WriteRequest);
             }
             dataTransfer = new SmbdDataTransferMessage();
-            dataTransfer.CreditsRequested = 255;
+            dataTransfer.CreditsRequested = (ushort)SmbdTestConfig.SendCreditTarget; // [MS-SMBD] Section 3.1.5.1
             dataTransfer.CreditsGranted = 1;
             dataTransfer.Flags = SmbdDataTransfer_Flags.NONE;
             dataTransfer.RemainingDataLength = 0;

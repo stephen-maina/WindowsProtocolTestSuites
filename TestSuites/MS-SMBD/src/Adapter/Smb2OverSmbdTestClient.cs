@@ -67,6 +67,24 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         // To store available credits for sending Smb2 request messages
         public ushort Smb2AvailableCredits { get; set; }
 
+        /// <summary>
+        /// Implementation-specific upper limit this client places on the negotiated SMBD Connection.MaxReadWriteSize.
+        /// [MS-SMBD] Section 3.1.5.7 leaves this value to the implementation. Populated from the
+        /// "ClientMaxReadWriteSize" ptfconfig property.
+        /// </summary>
+        public uint ClientMaxReadWriteSize
+        {
+            get { return smbdClient.ClientMaxReadWriteSize; }
+            set { smbdClient.ClientMaxReadWriteSize = value; }
+        }
+
+        /// <summary>
+        /// MaxOutputResponse used by the FSCTL_QUERY_NETWORK_INTERFACE_INFO request. [MS-SMB2] does not mandate a
+        /// value; it only has to be large enough to hold the interface list returned by the server.
+        /// Populated from the "QueryNetworkInterfaceMaxOutputResponse" ptfconfig property.
+        /// </summary>
+        public uint QueryNetworkInterfaceMaxOutputResponse { get; set; } = 65536;
+
         #endregion
 
         #region Constructor
@@ -430,7 +448,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                 new FILEID { Persistent = 0xffffffffffffffff, Volatile = 0xffffffffffffffff },
                 0,
                 new byte[0],
-                65536,
+                QueryNetworkInterfaceMaxOutputResponse,
                 IOCTL_Request_Flags_Values.SMB2_0_IOCTL_IS_FSCTL,
                 out responseInput,
                 out responseOutput,
@@ -607,7 +625,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             byte[] writeData,
             out WRITE_Response writeResponse)
         {
-            ushort creditCharge = (ushort)(1 + ((writeData.Length - 1) / 65535));
+            ushort creditCharge = CalculateCreditCharge((uint)writeData.Length);
             RequestCreditsFromSmb2Server(creditCharge);
             uint status = Write(
                 (ushort)creditCharge,
@@ -722,7 +740,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             out READ_Response readResponse
             )
         {
-            ushort creditCharge = (ushort)(1 + ((byteCount - 1) / 65535));
+            ushort creditCharge = CalculateCreditCharge(byteCount);
             RequestCreditsFromSmb2Server(creditCharge);
 
             uint status = this.Read(
@@ -928,6 +946,9 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
         /// <summary>
         /// Calculate creditCharge which will be consumed in an SMB2 request
+        /// [MS-SMB2] Section 3.2.4.1.5 (Algorithm for Handling Available Message Sequence Numbers and Credit
+        /// Charge): CreditCharge = (max(SendPayloadSize, ExpectedResponsePayloadSize) - 1) / 65536 + 1,
+        /// i.e. one credit per 64 KiB (65536 bytes) of payload.
         /// </summary>
         /// <param name="dataLengh">The data length of SMB2 request.</param>
         /// <returns>creditCharge</returns>

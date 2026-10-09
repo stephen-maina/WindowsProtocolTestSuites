@@ -46,8 +46,16 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Encryption")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel encrypted with AES128_CCM")]
+        // [MS-SMB2] 3.3.5.12: when Request.IsEncrypted and Connection.RDMATransformIds includes ENCRYPTION, the READ response
+        // Buffer MUST be SMB2_RDMA_TRANSFORM + SMB2_RDMA_CRYPTO_TRANSFORM (type ENCRYPTION, 11-byte nonce for CCM / 12-byte for GCM).
+        // 2.2.43/2.2.43.1: TransformCount > 0; Signature <= 16 bytes. 3.2.5.11: client decrypts the registered buffer.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; 3.2.5.11 Receiving an SMB2 READ Response")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void BVT_Smb2OverRdmaChannelTransform_Encryption_ReadLargeFile_AES128CCM()
         {
+            // TODO(spec): ReadOverRdma_Encryption asserts the response Buffer length equals the 8-byte-padded crypto transform.
+            // 2.2.43.1 Padding exists only so that following channel information is 8-byte aligned (none in a READ response), so exact
+            // padded length is Windows-specific. Also the RDMA payload is not decrypted/authenticated (3.2.5.11 3.2) and the nonce length is not checked against CipherId.
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
             ReadOverRdma_Encryption(smb2RdmaTransformIds: smb2RdmaTransformIds, encryptionAlgorithm: EncryptionAlgorithm.ENCRYPTION_AES128_CCM);
         }
@@ -57,8 +65,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Encryption")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel encrypted with AES128_GCM")]
+        // [MS-SMB2] 3.3.5.12: encrypted READ over RDMA returns SMB2_RDMA_TRANSFORM + SMB2_RDMA_CRYPTO_TRANSFORM (ENCRYPTION, 12-byte nonce for GCM).
+        // 2.2.43/2.2.43.1: TransformCount > 0; Signature <= 16 bytes. 3.2.5.11: client decrypts the registered buffer.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; 3.2.5.11 Receiving an SMB2 READ Response")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannelTransform_Encryption_ReadLargeFile_AES128GCM()
         {
+            // TODO(spec): same as BVT_..._ReadLargeFile_AES128CCM - exact 8-byte-padded Buffer length is not mandated for a READ response
+            // (2.2.43.1 Padding), and the payload is not decrypted/authenticated; nonce length (12 for GCM) not checked.
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
             ReadOverRdma_Encryption(smb2RdmaTransformIds: smb2RdmaTransformIds, encryptionAlgorithm: EncryptionAlgorithm.ENCRYPTION_AES128_GCM);
         }
@@ -68,8 +82,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Encryption")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel encrypted with AES256_CCM")]
+        // [MS-SMB2] 3.3.5.12: encrypted READ over RDMA returns SMB2_RDMA_TRANSFORM + SMB2_RDMA_CRYPTO_TRANSFORM (ENCRYPTION, 11-byte nonce for CCM).
+        // 2.2.43/2.2.43.1: TransformCount > 0; Signature <= 16 bytes. 3.2.5.11: client decrypts the registered buffer.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; 3.2.5.11 Receiving an SMB2 READ Response")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannelTransform_Encryption_ReadLargeFile_AES256CCM()
         {
+            // TODO(spec): same as BVT_..._ReadLargeFile_AES128CCM - exact 8-byte-padded Buffer length is not mandated for a READ response
+            // (2.2.43.1 Padding), and the payload is not decrypted/authenticated; nonce length (11 for CCM) not checked.
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
             ReadOverRdma_Encryption(smb2RdmaTransformIds: smb2RdmaTransformIds, encryptionAlgorithm: EncryptionAlgorithm.ENCRYPTION_AES256_CCM);
         }
@@ -79,8 +99,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Encryption")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel encrypted with AES256_GCM")]
+        // [MS-SMB2] 3.3.5.12: encrypted READ over RDMA returns SMB2_RDMA_TRANSFORM + SMB2_RDMA_CRYPTO_TRANSFORM (ENCRYPTION, 12-byte nonce for GCM).
+        // 2.2.43/2.2.43.1: TransformCount > 0; Signature <= 16 bytes. 3.2.5.11: client decrypts the registered buffer.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; 3.2.5.11 Receiving an SMB2 READ Response")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannelTransform_Encryption_ReadLargeFile_AES256GCM()
         {
+            // TODO(spec): same as BVT_..._ReadLargeFile_AES128CCM - exact 8-byte-padded Buffer length is not mandated for a READ response
+            // (2.2.43.1 Padding), and the payload is not decrypted/authenticated; nonce length (12 for GCM) not checked.
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
             ReadOverRdma_Encryption(smb2RdmaTransformIds: smb2RdmaTransformIds, encryptionAlgorithm: EncryptionAlgorithm.ENCRYPTION_AES256_GCM);
         }
@@ -91,8 +117,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over R" +
             "DMA channel with multiple SMBD READ requests and responses encrypted with AES128_CCM.")]
+        // [MS-SMB2] 3.3.5.12: each encrypted READ over RDMA returns SMB2_RDMA_TRANSFORM + SMB2_RDMA_CRYPTO_TRANSFORM (ENCRYPTION).
+        // 2.2.43.1: Nonce MUST NOT be reused within a session. 3.2.5.11: client decrypts the registered buffer.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; 3.2.5.11 Receiving an SMB2 READ Response")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannelTransform_Encryption_ReadMultipleOperation()
         {
+            // TODO(spec): same as BVT_..._ReadLargeFile_AES128CCM (padded-length assertion, no decryption). Nonce uniqueness across the
+            // 64 responses (2.2.43.1) is also not verified.
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
             const uint OPERATION_COUNT = 64;
             ReadOverRdma_Encryption(OPERATION_COUNT, smb2RdmaTransformIds: smb2RdmaTransformIds);
@@ -104,6 +136,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Encryption")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM")]
+        // [MS-SMB2] 3.2.4.7 / 3.3.5.13: client sends WRITE with Channel=SMB2_CHANNEL_RDMA_TRANSFORM, SMB2_RDMA_TRANSFORM + one ENCRYPTION
+        // SMB2_RDMA_CRYPTO_TRANSFORM (nonce 11 bytes for CCM) + descriptors at an 8-byte aligned offset; server MUST RDMA-read, decrypt with
+        // Connection.CipherId and succeed.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.2.4.7 Application Requests Writing to a File or Named Pipe; 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void BVT_Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_AES128CCM()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -118,6 +155,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Encryption")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_GCM")]
+        // [MS-SMB2] 3.2.4.7 / 3.3.5.13: client sends WRITE with Channel=SMB2_CHANNEL_RDMA_TRANSFORM, SMB2_RDMA_TRANSFORM + one ENCRYPTION
+        // SMB2_RDMA_CRYPTO_TRANSFORM (nonce 12 bytes for GCM) + descriptors at an 8-byte aligned offset; server MUST RDMA-read, decrypt with
+        // Connection.CipherId and succeed.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.2.4.7 Application Requests Writing to a File or Named Pipe; 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_AES128GCM()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -132,6 +174,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Encryption")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES256_CCM")]
+        // [MS-SMB2] 3.2.4.7 / 3.3.5.13: client sends WRITE with Channel=SMB2_CHANNEL_RDMA_TRANSFORM, SMB2_RDMA_TRANSFORM + one ENCRYPTION
+        // SMB2_RDMA_CRYPTO_TRANSFORM (nonce 11 bytes for CCM) + descriptors at an 8-byte aligned offset; server MUST RDMA-read, decrypt with
+        // Connection.CipherId and succeed.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.2.4.7 Application Requests Writing to a File or Named Pipe; 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_AES256CCM()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -146,6 +193,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Encryption")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES256_GCM")]
+        // [MS-SMB2] 3.2.4.7 / 3.3.5.13: client sends WRITE with Channel=SMB2_CHANNEL_RDMA_TRANSFORM, SMB2_RDMA_TRANSFORM + one ENCRYPTION
+        // SMB2_RDMA_CRYPTO_TRANSFORM (nonce 12 bytes for GCM) + descriptors at an 8-byte aligned offset; server MUST RDMA-read, decrypt with
+        // Connection.CipherId and succeed.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.2.4.7 Application Requests Writing to a File or Named Pipe; 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43 SMB2_RDMA_TRANSFORM; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_AES256GCM()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -161,8 +213,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM " +
             "with multiple SMBD WRITE requests and responses.")]
+        // [MS-SMB2] 3.2.4.7 / 3.3.5.13 with 2.2.43.1: same as the single WRITE case, repeated 64 times; Nonce "MUST NOT be reused ... within a session".
+        [TestProperty("SpecSection", "[MS-SMB2] 3.2.4.7 Application Requests Writing to a File or Named Pipe; 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteMultipleOperation()
         {
+            // TODO(spec): WriteOverRdma_Encryption encrypts once and reuses the same ciphertext, Nonce and Signature for every operation,
+            // violating 2.2.43.1 (Nonce MUST NOT be reused within a session). Generate a fresh nonce/ciphertext per WRITE.
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
             const uint OPERATION_COUNT = 64;
             WriteOverRdma_Encryption(OPERATION_COUNT, smb2RdmaTransformIds: smb2RdmaTransformIds, channel: Channel_Values.CHANNEL_RDMA_TRANSFORM);
@@ -173,6 +230,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM fails " +
             "if RDMATransformId is not specified on Connection Open")]
+        // [MS-SMB2] 3.3.5.13 step 1.1: Dialect 3.1.1, Channel=SMB2_CHANNEL_RDMA_TRANSFORM and Connection.RDMATransformIds empty -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_NoTransformIds_Fails()
         {
             WriteOverRdma_Encryption(channel: Channel_Values.CHANNEL_RDMA_TRANSFORM);
@@ -183,6 +243,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM fails " +
             "if RDMA_TRANSFORM TransformCount is set to zero")]
+        // [MS-SMB2] 3.3.5.13 step 1.3 / 2.2.43: TransformCount is 0 (MUST be > 0) -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43 SMB2_RDMA_TRANSFORM")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_ZeroTransformCount_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -194,6 +257,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM fails " +
             "if multiple RDMA_TRANSFORM_TYPE_ENCRYPTION RDMA_CRYPTO_TRANSFORM structure are used for the request")]
+        // [MS-SMB2] 3.3.5.13 steps 1.7/1.8: more than one SMB2_RDMA_CRYPTO_TRANSFORM of type ENCRYPTION -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_MultipleEncryptionStructure_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -205,8 +271,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM fails " +
             "if an RDMA_TRANSFORM_TYPE_ENCRYPTION and RDMA_TRANSFORM_TYPE_SIGNING structure are used together for the request")]
+        // [MS-SMB2] 3.3.5.13 step 1.9: one ENCRYPTION and one SIGNING SMB2_RDMA_CRYPTO_TRANSFORM together -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_EncryptionAndSigningStructure_Fails()
         {
+            // TODO(spec): the request built by WriteOverRdma_Encryption does not match step 1.9: the "signing" structure is built with
+            // TransformType ENCRYPTION and is never appended to the Buffer (two ENCRYPTION structures are sent) while TransformCount is 3
+            // and RdmaDescriptorOffset counts three structures. INVALID_PARAMETER is returned for other reasons (1.7/1.8, bad offsets).
+            // Build one ENCRYPTION and one real SIGNING transform (and set SMB2_FLAGS_SIGNED consistently).
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] {
                 Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING,
                 Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION
@@ -223,6 +296,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM structure is not 8-byte aligned")]
+        // [MS-SMB2] 3.3.5.13 step 1.11 / 2.2.43.1 Padding: SMB_DIRECT_BUFFER_DESCRIPTOR_V1 array not at the first 8-byte aligned offset
+        // after SMB2_RDMA_CRYPTO_TRANSFORM -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_BufferNotAligned_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -238,6 +315,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted fails " +
             "if the RDMA_CRYPTO_TRANSFORM SignatureLength is greater than 16 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.1 / 2.2.43.1: SignatureLength greater than 16 -> server MUST fail with STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_IncreaseSignatureLength_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -253,6 +333,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM NonceLength is greater than 11 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.2: CipherId AES-128-CCM and NonceLength != 11 -> STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_IncreaseNonceLength_AES128CCM_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -268,6 +351,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_GCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM NonceLength is greater than 12 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.3: CipherId AES-128-GCM and NonceLength != 12 -> STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_IncreaseNonceLength_AES128GCM_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -282,6 +368,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES256_CCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM NonceLength is greater than 11 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.2: CipherId AES-256-CCM and NonceLength != 11 -> STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_IncreaseNonceLength_AES256CCM_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -297,6 +386,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES256_GCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM NonceLength is greater than 12 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.3: CipherId AES-256-GCM and NonceLength != 12 -> STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_IncreaseNonceLength_AES256GCM_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -311,6 +403,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_CCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM NonceLength is less than 11 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.2: CipherId AES-128-CCM and NonceLength != 11 -> STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_DecreaseNonceLength_AES128CCM_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -326,6 +421,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES128_GCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM NonceLength is less than 12 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.3: CipherId AES-128-GCM and NonceLength != 12 -> STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_DecreaseNonceLength_AES128GCM_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -340,6 +438,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES256_CCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM NonceLength is less than 11 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.2: CipherId AES-256-CCM and NonceLength != 11 -> STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_DecreaseNonceLength_AES256CCM_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -355,6 +456,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel encrypted with AES256_GCM fails " +
             "if the RDMA_CRYPTO_TRANSFORM NonceLength is less than 12 bytes")]
+        // [MS-SMB2] 3.3.5.13 step 3.1.3: CipherId AES-256-GCM and NonceLength != 12 -> STATUS_AUTH_TAG_MISMATCH.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_DecreaseNonceLength_AES256GCM_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };

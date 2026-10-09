@@ -35,6 +35,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("BVT")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel")]
+        // Spec: [MS-SMB2] 3.3.5.12 - for Channel SMB2_CHANNEL_RDMA_V1 the server MUST NOT copy the data into the
+        // response (DataLength = 0, DataRemaining = bytes read) and MUST send it via [MS-SMBD] 3.1.4.5 (RDMA Write)
+        // using the buffer descriptors from the request.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void BVT_Smb2OverRdmaChannel_ReadLargeFile()
         {
             ReadOverRdma();
@@ -44,6 +49,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("BVT")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel")]
+        // Spec: [MS-SMB2] 3.3.5.13 - with Channel SMB2_CHANNEL_RDMA_V1/_TRANSFORM the server MUST fetch the data via
+        // [MS-SMBD] 3.1.4.6 (RDMA Read) using the descriptors in WriteChannelInfo/RdmaDescriptor*; on success Count = bytes written.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; [MS-SMBD] 3.1.4.6 RDMA Read from Peer Buffer")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void BVT_Smb2OverRdmaChannel_WriteLargeFile()
         {
             WriteOverRdma();
@@ -52,6 +61,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel with multiple SMBD READ requests and responses.")]
+        // Spec: [MS-SMB2] 3.3.5.12 - repeated RDMA_V1 reads; each response MUST carry DataLength = 0 and
+        // DataRemaining = bytes read, data delivered through [MS-SMBD] 3.1.4.5.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannel_ReadMultipleOperation()
         {
             const uint OPERATION_COUNT = 64;
@@ -61,6 +74,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel with multiple SMBD WRITE requests and responses.")]
+        // Spec: [MS-SMB2] 3.3.5.13 - repeated RDMA writes (SMB2_CHANNEL_RDMA_TRANSFORM with signing negotiated on 3.1.1);
+        // server MUST obtain data via [MS-SMBD] 3.1.4.6, verify the signature and return Count = bytes written.
+        // The Windows Server 2025 Inconclusive guard is a SUT-specific skip, not a spec requirement.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; [MS-SMBD] 3.1.4.6 RDMA Read from Peer Buffer")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannel_WriteMultipleOperation()
         {
             if (smbdAdapter.TestConfig.Platform >= Platform.WindowsServer2025)
@@ -75,6 +93,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify server can work with SMB2 READ and WRITE over RDMA channel with multiple buffer descriptors in channel information.")]
+        // Spec: [MS-SMB2] 3.3.5.13 - the data is gathered from an ARRAY of SMB_DIRECT_BUFFER_DESCRIPTOR_V1; server MUST fail
+        // with STATUS_INVALID_PARAMETER only if the first descriptor Length is 0 or the sum of Lengths < RemainingBytes.
+        // [MS-SMB2] 3.3.5.12 - on a 3.1.1 connection with RDMATransformIds non-empty the READ response Buffer carries
+        // SMB2_RDMA_TRANSFORM + SMB2_RDMA_CRYPTO_TRANSFORM (signing when the request is signed), flag
+        // SMB2_READFLAG_RESPONSE_RDMA_TRANSFORM set, DataLength = size of those structures.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; [MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMB2] 2.2.43 SMB2_RDMA_TRANSFORM; [MS-SMBD] 2.2.3.1 Buffer Descriptor V1 Structure")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannel_ReadWriteMultipleBufferDescriptorList()
         {
             if (smbdAdapter.TestConfig.Platform >= Platform.WindowsServer2025)
@@ -113,7 +138,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             {
                 size = smbdAdapter.Smb2MaxWriteSize;
             }
-            size = 1024 * 1024; // 1 MB, to test multiple buffer descriptors in channel info
+            // Data size is not defined by the specifications; it comes from the RdmaChannelDataSizeInByte ptfconfig
+            // property and should be large enough to test multiple buffer descriptors in channel info.
+            size = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte;
             const int rdmaTransformHeaderSize = 16;
             const int rdmaCryptoHeaderSize = 8;
             const int signatureSize = 16;
@@ -330,8 +357,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify server will not crash if Offset in Buffer Descriptor is not correct.")]
+        // Spec: [MS-SMB2] 3.3.5.12 / [MS-SMBD] 3.1.4.5 - the server RDMA-writes into the client-supplied descriptor; an
+        // invalid descriptor (Offset beyond the registered buffer) makes the RDMA op fail at the provider.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannel_InvalidBufferDescriptor_Offset()
         {
+            // TODO(spec): neither MS-SMB2 3.3.5.12 nor MS-SMBD 3.1.4.5 defines the server's response (status, no response, or
+            // connection termination) to an invalid buffer descriptor; this test asserts only a non-success/no-response outcome
+            // plus server survivability (implementation-specific robustness check). Mark as non-normative or negative/robustness.
             InitSmbdConnectionForTestCases(smbdAdapter.TestConfig.TestFileName_LargeFile);
 
             // SMB2 Read file
@@ -376,8 +410,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify server will not crash if Length in Buffer Descriptor is not correct.")]
+        // Spec: [MS-SMB2] 3.3.5.12 / [MS-SMBD] 3.1.4.5 - descriptor Length (one byte larger than the registered buffer) is invalid.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannel_InvalidBufferDescriptor_Length()
         {
+            // TODO(spec): the specs do not define server behavior for a descriptor whose Length exceeds the registered buffer;
+            // the test asserts only non-success/no-response and server survivability (implementation-specific robustness check).
             InitSmbdConnectionForTestCases(smbdAdapter.TestConfig.TestFileName_LargeFile);
 
             // SMB2 Read file
@@ -420,8 +459,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify server will not crash if Token in Buffer Descriptor is not correct.")]
+        // Spec: [MS-SMB2] 3.3.5.12 / [MS-SMBD] 3.1.4.5 - descriptor Token (remote key) does not match the registered buffer.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannel_InvalidBufferDescriptor_Token()
         {
+            // TODO(spec): the specs do not define server behavior for an unknown/invalid descriptor Token (RDMA access error);
+            // the test asserts only non-success/no-response and server survivability (implementation-specific robustness check).
             InitSmbdConnectionForTestCases(smbdAdapter.TestConfig.TestFileName_LargeFile);
 
             // SMB2 Read file
@@ -464,8 +508,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify server will not crash if buffer descriptor in channel info is deregistered.")]
+        // Spec: [MS-SMB2] 3.3.5.12 / [MS-SMBD] 3.1.4.4 - the client deregisters the buffer, so the descriptor no longer refers to valid memory.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMBD] 3.1.4.4 Deregister Buffer; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannel_InvalidBufferDescriptor_DeregisteredBuffer()
         {
+            // TODO(spec): the specs do not define server behavior when the descriptor refers to a deregistered buffer;
+            // the test asserts only non-success/no-response and server survivability (implementation-specific robustness check).
             InitSmbdConnectionForTestCases(smbdAdapter.TestConfig.TestFileName_LargeFile);
 
             // SMB2 Read file

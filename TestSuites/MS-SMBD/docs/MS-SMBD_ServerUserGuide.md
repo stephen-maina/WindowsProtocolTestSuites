@@ -428,6 +428,16 @@ The following settings are the capability of the MS-SMBD protocol.
 | | The default value is 120.| 
 | DisconnectionTimeoutInSeconds| The timeout value in seconds that the test suite will wait for disconnection.| 
 | | The default value is 1.| 
+| WindowsMaxPreferredSendSize| **Windows-specific** ([MS-SMBD] Appendix A <6>, Section 3.1.5.6). Windows Server 2012 R2 and later reject a Negotiate Request whose PreferredSendSize exceeds this value. Only used when Platform is a Windows SUT.| 
+| | The default value is 8136.| 
+| WindowsMinMaxReadWriteSize| **Windows-specific** ([MS-SMBD] Appendix A <7>, Section 3.1.5.7). The minimum MaxReadWriteSize a Windows SUT returns. The protocol defines no minimum; this is only asserted when Platform is a Windows SUT.| 
+| | The default value is 1048576.| 
+| ClientMaxReadWriteSize| Implementation-specific value ([MS-SMBD] Section 3.1.5.7): the client's MaxReadWriteSize; the negotiated value is the smaller of this and the SUT's value.| 
+| | The default value is 1048576.| 
+| QueryNetworkInterfaceMaxOutputResponse| Implementation-specific MaxOutputResponse for FSCTL_QUERY_NETWORK_INTERFACE_INFO; must hold the SUT's interface list.| 
+| | The default value is 65536.| 
+| RdmaChannelDataSizeInByte| Implementation-specific size of data transferred over an SMB2 RDMA channel by the SMB2-over-SMBD test cases.| 
+| | The default value is 1048576.| 
 
 
 * **MS-SMBD Test Case Switches.**

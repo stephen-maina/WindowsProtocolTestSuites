@@ -69,6 +69,8 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             this.client = new Smb2OverSmbdTestClient(
                 testConfig.Smb2ConnectionTimeout,
                 testConfig.RdmaLayerLoggingEnabled ? logNotifyCompletion : null);
+            this.client.ClientMaxReadWriteSize = testConfig.ClientMaxReadWriteSize;
+            this.client.QueryNetworkInterfaceMaxOutputResponse = testConfig.QueryNetworkInterfaceMaxOutputResponse;
         }
         #endregion
 

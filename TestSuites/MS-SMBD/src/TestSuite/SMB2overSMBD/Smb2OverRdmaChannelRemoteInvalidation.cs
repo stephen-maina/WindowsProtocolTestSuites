@@ -47,8 +47,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod]
         [TestCategory("BVT")]
         [TestCategory("Smb2OverRdmaChannelInvalidate")]
+        // Spec: [MS-SMB2] 3.3.5.13 - Channel SMB2_CHANNEL_RDMA_V1_INVALIDATE is valid on dialect 3.0.2; the server fetches the data via
+        // [MS-SMBD] 3.1.4.6 and MUST supply the Token of the first descriptor for remote invalidation ([MS-SMBD] 3.1.4.2).
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; [MS-SMBD] 3.1.4.2 Send Message; [MS-SMBD] 3.1.4.6 RDMA Read from Peer Buffer")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void BVT_Smb2OverRdma_Smb302_Write_SMB2_CHANNEL_RDMA_V1_INVALIDATE()
-        {   /*
+        {   // TODO(spec): the final assertion (connection MUST be terminated when the invalidated descriptor is reused) is not specified;
+            // MS-SMBD 3.1.4.2 says the token SHOULD be passed to the provider and MAY be ignored if remote invalidation is unsupported,
+            // and the effect of using an invalidated token is RDMA-provider behavior, not normative. Also the Inconclusive guards are commented out.
+            /*
             if (smbdAdapter.TestConfig.RDMATransport == RDMATransport.RoCE && smbdAdapter.TestConfig.DriverPlatform != Platform.NonWindows)
             {
                 BaseTestSite.Assert.Inconclusive("This test case currently does not support RDMA RoCE transport.");
@@ -62,7 +69,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             EstablishConnectionAndOpenFile(fileName, Smb302OnlyDialects);
 
             uint writeSize = smbdAdapter.Smb2MaxWriteSize;
-            writeSize = 1024 * 1024; // 1MB
+            writeSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)writeSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
@@ -105,8 +112,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod]
         [TestCategory("BVT")]
         [TestCategory("Smb2OverRdmaChannelInvalidate")]
+        // Spec: [MS-SMB2] 3.3.5.12 - Channel SMB2_CHANNEL_RDMA_V1_INVALIDATE is valid on dialect 3.0.2; data is sent via [MS-SMBD] 3.1.4.5
+        // and the Token of the first descriptor MUST additionally be supplied for remote invalidation ([MS-SMBD] 3.1.4.2).
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMBD] 3.1.4.2 Send Message; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void BVT_Smb2OverRdma_Smb302_Read_SMB2_CHANNEL_RDMA_V1_INVALIDATE()
         {
+            // TODO(spec): the final assertion (connection MUST be terminated when the invalidated descriptor is reused) is not specified;
+            // MS-SMBD 3.1.4.2 says the token SHOULD be passed to the provider and MAY be ignored, and the effect of a stale token is
+            // RDMA-provider behavior, not normative. Inconclusive guards are commented out.
             /*
              if(smbdAdapter.TestConfig.RDMATransport == RDMATransport.RoCE && smbdAdapter.TestConfig.DriverPlatform != Platform.NonWindows)
             {
@@ -128,7 +142,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             EstablishConnectionAndOpenFile(fileName, Smb302OnlyDialects);
 
             uint fileSize = smbdAdapter.Smb2MaxReadSize;
-            fileSize = 1024 * 1024; // 1MB
+            fileSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
             // SMB 3.0.2 cannot negotiate the SMB 3.1.1 RDMA Transform Capabilities
@@ -227,12 +241,18 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
         [TestMethod]
         [TestCategory("Smb2OverRdmaChannel")]
+        // Spec: [MS-SMB2] 3.3.5.13 - signed RDMA write on a 3.1.1 connection (Channel = SMB2_CHANNEL_RDMA_TRANSFORM with signing transform);
+        // server MUST verify the signature and complete with Count = bytes written.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; [MS-SMB2] 2.2.43 SMB2_RDMA_TRANSFORM")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdma_Write_SMB2_CHANNEL_RDMA_V1()
         {
+            // TODO(spec): the test name says SMB2_CHANNEL_RDMA_V1 but it sends Channel = SMB2_CHANNEL_RDMA_TRANSFORM (0x00000003);
+            // rename, or use Channel = SMB2_CHANNEL_RDMA_V1 (plain descriptors) to match the name.
             EstablishSignedRdmaConnectionAndOpenFile(fileName);
 
             uint writeSize = smbdAdapter.Smb2MaxWriteSize;
-            writeSize = 1024 * 1024; // 1MB
+            writeSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)writeSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
@@ -272,12 +292,16 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
         [TestMethod]
         [TestCategory("Smb2OverRdmaChannel")]
+        // Spec: [MS-SMB2] 3.3.5.12 - READ with Channel = SMB2_CHANNEL_RDMA_V1: data MUST go via [MS-SMBD] 3.1.4.5, not in the response;
+        // the descriptor (no invalidation requested) remains usable for a second READ. The seeding WRITE uses RDMA_TRANSFORM per 3.3.5.13.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdma_Read_SMB2_CHANNEL_RDMA_V1()
         {
             EstablishSignedRdmaConnectionAndOpenFile(fileName);
 
             uint fileSize = smbdAdapter.Smb2MaxReadSize;
-            fileSize = 1024 * 1024; // 1MB
+            fileSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
@@ -359,6 +383,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod]
         [TestCategory("Negative")]
         [TestCategory("Smb2OverRdmaChannelInvalidate")]
+        // Spec: [MS-SMB2] 3.3.5.13 - on Connection.Dialect "3.0", Channel SMB2_CHANNEL_RDMA_V1_INVALIDATE is not allowed
+        // (only RDMA_V1 or NONE) and the server MUST fail the request with STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdma_Smb300_Write_SMB2_CHANNEL_RDMA_V1_INVALIDATE()
         {
             EstablishConnectionAndOpenFile(fileName, Smb300OnlyDialects);
@@ -389,12 +417,16 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod]
         [TestCategory("Negative")]
         [TestCategory("Smb2OverRdmaChannelInvalidate")]
+        // Spec: [MS-SMB2] 3.3.5.12 - on Connection.Dialect "3.0", Channel SMB2_CHANNEL_RDMA_V1_INVALIDATE is not allowed
+        // (only RDMA_V1 or NONE) and the server MUST fail the request with STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdma_Smb300_Read_SMB2_CHANNEL_RDMA_V1_INVALIDATE()
         {
             EstablishConnectionAndOpenFile(fileName, Smb300OnlyDialects);
 
             uint fileSize = smbdAdapter.Smb2MaxReadSize;
-            fileSize = 1024 * 1024; // 1MB
+            fileSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Populate file with ordinary inline SMB2 WRITE requests.");

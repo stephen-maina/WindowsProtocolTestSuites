@@ -30,10 +30,17 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         #endregion
 
         #region Test Cases
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message / 3.1.5.3 Sending a Negotiate Response Message / 2.2.2.
+        // A valid request (version range includes 0x0100, CreditsRequested > 0, MaxReceiveSize >= 128,
+        // MaxFragmentedSize >= 131072) MUST get a Negotiate Response with Status 0 and NegotiatedVersion 0x0100.
+        // Note: the shared NegotiateBasicChecker also asserts CreditsGranted <= CreditsRequested, which is not
+        // an explicit spec requirement (3.1.5.9 only bounds receive credits by ReceiveCreditTarget/Max).
         [TestMethod()]
         [TestCategory("BVT")]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify SMBD negotiate request is working as expected using accepted values.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message; 3.1.5.3 Sending a Negotiate Response Message; 2.2.2 Negotiate Response Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void BVT_SmbdNegotiate_Basic()
         {
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
@@ -51,9 +58,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 out response);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // Receiver SHOULD set Connection.MaxReceiveSize = min(Connection.MaxReceiveSize, PreferredSendSize);
+        // if the result is < 128 it MUST be set to 128. Expecting exactly 128 relies on the SHOULD being followed.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify SMBD negotiate will be successful when PreferredSendSize field is zero.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_PreferredSendSizeWithZero()
         {
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
@@ -77,13 +89,20 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 "MaxReceiveSize is {0}", response.MaxReceiveSize);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // Receiver SHOULD set Connection.MaxReceiveSize = min(Connection.MaxReceiveSize, PreferredSendSize);
+        // if the result is < 128 it MUST be set to 128 (PreferredSendSize 127 and 128 both yield 128).
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify SMBD negotiate will be successful when PreferredSendSize field is less than 128 bytes.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_PreferredSendSizeLessThan128()
         {
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
-            const uint ExpectedSendSize = 128;
+            // [MS-SMBD] Section 3.1.5.6: if the smaller of Connection.MaxReceiveSize and PreferredSendSize is less
+            // than 128, Connection.MaxReceiveSize MUST be set to 128 (the normative floor).
+            uint ExpectedSendSize = SmbdConnection.FLOOR_MAX_RECEIVE_SIZE;
             uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             uint preferredSendSize;
@@ -120,26 +139,36 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 "MaxReceiveSize is {0}", response.MaxReceiveSize);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // The spec defines no upper bound for PreferredSendSize (only the 128 floor on the derived MaxReceiveSize);
+        // the >8136 failure is Windows-only (Appendix A <6>) and is not normative for ksmbd.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify the server will terminate the connection when PreferredSendSize field is maximum value of unsigned integer.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdNegotiate_PreferredSendSizeMaxValue()
         {
+            // TODO(spec): the Description says the server terminates the connection, but [MS-SMBD] 3.1.5.6 defines no
+            // upper bound on PreferredSendSize; the body (correctly) expects STATUS_SUCCESS. The >8136 failure is
+            // Windows-only (Appendix A <6>). Fix the Description to say negotiate succeeds.
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
             uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             uint preferredSendSize;
             SmbdNegotiateResponse response;
 
-            if (smbdAdapter.TestConfig.Platform == Platform.WindowsServer2012R2 || smbdAdapter.TestConfig.Platform == Platform.WindowsServer2016)
+            if (smbdAdapter.TestConfig.IsWindowsServer2012R2OrLater)
             {
-                // Windows Server 2012 R2, Windows Server 2016, and Windows Server operating system fail the request 
-                // with STATUS_INSUFFICIENT_RESOURCES if the PreferredSendSize field is greater than 8136.
-                preferredSendSize = 8136;
+                // Windows-specific product behavior, [MS-SMBD] Appendix A <6> (Section 3.1.5.6): Windows Server 2012 R2
+                // and later fail the request with STATUS_INSUFFICIENT_RESOURCES if PreferredSendSize is greater than
+                // 8136. The limit comes from the WindowsMaxPreferredSendSize ptfconfig property and is applied only
+                // when the SUT platform is Windows.
+                preferredSendSize = smbdAdapter.TestConfig.WindowsMaxPreferredSendSize;
             }
             else
             {
-                // uint max value
+                // The specification defines no upper bound for PreferredSendSize, so use the field's maximum value.
                 preferredSendSize = uint.MaxValue;
             }
 
@@ -153,16 +182,23 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         }
 
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message (and 3.1.7.2 Connection Arrival).
+        // The receiver posts a buffer of at least 512 bytes and only requires the message to be at least 20 bytes,
+        // so trailing bytes after the 20-byte request must be accepted.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server can receive SMBD negotiate request with 512 bytes, 20 bytes of SMBD Negotiate request and 492 redundancy bytes.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message; 3.1.7.2 Connection Arrival")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_Redundancy()
         {
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
-            const int NEGOTIATE_SIZE = 512; // it is the size of receive size after server accept the connection
+            // [MS-SMBD] Section 3.1.4.1 / 3.1.5.6: the receiver posts a receive buffer of at least 512 bytes
+            // for the Negotiate Request message (the request itself is 20 bytes, the rest is padding).
+            const int NEGOTIATE_SIZE = 512;
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Connect to server over RDMA.");
             NtStatus status = smbdAdapter.ConnectToServerOverRDMA();
@@ -207,11 +243,17 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 MAX_FRAGMENT_SIZE);
         }
 
+        // Spec: [MS-SMBD] 3.1.7.1 Connection Loss (peer disconnect is handled by terminating the Connection).
+        // The spec has no normative statement about the server staying "available" after a client disconnect.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server is still available if client disconnect RDMA after SMBD negotiate")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.7.1 Connection Loss")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdNegotiate_DisconnectAfterNegotiate()
         {
+            // TODO(spec): [MS-SMBD] defines no requirement about server availability after a client disconnect; this is
+            // a robustness check, not a spec conformance test. Spec only requires Connection Loss handling (3.1.7.1).
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
@@ -235,9 +277,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, ret, "Status of SMBD connection is {0}", ret);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // The receiver MUST verify the message length is at least 20 bytes; otherwise it MUST terminate the connection.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server will terminate the connection if received negotiate message is less than 20 bytes.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_UncompletedMessage()
         {
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
@@ -285,9 +331,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 out response);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // If the range MinVersion..MaxVersion does not include 0x0100 the receiver MUST send a failure
+        // Negotiate Response with Status STATUS_NOT_SUPPORTED (3.1.5.3). Here MinVersion = 0x0101 (> 0x0100).
         [TestMethod]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server responses with STATUS_NOT_SUPPORTED when MinVersion is grater than 0x0100 which should be included in the range.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message; 3.1.5.3 Sending a Negotiate Response Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_VersionRangeNotCover0x0100_LessThanMinVersion()
         {
             Negotiate_Version(
@@ -295,9 +346,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 (SmbdVersion)ushort.MaxValue);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // If the range MinVersion..MaxVersion does not include 0x0100 the receiver MUST send a failure
+        // Negotiate Response with Status STATUS_NOT_SUPPORTED (3.1.5.3). Here MaxVersion = 0x00FF (< 0x0100).
         [TestMethod]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server responses with STATUS_NOT_SUPPORTED when MaxVersion is less than 0x0100 which should be included in the range.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message; 3.1.5.3 Sending a Negotiate Response Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_VersionRangeNotCover0x0100_LargerThanMaxVersion()
         {
             Negotiate_Version(
@@ -305,9 +361,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 (SmbdVersion)(SmbdVersion.V1 - 1));
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // If the range MinVersion..MaxVersion includes 0x0100 the request is accepted; the version fields
+        // SHOULD be ignored otherwise (Windows <5> rejects ranges other than 0x0100-0x0100, not normative for ksmbd).
         [TestMethod]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server responses with STATUS_SUCCESS when MinVersion equals to 0x0100 which should be included in the range.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_VersionRangeCover0x0100_EqualMinVersion()
         {
             Negotiate_Version(
@@ -315,9 +376,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 (SmbdVersion)ushort.MaxValue);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // If the range MinVersion..MaxVersion includes 0x0100 the request is accepted; the version fields
+        // SHOULD be ignored otherwise (Windows <5> rejects ranges other than 0x0100-0x0100, not normative for ksmbd).
         [TestMethod]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server responses with STATUS_SUCCESS when MaxVersion equals to 0x0100 which should be included in the range.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_VersionRangeCover0x0100_EqualMaxVersion()
         {
             Negotiate_Version(
@@ -325,9 +391,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 SmbdVersion.V1);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // If the range MinVersion..MaxVersion includes 0x0100 the request is accepted; the version fields
+        // SHOULD be ignored otherwise (Windows <5> rejects ranges other than 0x0100-0x0100, not normative for ksmbd).
         [TestMethod]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server responses with STATUS_SUCCESS when MinVersion is less than 0x0100 while MaxVersion is grater than 0x0100.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_VersionRangeCover0x0100_InMiddle()
         {
             Negotiate_Version(
@@ -335,9 +406,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 (SmbdVersion)(SmbdVersion.V1 + 1));
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // The range MinVersion..MaxVersion (0x0100..0x0100) includes 0x0100, so the request MUST be accepted.
         [TestMethod]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server responses with STATUS_SUCCESS when MinVersion and MaxVersion equal to 0x0100 which should be included in the range.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_VersionRangeCover0x0100_EqualMinVersionAndMaxVersion()
         {
             Negotiate_Version(
@@ -345,9 +420,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 SmbdVersion.V1);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // The receiver MUST terminate the connection if CreditsRequested is 0; values >= 1 are valid.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify the server will terminate the connection when CreditsRequested field is less than or equal to 0.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_NegativeParameter_CreditsRequested()
         {
             const ushort ExpectedCredit = 0;
@@ -386,14 +465,21 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                out response);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // The receiver MUST terminate the connection if MaxReceiveSize < 128 (127 here); 128 and larger are valid.
+        // Note: the step log messages for 128 and uint.MaxValue wrongly say "MUST be terminated"; the asserts
+        // (successful negotiate) are correct.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify the server will terminate the connection when MaxReceiveSize field is less than 128 bytes.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_NegativeParameter_MaxReceiveSize()
         {
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
-            const uint ExpectedReceiveSize = 128;
+            // [MS-SMBD] Section 3.1.5.6: the Negotiate Request MaxReceiveSize MUST be at least 128 bytes.
+            uint ExpectedReceiveSize = SmbdConnection.FLOOR_MAX_RECEIVE_SIZE;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             uint maxReceiveSize;
             SmbdNegotiateResponse response;
@@ -428,15 +514,20 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                out response);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        // The receiver MUST terminate the connection if MaxFragmentedSize < 131,072; 131072 and larger are valid.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify the server will terminate the connection when MaxFragmentedSize field is less than 131,072 bytes.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_NegativeParameter_MaxFragmentedSize()
         {
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
-            const uint ExpectedFragmentedSize = 131072;
+            // [MS-SMBD] Section 3.1.5.6: the Negotiate Request MaxFragmentedSize MUST be at least 131,072 bytes.
+            uint ExpectedFragmentedSize = SmbdConnection.FLOOR_MAX_FRAGMENTED_SIZE;
             uint fragmentedSize;
             SmbdNegotiateResponse response;
 
@@ -470,9 +561,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                out response);
         }
 
+        // Spec: [MS-SMBD] 3.1.7.2 Connection Arrival (5-second Negotiation Timer for a PASSIVE connection);
+        // 3.1.6.1 Negotiation Timer (on expiry the peer SHOULD terminate). A Negotiate Request sent before the
+        // timer expires (4 s here) must be processed normally.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server will not terminate connection within 5 seconds after RDMA connection is established")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.7.2 Connection Arrival; 3.1.6.1 Negotiation Timer; 3.1.5.6 Receiving a Negotiate Request Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdNegotiate_NegotiationTimer()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Connect to server over RDMA");
@@ -489,11 +585,18 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD negotiate", status);
         }
 
+        // Spec: [MS-SMBD] 3.1.7.2 Connection Arrival (5-second Negotiation Timer); 3.1.6.1 Negotiation Timer:
+        // "When the Negotiation Timer expires, the local peer SHOULD terminate the connection."
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify server will terminate connection after 5 seconds when RDMA connection is established.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.7.2 Connection Arrival; 3.1.6.1 Negotiation Timer")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdNegotiate_NegotiationTimer_Timeout()
         {
+            // TODO(spec): [MS-SMBD] 3.1.6.1 says the peer only SHOULD terminate when the Negotiation Timer expires, and the
+            // 5-second value appears only in 3.1.7.2 (Connection Arrival). The test hard-asserts termination right at
+            // 5 s with no tolerance; relax to a SHOULD (e.g. allow a grace period / treat non-termination as inconclusive).
             ushort CREDIT_REQUESTED = (ushort)SmbdTestConfig.SendCreditTarget;
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
@@ -753,9 +856,22 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 0,
                 response.Status,
                 "Status in negotiate response is {0}", response.Status);
+            // [MS-SMBD] Section 3.1.5.7 defines no lower bound for MaxReadWriteSize; it is the smaller of an
+            // implementation-specific value and the peer's value. Only require a non-zero value for every SUT.
             BaseTestSite.Assert.IsTrue(
-                response.MaxReadWriteSize >= SmbdConnection.FLOOR_MAX_READ_WRITE_SIZE,
+                response.MaxReadWriteSize > 0,
                 "MaxReadWriteSize in negotiate response is {0}", response.MaxReadWriteSize);
+            if (smbdAdapter.TestConfig.IsWindowsPlatform)
+            {
+                // Windows-specific product behavior, [MS-SMBD] Appendix A <7> (Section 3.1.5.7): Windows limits
+                // MaxReadWriteSize to 1048576 (Windows Server 2012 without [MSKB-2934016]) or 8388608 (otherwise),
+                // so a Windows SUT is expected to return at least WindowsMinMaxReadWriteSize.
+                BaseTestSite.Assert.IsTrue(
+                    response.MaxReadWriteSize >= smbdAdapter.TestConfig.WindowsMinMaxReadWriteSize,
+                    "MaxReadWriteSize in Windows negotiate response is {0}, expected at least {1}",
+                    response.MaxReadWriteSize,
+                    smbdAdapter.TestConfig.WindowsMinMaxReadWriteSize);
+            }
             if (preferredSendSize >= SmbdConnection.FLOOR_MAX_RECEIVE_SIZE)
             {
                 // sever MUST set Connection.MaxReceiveSize to the smaller(Connection.MaxReceiveSize, PreferredSendSize)

@@ -45,6 +45,42 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         public uint MaxFragmentedSize { get; set; }
         public uint MaxReceiveSize { get; set; }
         public int KeepAliveInterval { get; set; }
+
+        /// <summary>
+        /// Windows-specific (product behavior) upper limit of the PreferredSendSize field in an SMBD Negotiate Request.
+        /// [MS-SMBD] Appendix A &lt;6&gt; (Section 3.1.5.6): "Windows Server 2012 R2 operating system and later fail the
+        /// request with STATUS_INSUFFICIENT_RESOURCES if the PreferredSendSize field is greater than 8136."
+        /// Only applies when the SUT platform is Windows Server 2012 R2 or later (see IsWindowsServer2012R2OrLater).
+        /// </summary>
+        public uint WindowsMaxPreferredSendSize { get; set; }
+
+        /// <summary>
+        /// Windows-specific (product behavior) smallest MaxReadWriteSize a Windows SUT returns in the SMBD Negotiate Response.
+        /// [MS-SMBD] Appendix A &lt;7&gt; (Section 3.1.5.7): Windows Server 2012 without [MSKB-2934016] limits MaxReadWriteSize
+        /// to 1048576; otherwise the limit is 8388608. Only used for Windows SUT platforms. The protocol itself defines
+        /// no minimum for MaxReadWriteSize.
+        /// </summary>
+        public uint WindowsMinMaxReadWriteSize { get; set; }
+
+        /// <summary>
+        /// Implementation-specific upper limit that the test client places on the negotiated MaxReadWriteSize.
+        /// [MS-SMBD] Section 3.1.5.7: "the smaller of an implementation-specific value and the value of the received
+        /// MaxReadWriteSize field".
+        /// </summary>
+        public uint ClientMaxReadWriteSize { get; set; }
+
+        /// <summary>
+        /// MaxOutputResponse of the FSCTL_QUERY_NETWORK_INTERFACE_INFO request. Not defined by [MS-SMB2]; it only
+        /// needs to be large enough for the interface list returned by the SUT.
+        /// </summary>
+        public uint QueryNetworkInterfaceMaxOutputResponse { get; set; }
+
+        /// <summary>
+        /// Size in bytes of the data written/read through an RDMA channel by the SMB2-over-SMBD test cases.
+        /// Not defined by the specifications; it should be large enough to need multiple buffer descriptors
+        /// and no larger than the SMB2 negotiated MaxReadSize/MaxWriteSize and the SMBD negotiated MaxReadWriteSize.
+        /// </summary>
+        public uint RdmaChannelDataSizeInByte { get; set; }
         public bool CheckDataLengthRemainingDataLength { get; set; }
         public bool RdmaLayerLoggingEnabled { get; set; }
         public List<string> ActiveTDI { get; private set; }
@@ -55,6 +91,26 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         public TestConfig(ITestSite testSite)
         {
             this.Initialize(testSite);
+        }
+
+        /// <summary>
+        /// True when the SUT platform is any Windows Server release (Platform is not NonWindows).
+        /// Windows-specific product behavior notes must only be applied when this is true.
+        /// </summary>
+        public bool IsWindowsPlatform
+        {
+            get { return this.Platform != Platform.NonWindows; }
+        }
+
+        /// <summary>
+        /// True when the SUT platform is Windows Server 2012 R2 or any later Windows release.
+        /// The Platform enum values increase with release order, so "or later" is a numeric comparison.
+        /// Used for the [MS-SMBD] Appendix A &lt;6&gt; behavior, which the specification states for
+        /// "Windows Server 2012 R2 operating system and later".
+        /// </summary>
+        public bool IsWindowsServer2012R2OrLater
+        {
+            get { return (uint)this.Platform >= (uint)Platform.WindowsServer2012R2; }
         }
 
         public void Initialize(ITestSite testSite)
@@ -116,6 +172,11 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             MaxFragmentedSize = uint.Parse(site.Properties["MaxFragmentedSize"]);
             MaxReceiveSize = uint.Parse(site.Properties["MaxReceiveSize"]);
             KeepAliveInterval = int.Parse(site.Properties["KeepAliveInterval"]);
+            WindowsMaxPreferredSendSize = uint.Parse(site.Properties["WindowsMaxPreferredSendSize"]);
+            WindowsMinMaxReadWriteSize = uint.Parse(site.Properties["WindowsMinMaxReadWriteSize"]);
+            ClientMaxReadWriteSize = uint.Parse(site.Properties["ClientMaxReadWriteSize"]);
+            QueryNetworkInterfaceMaxOutputResponse = uint.Parse(site.Properties["QueryNetworkInterfaceMaxOutputResponse"]);
+            RdmaChannelDataSizeInByte = uint.Parse(site.Properties["RdmaChannelDataSizeInByte"]);
             #endregion
 
             Smb2ConnectionTimeout = TimeSpan.FromSeconds(int.Parse(site.Properties["Smb2ConnectionTimeoutInSeconds"]));

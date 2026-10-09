@@ -44,8 +44,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Signing")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel with AES_GMAC signing")]
+        // [MS-SMB2] 3.3.5.12 step 5: signed READ (SMB2_FLAGS_SIGNED, RDMATransformIds includes SIGNING) returns SMB2_RDMA_TRANSFORM + SIGNING
+        // SMB2_RDMA_CRYPTO_TRANSFORM; AES-GMAC uses a 12-byte nonce, otherwise Nonce empty. 3.2.5.11 3.1.10: client verifies the signature.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; 3.2.5.11 Receiving an SMB2 READ Response")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannelTransform_Signing_ReadLargeFile_AES_GMAC()
         {
+            // TODO(spec): ReadOverRdma_Signing asserts an exact response length including 8-byte padding (56) which 2.2.43.1 does not mandate
+            // for a READ response, and does not verify the returned Signature (3.2.5.11 3.1.10).
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
             ReadOverRdma_Signing(
                 smb2RdmaTransformIds: smb2RdmaTransformIds,
@@ -57,8 +63,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Signing")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can read file with the effective maximum single RDMA READ size over RDMA channel with AES_CMAC signing")]
+        // [MS-SMB2] 3.3.5.12 step 5: signed READ (SMB2_FLAGS_SIGNED, RDMATransformIds includes SIGNING) returns SMB2_RDMA_TRANSFORM + SIGNING
+        // SMB2_RDMA_CRYPTO_TRANSFORM; with AES-CMAC Nonce MUST be empty. 3.2.5.11 3.1.10: client verifies the signature.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; 3.2.5.11 Receiving an SMB2 READ Response")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void Smb2OverRdmaChannelTransform_Signing_ReadLargeFile_AES_CMAC()
-        {   
+        {
+            // TODO(spec): ReadOverRdma_Signing asserts an exact response length (40) and does not verify the returned Signature
+            // (3.2.5.11 3.1.10); the length check is only valid if the server adds no optional padding.
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
             ReadOverRdma_Signing(
                 smb2RdmaTransformIds: smb2RdmaTransformIds,
@@ -70,6 +82,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Signing")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel with AES_GMAC signing")]
+        // [MS-SMB2] 3.2.4.7 / 3.3.5.13 step 3.3: WRITE with SMB2_CHANNEL_RDMA_TRANSFORM + SIGNING crypto transform (AES-GMAC, 12-byte nonce);
+        // server obtains the data via MS-SMBD 3.1.4.6, verifies the signature (3.1.5.1) and succeeds.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.2.4.7 Application Requests Writing to a File or Named Pipe; 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; [MS-SMBD] 3.1.4.6 RDMA Read from Peer Buffer")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_AES_GMAC()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
@@ -84,6 +100,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Signing")]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 can write file with the effective maximum single RDMA WRITE size over RDMA channel with AES_CMAC signing")]
+        // [MS-SMB2] 3.2.4.7 / 3.3.5.13 step 3.3: WRITE with SMB2_CHANNEL_RDMA_TRANSFORM + SIGNING crypto transform (AES-CMAC, empty nonce);
+        // server obtains the data via MS-SMBD 3.1.4.6, verifies the signature (3.1.5.1) and succeeds.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.2.4.7 Application Requests Writing to a File or Named Pipe; 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43.1 SMB2_RDMA_CRYPTO_TRANSFORM; [MS-SMBD] 3.1.4.6 RDMA Read from Peer Buffer")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_AES_CMAC()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
@@ -97,6 +117,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [TestCategory("Signing")]
         [Description("Verify SMB2 write fails over RDMA channel when Session isn't setup with Signing and the Data is signed")]
+        // [MS-SMB2] 3.3.5.13 step 1.10: SIGNING SMB2_RDMA_CRYPTO_TRANSFORM present but SMB2_FLAGS_SIGNED not set in the header -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_FlagsSignedNotSet_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
@@ -110,6 +133,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [TestCategory("Signing")]
         [Description("Verify SMB2 write fails over RDMA channel when Session is setup with SMB2_RDMA_TRANSFORM_ENCRYPTION but SMB2_RDMA_TRANSFORM_TYPE_SIGNING is the selected TransformType")]
+        // [MS-SMB2] 3.3.5.13 step 1.5: Connection.RDMATransformIds lacks SIGNING (only ENCRYPTION negotiated) but a SIGNING
+        // SMB2_RDMA_CRYPTO_TRANSFORM is present -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_SigningStructure_EncryptionId_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION };
@@ -122,6 +149,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2OverRdmaChannel")]
         [TestCategory("Signing")]
         [Description("Verify SMB2 write fails over RDMA channel when an invalid signature is sent")]
+        // [MS-SMB2] 3.3.5.13 step 3.3: SIGNING transform signature verification failure (computed vs. Signature field) -> STATUS_INVALID_SIGNATURE.
+        // Note: the test swaps two signature bytes; if they happen to be equal the signature stays valid (rare flakiness).
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; 3.1.5.1 Receiving Any Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_InvalidSignature_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };
@@ -135,6 +166,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 write fails over RDMA channel when no RDMATransformId is created with the Connection")]
+        // [MS-SMB2] 3.3.5.13 step 1.1: Connection.RDMATransformIds empty with Channel=SMB2_CHANNEL_RDMA_TRANSFORM -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_NoTransformIds_Fails()
         {
             WriteOverRdma_Signing();
@@ -143,6 +177,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2OverRdmaChannel")]
         [Description("Verify SMB2 write fails over RDMA channel when TransformCount is set to 0")]
+        // [MS-SMB2] 3.3.5.13 step 1.3 / 2.2.43: TransformCount is 0 (MUST be > 0) -> STATUS_INVALID_PARAMETER.
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; 2.2.43 SMB2_RDMA_TRANSFORM")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Signing_WriteLargeFile_ZeroTransformCount_Fails()
         {
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING };

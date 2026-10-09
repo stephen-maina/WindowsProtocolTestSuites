@@ -19,6 +19,14 @@
       Observed against the Linux SUT: a MaxFragmentedSize of 131072 (128 KiB) makes the server drop the
       connection during SMBD negotiate (client sees STATUS_CANCELLED); 262144 negotiates successfully.
       Tests read these values from this file; they are not hardcoded in the test cases.
+
+      Specification notes for the values below:
+      - MaxReceiveSize must be at least 128 bytes and MaxFragmentedSize at least 131,072 bytes
+        ([MS-SMBD] Section 3.1.5.6 / 3.1.5.7). There is no specified upper bound.
+      - ReceiveCreditMax=255, SendCreditTarget=255, MaxSendSize=1364 are the Windows default values from
+        [MS-SMBD] Appendix A (Windows product behavior). The protocol only requires them to be greater than 0
+        (credits) and at least 128 bytes (sizes), so tune them to match the SUT.
+      - CreditsRequested in SMBD Data Transfer messages uses SendCreditTarget ([MS-SMBD] Section 3.1.5.1).
     -->
     <Property name="ReceiveCreditMax" value="255" />
     <Property name="SendCreditTarget" value="255" />
@@ -26,6 +34,34 @@
     <Property name="MaxFragmentedSize" value="262144" />
     <Property name="MaxReceiveSize" value="8192" />
     <Property name="KeepAliveInterval" value="120" />
+
+    <!--
+      WINDOWS-SPECIFIC (product behavior) values. These are applied by the test cases only when the "Platform"
+      property identifies a Windows SUT; a NonWindows SUT never uses them.
+
+      WindowsMaxPreferredSendSize: [MS-SMBD] Appendix A <6> (Section 3.1.5.6) - Windows Server 2012 R2 and later fail the
+      SMBD Negotiate Request with STATUS_INSUFFICIENT_RESOURCES if PreferredSendSize is greater than this value (8136).
+      WindowsMinMaxReadWriteSize: [MS-SMBD] Appendix A <7> (Section 3.1.5.7) - Windows limits MaxReadWriteSize to 1048576
+      (Windows Server 2012 without [MSKB-2934016]) or 8388608 (otherwise), so a Windows SUT returns at least this value.
+      The protocol itself defines no minimum MaxReadWriteSize.
+    -->
+    <Property name="WindowsMaxPreferredSendSize" value="8136" />
+    <Property name="WindowsMinMaxReadWriteSize" value="1048576" />
+
+    <!--
+      IMPLEMENTATION-SPECIFIC values (not defined by the specifications).
+
+      ClientMaxReadWriteSize: [MS-SMBD] Section 3.1.5.7 - the client sets Connection.MaxReadWriteSize to the smaller of
+      "an implementation-specific value" and the MaxReadWriteSize received from the server. This is that value.
+      QueryNetworkInterfaceMaxOutputResponse: MaxOutputResponse of FSCTL_QUERY_NETWORK_INTERFACE_INFO; it must be large
+      enough to hold the SUT's network interface list ([MS-SMB2] Section 2.2.31).
+      RdmaChannelDataSizeInByte: size of data transferred through an SMB2 RDMA channel by the SMB2-over-SMBD test cases.
+      Use a value large enough to need multiple buffer descriptors and not larger than the SMB2 MaxReadSize/MaxWriteSize
+      and the SMBD MaxReadWriteSize negotiated with the SUT.
+    -->
+    <Property name="ClientMaxReadWriteSize" value="1048576" />
+    <Property name="QueryNetworkInterfaceMaxOutputResponse" value="65536" />
+    <Property name="RdmaChannelDataSizeInByte" value="1048576" />
 
     <!--maximum number of outstanding Receive requests for RDMA driver-->
     <Property name="InboundEntries" value="63" />

@@ -30,28 +30,43 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         #endregion
 
         #region Test Cases
+        // Spec: [MS-SMBD] 3.1.5.9 Managing Credits Prior to Sending; 3.1.5.1 Sending Upper Layer Messages.
+        // With a single credit each data message must carry CreditsGranted > 0 (3.1.5.1: "SendCredits is 1 and
+        // CreditsGranted is 0, stop processing"), so SMB2 write over SMBD must still work. SMB2 content is opaque payload.
         [TestMethod()]
         [TestCategory("BVT")]
         [TestCategory("SmbdCreditMgmt")]
         [Description("Verify SMBD operation works fine with minimum credits (only 1 credit)")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.9 Managing Credits Prior to Sending; 3.1.5.1 Sending Upper Layer Messages")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void BVT_SmbdCreditMgmt_OperationWithMinimumCredits()
         {
             const ushort MIN_CREDITS = 1;
             OperationWithSpecifiedCredits(MIN_CREDITS);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.9 Managing Credits Prior to Sending; 3.1.5.1 Sending Upper Layer Messages.
+        // Credit-limited operation (10 credits) must complete; credits are replenished via CreditsGranted.
         [TestMethod()]
         [TestCategory("SmbdCreditMgmt")]
         [Description("Verify SMBD operation works fine with limited credits.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.9 Managing Credits Prior to Sending; 3.1.5.1 Sending Upper Layer Messages")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdCreditMgmt_OperationWithLimitedCredits()
         {
             const ushort LIMITED_CREDITS = 10;
             OperationWithSpecifiedCredits(LIMITED_CREDITS);
         }
 
+        // Spec: [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; 3.1.5.4 Sending a Data Transfer Message.
+        // After a message is received with SendQueue empty, credit processing (3.1.5.9) is run and, if new credits
+        // were added, the receiver MUST promptly send an empty Data Transfer message (DataOffset/DataLength/
+        // RemainingDataLength = 0) with CreditsGranted = new credits; CreditsRequested = SendCreditTarget (3.1.5.1).
         [TestMethod()]
         [TestCategory("SmbdCreditMgmt")]
         [Description("Consume all the send credits on client. Verify server will send empty SMBD data transfer message to grant credits.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; 3.1.5.4 Sending a Data Transfer Message; 3.1.5.9 Managing Credits Prior to Sending")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdCreditMgmt_ConsumeAllSendCredits()
         {
             Initialize_ConsumeAllSendCredits();
@@ -84,10 +99,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         }
 
 
+        // Spec: [MS-SMBD] 3.1.5.1 Sending Upper Layer Messages; 3.1.5.4 Sending a Data Transfer Message.
+        // Sender stops when Connection.SendCredits is 0, and the message sent with the last credit MUST carry
+        // CreditsGranted > 0; DataOffset MUST be 8-byte aligned; fragments carry RemainingDataLength.
         [TestMethod()]
         [TestCategory("SmbdCreditMgmt")]
         [Description("Make server send several segments and consume all sent credits on server. "
                     + "Verify server will not continue to send SMBD data transfer message until client grant new credits.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.1 Sending Upper Layer Messages; 3.1.5.4 Sending a Data Transfer Message; 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdCreditMgmt_ConsumeAllReceiveCredits()
         {
             // define data for test case
@@ -109,11 +129,19 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             smbdAdapter.DisconnectRdma();
         }
 
+        // Spec: [MS-SMBD] 3.1.5.1 Sending Upper Layer Messages (SendCredits == 0 => stop sending);
+        // 3.1.6.2 Idle Connection Timer (on expiry, if a keepalive is already outstanding the peer SHOULD terminate).
         [TestMethod()]
         [TestCategory("SmbdCreditMgmt")]
         [Description("Verify connection will be terminated because of Send Credit Grant Timer expiration if server with no send credits")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.1 Sending Upper Layer Messages; 3.1.6.2 Idle Connection Timer")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdCreditMgmt_ConsumeAllCreditServer_Timeout()
         {
+            // TODO(spec): [MS-SMBD] defines no "Send Credit Grant Timer". With no send credits the server cannot send a
+            // keepalive; the Idle Connection Timer first expiry sets KeepaliveRequested=PENDING and only a later expiry
+            // SHOULD terminate (3.1.6.2), and KeepaliveInterval is implementation-specific (Appendix A <8>). Waiting exactly
+            // one KEEP_ALIVE_INTERVAL and hard-asserting termination is stricter than the spec (SHOULD, timing unspecified).
             // define data for test case
             const ushort RECEIVE_CREDIT_MAX = 10;
             const ushort SEND_CREDIT_TARGET = 10;
@@ -182,11 +210,19 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             BaseTestSite.Assert.IsFalse(smbdAdapter.ClientConnection.Endpoint.IsConnected, "Connection should be terminated");
         }
 
+        // Spec: [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message: the receiver MUST verify CreditsRequested is
+        // at least 1 and otherwise MUST terminate the connection. The test sends a Data Transfer message (not a
+        // Negotiate Request) with CreditsRequested = 0.
         [TestMethod()]
         [TestCategory("SmbdCreditMgmt")]
         [Description("Verify the connection will be terminated if CreditsRequested is 0 in SMBD Negotiate Request.")]
+        [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
+        [TestProperty("SpecCompliance", "TODO")]
         public void SmbdCreditMgmt_NegativeParameter_CreditRequested()
         {
+            // TODO(spec): Description is wrong; the zero CreditsRequested is sent in a Data Transfer message (3.1.5.8),
+            // after a successful negotiate, not in the Negotiate Request (3.1.5.6, covered by
+            // SmbdNegotiate_NegativeParameter_CreditsRequested). Behavior asserted is correct; fix the Description.
             // define data for test case
             const ushort RECEIVE_CREDIT_MAX = 10;
             const ushort SEND_CREDIT_TARGET = 10;

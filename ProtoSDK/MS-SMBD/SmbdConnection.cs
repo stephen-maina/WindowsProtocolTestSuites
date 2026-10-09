@@ -9,17 +9,25 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
     public class SmbdConnection
     {
         /// <summary>
-        /// floor value of MaxReceiveSize
+        /// Normative floor value of MaxReceiveSize (and of the PreferredSendSize / Connection.MaxReceiveSize
+        /// derived from it).
+        /// [MS-SMBD] Section 3.1.5.6 (Receiving a Negotiate Request Message) and Section 3.1.5.7
+        /// (Receiving a Negotiate Response Message): "The MaxReceiveSize field is at least 128 bytes", and
+        /// "If the result is less than 128, then Connection.MaxReceiveSize MUST be set to 128."
         /// </summary>
         public static readonly uint FLOOR_MAX_RECEIVE_SIZE = 128;
+
         /// <summary>
-        /// floor value of MaxFragmentedSize
+        /// Normative floor value of MaxFragmentedSize.
+        /// [MS-SMBD] Section 3.1.5.6 and Section 3.1.5.7: "The MaxFragmentedSize field is at least 131,072 bytes."
         /// </summary>
         public static readonly uint FLOOR_MAX_FRAGMENTED_SIZE = 131072;
-        /// <summary>
-        /// floor value of MaxReadWriteSize
-        /// </summary>
-        public static readonly uint FLOOR_MAX_READ_WRITE_SIZE = 1048576;
+
+        // NOTE: There is intentionally no floor for MaxReadWriteSize. [MS-SMBD] Section 3.1.5.7 only states that
+        // Connection.MaxReadWriteSize is "the smaller of an implementation-specific value and the value of the
+        // received MaxReadWriteSize field". The 1048576 / 8388608 values seen in the Windows implementation are
+        // product behavior (Appendix A <7>) and are exposed through the test configuration instead
+        // (see WindowsMinMaxReadWriteSize and ClientMaxReadWriteSize in the MS-SMBD ptfconfig).
 
         /// <summary>
         /// Section 3.1.4.1, Connecting to the Peer: "Start a Negotiation Timer of 120 seconds"

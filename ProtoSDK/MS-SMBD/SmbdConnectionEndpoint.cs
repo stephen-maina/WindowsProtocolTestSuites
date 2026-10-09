@@ -600,7 +600,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             }
 
             // Validate completion data
-            if (completion.wr_id >= ulong.MaxValue || completion.byte_len > (1024 * 1024)) // Sanity check: max 1MB
+            // Sanity check on the work-completion identifier only. The upper bound of byte_len is not defined
+            // by MS-SMBD, so it is validated below against the actual size of the posted receive buffer
+            // instead of a hardcoded limit.
+            if (completion.wr_id >= ulong.MaxValue)
             {
                 LogEvent($"Invalid completion data: wr_id={completion.wr_id}, byte_len={completion.byte_len}");
                 data = null;
@@ -627,6 +630,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             // Copy data from the registered buffer
             if (completion.byte_len > 0 && receiveEntries[entryIndex].LinuxBuffer != null)
             {
+                // The completion can never legitimately report more bytes than the receive buffer that was posted.
+                if (completion.byte_len > receiveEntries[entryIndex].LinuxBuffer.Length)
+                {
+                    LogEvent($"Invalid completion data: byte_len={completion.byte_len} exceeds receive buffer size {receiveEntries[entryIndex].LinuxBuffer.Length}");
+                    data = null;
+                    return NtStatus.STATUS_INTERNAL_ERROR;
+                }
+
                 // Validate that we have a valid buffer address
                 if (receiveEntries[entryIndex].LinuxBufferAddress == 0)
                 {

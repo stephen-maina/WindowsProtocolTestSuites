@@ -88,15 +88,28 @@ namespace Microsoft.Protocols.TestManager.SMBDPlugin.Detector
             }
         }
 
+        /// <summary>
+        /// Payload covered by a single SMB2 credit.
+        /// [MS-SMB2] Section 3.2.4.1.5: CreditCharge = (max(SendPayloadSize, ExpectedResponsePayloadSize) - 1) / 65536 + 1,
+        /// so one credit covers 65536 bytes (64 KiB) of payload. The detector only requests a single credit per probe.
+        /// </summary>
+        private const uint SingleCreditPayloadSize = 65536;
+
+        /// <summary>
+        /// Safety margin subtracted from SingleCreditPayloadSize so the probe READ/WRITE stays within one credit.
+        /// This margin is NOT defined by the specifications; it is an implementation choice that can be adjusted
+        /// by callers if a SUT needs more headroom.
+        /// </summary>
+        public uint BufferSizeSafetyMargin { get; set; } = 100;
+
         public uint CalculateSmb2MaxReadWriteSize()
         {
             if (!negotiated)
             {
                 throw new InvalidOperationException("Not negotiated!");
             }
-            // The max payload size is 65536 so that buffer should be less than 65536 minus the header size
-            // 100 is large enough to hold READ/WRITE
-            uint maxBufferSize = 65536 - 100;
+            // The probe is limited to a single credit of payload ([MS-SMB2] Section 3.2.4.1.5) minus the safety margin.
+            uint maxBufferSize = SingleCreditPayloadSize - BufferSizeSafetyMargin;
             var list = new uint[] { maxReadSize, maxWriteSize, maxBufferSize };
             uint result = list.Aggregate(Math.Min);
             return result;

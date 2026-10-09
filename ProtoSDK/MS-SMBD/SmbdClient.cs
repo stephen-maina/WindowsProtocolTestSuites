@@ -23,6 +23,12 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         /// Set to zero because SMBD client do not issue Read requests to the peer.
         /// </summary>
         private const uint OUTBOUND_READLIMIT = 0;
+
+        /// <summary>
+        /// Default for ClientMaxReadWriteSize (1 MiB). Implementation-specific per [MS-SMBD] Section 3.1.5.7;
+        /// it is not a protocol requirement and is overridden by the "ClientMaxReadWriteSize" ptfconfig property.
+        /// </summary>
+        private const uint DEFAULT_CLIENT_MAX_READ_WRITE_SIZE = 1048576;
         #endregion
 
         private SmbdLogEvent logEvent;
@@ -39,6 +45,16 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         #region Properties
         
         public SmbdConnection Connection { get; protected set; }
+
+        /// <summary>
+        /// The implementation-specific upper limit this client places on Connection.MaxReadWriteSize.
+        /// [MS-SMBD] Section 3.1.5.7: "Set Connection.MaxReadWriteSize to the smaller of an implementation-specific
+        /// value and the value of the received MaxReadWriteSize field." The specification does not define this value,
+        /// so test code should set it from the "ClientMaxReadWriteSize" ptfconfig property.
+        /// The default only applies when the caller does not configure it.
+        /// </summary>
+        public uint ClientMaxReadWriteSize { get; set; } = DEFAULT_CLIENT_MAX_READ_WRITE_SIZE;
+
         public int ReceiveEntryInQueue { get { return Connection.Endpoint.ReceiveRequestsCount; } }
         public int ReceivePostedCount { get { return Connection.Endpoint.ReceivePostedCount; } }
         #endregion
@@ -210,7 +226,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             Connection.ReceiveCreditTarget = smbdNegotiateResponse.CreditsRequested;
             Connection.MaxReceiveSize = Smaller(Connection.MaxReceiveSize, smbdNegotiateResponse.PreferredSendSize);
             Connection.MaxSendSize = Smaller(Connection.MaxSendSize, smbdNegotiateResponse.MaxReceiveSize);
-            Connection.MaxReadWriteSize = Smaller(smbdNegotiateResponse.MaxReadWriteSize, SmbdConnection.FLOOR_MAX_READ_WRITE_SIZE);
+            // [MS-SMBD] Section 3.1.5.7: smaller of an implementation-specific value and the received MaxReadWriteSize.
+            Connection.MaxReadWriteSize = Smaller(smbdNegotiateResponse.MaxReadWriteSize, ClientMaxReadWriteSize);
             Connection.SendCredits = smbdNegotiateResponse.CreditsGranted;
             #endregion
 

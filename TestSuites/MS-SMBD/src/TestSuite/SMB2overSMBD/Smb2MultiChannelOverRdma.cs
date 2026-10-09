@@ -48,6 +48,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 testConfig.Smb2ConnectionTimeout);
             this.alternativeChannelClient = new Smb2OverSmbdTestClient(
                 testConfig.Smb2ConnectionTimeout);
+            foreach (Smb2OverSmbdTestClient channelClient in new[] { this.mainChannelClient, this.alternativeChannelClient })
+            {
+                channelClient.ClientMaxReadWriteSize = testConfig.ClientMaxReadWriteSize;
+                channelClient.QueryNetworkInterfaceMaxOutputResponse = testConfig.QueryNetworkInterfaceMaxOutputResponse;
+            }
         }
 
         protected override void TestCleanup()
@@ -66,6 +71,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestCategory("Smb2MultipleChannel")]
         [Description("Verify SMB2 can establish alternate channel over SMBD. "
                     + "Main channel is established over TCP on non-RDMA NIC. The alternative channel is over RDMA on RDMA-NIC.")]
+        // Spec: [MS-SMB2] 3.3.5.5 (session binding: same ClientGuid and same Connection.Dialect on the new connection) and
+        // 3.3.5.15.11 (FSCTL_QUERY_NETWORK_INTERFACE_INFO; RDMA_CAPABLE interface per 2.2.32.5). A bound RDMA channel then serves
+        // READ with SMB2_CHANNEL_RDMA_V1 ([MS-SMB2] 3.3.5.12).
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.5 Receiving an SMB2 SESSION_SETUP Request; [MS-SMB2] 3.3.5.15.11 Handling a Query Network Interface Request; [MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void BVT_Smb2MultipleChannel_2Channels_DiffNicTypeDiffTransport()
         {
             uint treeId;
@@ -93,6 +103,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod()]
         [TestCategory("Smb2MultipleChannel")]
         [Description("Verify it is working when establish 2 SMB2 channels using the same RDMA capable NIC. One channel is over TCP, and the other is over SMBD.")]
+        // Spec: same as the BVT variant, with both channels on the same RDMA-capable NIC (TCP main channel + SMBD alternate channel).
+        [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.5 Receiving an SMB2 SESSION_SETUP Request; [MS-SMB2] 3.3.5.15.11 Handling a Query Network Interface Request; [MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2Multichannel_2Channels_DiffTransport()
         {
             uint treeId;

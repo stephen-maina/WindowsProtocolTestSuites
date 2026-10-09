@@ -1,10 +1,10 @@
 ---
 name: file-server
-description: ALWAYS LOAD THIS SKILL when working with FileServer, SMB, SMB2, SMB3, CIFS, file sharing, MS-SMB2, MS-FSCC, MS-FSA, MS-DFSC, MS-FSRVP, MS-RSVD, MS-SQOS, or any file server protocol test implementation. This skill assists with writing FileServer protocol test cases, implementing new test scenarios, discovering reusable libraries, adapters, and transport implementations (TCP, QUIC, NetBIOS, RDMA). CRITICAL--Before implementing any test, first classify the domain by analyzing concepts (File*, Fs*, FileSystemAttributes = FSA; NEGOTIATE, SESSION_SETUP, SMB commands = SMB2). Test scenarios from MS-SMB2 that involve File*/Fs* concepts belong to the FSA test suite. Provides test case patterns, storage locations, ProtoSDK usage, and test execution guidance. Protocols under FileServer/src include Auth, Common, DFSC, FSA, FSAModel, FSRVP, RSVD, ServerFailover, SMB2, SMB2Model, and SQOS.
+description: ALWAYS LOAD THIS SKILL when working with FileServer, SMB, SMB2, SMB3, CIFS, file sharing, MS-SMB2, MS-SMBD (SMB Direct / RDMA), MS-FSCC, MS-FSA, MS-DFSC, MS-FSRVP, MS-RSVD, MS-SQOS, or any file server protocol test implementation. ALWAYS re-validate spec-derived values against the latest published specification via the Microsoft Learn MCP (see SPECIFICATION VALIDATION section). This skill assists with writing FileServer protocol test cases, implementing new test scenarios, discovering reusable libraries, adapters, and transport implementations (TCP, QUIC, NetBIOS, RDMA). CRITICAL--Before implementing any test, first classify the domain by analyzing concepts (File*, Fs*, FileSystemAttributes = FSA; NEGOTIATE, SESSION_SETUP, SMB commands = SMB2). Test scenarios from MS-SMB2 that involve File*/Fs* concepts belong to the FSA test suite. Provides test case patterns, storage locations, ProtoSDK usage, and test execution guidance. Protocols under FileServer/src include Auth, Common, DFSC, FSA, FSAModel, FSRVP, RSVD, ServerFailover, SMB2, SMB2Model, and SQOS.
 license: MIT
 metadata:
   author: Microsoft
-  version: "1.2"
+  version: "1.3"
 ---
 
 # File Server Test Suite Skill
@@ -24,6 +24,37 @@ metadata:
 > First extract the CONCEPTS from the scenario text. If you see `File*`, `Fs*`, `FileSystemAttributes`,
 > `FileFsAttributeInformation`, or any MS-FSCC structure names → it's **FSA domain**, regardless of the
 > MS-SMB2 section number.
+
+---
+
+## SPECIFICATION VALIDATION (MANDATORY - ALWAYS USE THE LATEST SPEC)
+
+Specifications change. Never rely on memory, cached text, or section numbers/values already present in code comments.
+Before writing, changing, or reviewing ANY test, constant, buffer size or config default that is justified by a spec
+(MS-SMB2, MS-SMBD, MS-FSCC, MS-FSA, ...), you MUST re-validate it against the current published version:
+
+1. **Query the Microsoft Learn MCP server** (`microsoft-learn-microsoft_docs_search`, then `microsoft-learn-microsoft_docs_fetch`)
+   for the protocol landing page, e.g. `https://learn.microsoft.com/openspecs/windows_protocols/ms-smbd/1ca5f4ae-e5b1-493d-b87d-f4464325e6e3`.
+   Record the **Published Version** (date + revision) and check for active errata (`MS-WINERRATA`).
+2. **Section content may not be indexed in Learn** (true for MS-SMBD). In that case download the DOCX linked from the
+   landing page's "Published Version" row (`winprotocoldocs-bhdugrdyduf5h2e4.b02.azurefd.net/<DOC>/[<DOC>]-<yymmdd>.docx`)
+   and extract its text, then cite the section numbers from that revision. Always use the newest revision listed.
+3. **Cite the revision** in comments, e.g. `[MS-SMBD] rev 16.0 (8/11/2025) Section 3.1.5.6`.
+4. Classify every hard-coded value as:
+   - **Normative** (MUST/SHOULD in the spec) - keep as a named constant with a spec-section comment.
+   - **Windows product behavior** (Appendix A `<N>` notes) - must be a ptfconfig property labelled Windows-specific and
+     only applied when the SUT `Platform` is Windows.
+   - **Not specified** (implementation choice) - must be a ptfconfig property, never hard-coded.
+5. If the latest revision differs from the one cited in the code, update the code/comments/docs and call it out.
+
+### Test annotation convention (MS-SMBD and other suites)
+Every test method carries:
+- A comment block naming the spec section(s) it exercises, and
+- `[TestProperty("SpecSection", "[MS-XXXX] <section>")]` (test information shown in results), and
+- `[TestProperty("SpecCompliance", "Conformant")]`, or `"TODO"` plus a `// TODO(spec): ...` comment explaining
+  how the test deviates from the specification.
+
+SUT note: MS-SMBD tests run against non-Windows SUTs too (e.g. Ubuntu with ksmbd). Do not assume Windows behavior.
 
 ---
 
