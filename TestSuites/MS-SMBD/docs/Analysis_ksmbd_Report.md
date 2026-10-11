@@ -36,8 +36,11 @@ With 1 client credit (`BVT_..._OperationWithMinimumCredits`) and with reassembly
 ### 5. RDMA transform capability not offered (informational)
 ksmbd does not return `SMB2_RDMA_TRANSFORM_CAPABILITIES` (0x0007). Allowed by [MS-SMB2] 3.3.5.4 / 2.2.43 (optional); tests now `Assume` instead of asserting. Consider implementing: it is needed for signing/encryption transform over RDMA.
 
-### 6. STATUS_ACCESS_DENIED on re-connect after a deliberate disconnect (unconfirmed)
-Three `NegativeParameter_*` tests re-open a session 50 ms after killing the first connection; session setup succeeds but tree connect returns ACCESS_DENIED. Likely a teardown race in ksmbd; the test will wait/retry (see test report). Medium-low confidence.
+### 6. (Withdrawn) STATUS_ACCESS_DENIED on re-connect after a deliberate disconnect
+Root cause was a TEST defect, not ksmbd: the client kept crypto state keyed by SessionId across reconnects; ksmbd (legitimately, [MS-SMB2] 3.3.5.5.1 only requires uniqueness among active sessions) reused the SessionId, so the client signed with the old key. Fixed in the test client; no ksmbd action needed.
+
+### 7. Last send credit used with CreditsGranted = 0 ([MS-SMBD] 3.1.5.1)
+`SmbdCreditMgmt_ConsumeAllReceiveCredits`: for a 64 KB read ksmbd sends every fragment with `credits_granted=0` (dmesg: `credits_requested=255 credits_granted=0 ... remaining_data_length=...`), including the fragment sent with its last send credit. 3.1.5.1: a sender with `SendCredits == 1` and `CreditsGranted == 0` must stop, so the last-credit message must grant at least one credit to the peer. Windows control passes.
 
 ## Not ksmbd issues (for context)
 - `BVT_Smb2OverRdma_Smb302_*_INVALIDATE` fail on Windows Server 2025 too. Upstream `origin/main` already guards them as Inconclusive on Server 2025 and on RoCE with a Windows driver; the guards had been commented out in this branch. On 2025 the WRITE is rejected with STATUS_INVALID_PARAMETER before any RDMA transfer (well-formed request, Channel=2). Product behaviour of 2025, not a ksmbd issue.

@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Microsoft.Protocols.TestSuites.Smbd.Adapter;
@@ -467,8 +467,6 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
         // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
         // The receiver MUST terminate the connection if MaxReceiveSize < 128 (127 here); 128 and larger are valid.
-        // Note: the step log messages for 128 and uint.MaxValue wrongly say "MUST be terminated"; the asserts
-        // (successful negotiate) are correct.
         [TestMethod()]
         [TestCategory("SmbdNegotiate")]
         [Description("Verify the server will terminate the connection when MaxReceiveSize field is less than 128 bytes.")]
@@ -494,7 +492,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 MAX_FRAGMENT_SIZE);
 
             // MaxReceiveSize = 128(minimum value that can be accepted), the connection MUST be terminated
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "SMBD negotiate with MaxReceiveSize field set to 128(minimum value that can be accepted), the connection MUST be terminated.");
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "SMBD negotiate with MaxReceiveSize field set to 128 (minimum valid value), the negotiate MUST succeed.");
             maxReceiveSize = ExpectedReceiveSize;
             BasicNegotiate(
                CREDIT_REQUESTED,
@@ -504,7 +502,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                out response);
 
             // MaxReceiveSize = uint.MaxValue, the connection MUST be terminated
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, string.Format("SMBD negotiate with MaxReceiveSize field set to uint.MaxValue {0}, the connection MUST be terminated.", uint.MaxValue));
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, string.Format("SMBD negotiate with MaxReceiveSize field set to uint.MaxValue {0}, the negotiate MUST succeed.", uint.MaxValue));
             maxReceiveSize = uint.MaxValue;
             BasicNegotiate(
                CREDIT_REQUESTED,
