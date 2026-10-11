@@ -426,6 +426,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             if (status == Smb2Status.STATUS_SUCCESS)
             {
                 sessionKey = sspiClientGss.SessionKey;
+                sessionSigningEnabled = enableSigning;
                 GenerateCryptoKeys(sessionId, sessionKey, enableSigning, enableEncryption);
             }
             decoder.CryptoInfoTable = cryptoInfoTable;
@@ -445,7 +446,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             this.IoCtl(
                 1,
                 64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                SessionRequestFlags,
                 messageId,
                 sessionId,
                 TreeId,
@@ -548,6 +549,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             bool enableSigning,
             bool enableEncryption)
         {
+            sessionSigningEnabled = enableSigning;
             GenerateCryptoKeys(
                 sessionId,
                 sessionKey,
@@ -562,6 +564,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             bool isBinding
             )
         {
+            sessionSigningEnabled = enableSigning;
             GenerateCryptoKeys(
             sessionId,
             sessionKey,
@@ -578,7 +581,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             uint status = this.TreeConnect(
                     1,
                     1,
-                    Packet_Header_Flags_Values.FLAGS_SIGNED,
+                    SessionRequestFlags,
                     this.messageId,
                     this.sessionId,
                     uncSharepath,
@@ -601,7 +604,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             uint status = this.Create(
                 1,
                 64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                SessionRequestFlags,
                 this.messageId,
                 this.sessionId,
                 this.TreeId,
@@ -635,7 +638,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             uint status = Write(
                 (ushort)creditCharge,
                 64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                SessionRequestFlags,
                 this.messageId,
                 this.sessionId,
                 this.TreeId,
@@ -680,6 +683,17 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
             return WriteResponse(messageId, out this.packetHeader, out responsePayload);
         }
+
+        // WHAT: whether the current session signs its requests; set wherever the session's crypto keys are generated.
+        // WHY: SMB2_FLAGS_SIGNED must only be set on a request the client actually signs. Setting it on an
+        // encrypted-only session sends an all-zero signature that a spec-following server need not accept.
+        // SPEC: [MS-SMB2] 2.2.1 (Signature: "If the message is not signed, this field MUST be 0"; flag indicates
+        // signing) and 3.3.5.2.4 (a server verifies the signature only if the flag is set and the message is not
+        // encrypted). Spec behaviour, so no Platform check is needed.
+        private bool sessionSigningEnabled = true;
+
+        private Packet_Header_Flags_Values SessionRequestFlags =>
+            sessionSigningEnabled ? Packet_Header_Flags_Values.FLAGS_SIGNED : Packet_Header_Flags_Values.NONE;
 
         /// <summary>
         /// SMB2 header flags used by Smb2WriteOverRdmaChannel. Defaults to FLAGS_SIGNED; a test can clear it to build a
@@ -757,7 +771,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             uint status = this.Read(
                 (ushort)creditCharge,
                 64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                SessionRequestFlags,
                 this.messageId,
                 this.sessionId,
                 this.TreeId,
@@ -792,7 +806,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             uint status = this.Read(
                 (ushort)creditCharge,
                 64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                SessionRequestFlags,
                 this.messageId,
                 this.sessionId,
                 this.TreeId,
@@ -846,7 +860,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             uint status = this.Close(
                 1,
                 64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                SessionRequestFlags,
                 messageId,
                 sessionId,
                 TreeId,
@@ -867,7 +881,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             uint status = this.TreeDisconnect(
                 1,
                 64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                SessionRequestFlags,
                 messageId,
                 sessionId,
                 TreeId,
@@ -886,7 +900,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             uint status = this.LogOff(
                 1,
                 64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                SessionRequestFlags,
                 messageId,
                 sessionId,
                 out packetHeader,
@@ -928,7 +942,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                 this.Echo(
                     1,
                     (ushort)(requestCredits < 4 ? 4 : requestCredits),
-                    Packet_Header_Flags_Values.FLAGS_SIGNED,
+                    SessionRequestFlags,
                     messageId,
                     sessionId,
                     this.TreeId,
