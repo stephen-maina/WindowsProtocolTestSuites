@@ -42,13 +42,36 @@ Every edit to test-suite code (TestSuite, Adapter, config-driven logic) MUST car
 
 Also keep the `SpecSection` TestProperty accurate. Do not leave `TODO(spec)` comments once a test is fixed. Verify the section against the spec (MS Learn MCP) before citing it.
 
+## Debugging the SUT directly (optional, best effort)
+Helper scripts in `TestSuites/MS-SMBD/src/Batch/Debug/` read `SutComputerName`, `SutUserName`, `SutPassword` from the deployment ptfconfig (no secrets in the scripts). They are debugging aids only; **if they cannot connect, carry on with the driver-side evidence** (pcap, ptf-log, trx) and tell the user what you could not collect.
+- Linux SUT (ksmbd): `Batch\Debug\Invoke-SutSsh.ps1 -Command "<cmd>" [-Sudo]` (Windows OpenSSH at `C:\Windows\System32\OpenSSH\ssh.exe`, password via SSH_ASKPASS).
+- Windows SUT: `Batch\Debug\Invoke-SutWinRM.ps1 -Command "<cmd>"` (WinRM; needs TrustedHosts on the driver and PSRemoting on the SUT; untested against a live Windows SUT, so expect to adjust).
+- Always check reachability first: `Test-Connection <ip>`, port 22 or 5985. If ping fails but SMB (445) works, check the driver NIC network category: the RDMA NICs must be **Private** (`Get-NetConnectionProfile`, `Set-NetConnectionProfile -InterfaceAlias <nic> -NetworkCategory Private`); Public blocks ping/SSH/WinRM. Leave the internet-facing NIC alone.
+- Useful Linux collection: `uname -r`; `modinfo ksmbd`; `dmesg -T | grep -i ksmbd`; ksmbd debug toggles at `/sys/class/ksmbd-control/debug` (writing a name toggles it: `smb auth vfs oplock ipc conn rdma`; `[x]` = on). Workflow: enable `rdma conn smb`, `dmesg -C`, run ONE test, read `dmesg -T`, then compare with `rdma.pcap`. Match timestamps (SUT clock may be in another time zone/offset).
+- Useful Windows collection: `Get-WinEvent Microsoft-Windows-SMBServer/Operational`, `Microsoft-Windows-SMBDirect/Admin`, `Get-SmbServerConfiguration`, `Get-NetAdapterRdma`.
+- Compare against the ksmbd source (`drivers/smb` / `fs/smb/server/transport_rdma.c`) when a failure looks like a SUT defect, and quote the line that causes it.
+
 ## Known findings (Linux ksmbd vs Windows Server 2025 control)
 - ksmbd does not select the RDMA transform context (optional). Tests that need it must `Assume`, not `Assert`.
 - Encrypted SMB2 TREE_CONNECT over SMB Direct hangs on ksmbd; the Windows control passes the encryption tests: ksmbd issue.
 - ksmbd rejects valid negotiate minimums (MaxReceiveSize=128, MaxFragmentedSize=131072) and does not terminate on invalid data-transfer headers (3.1.5.8).
-- `BVT_Smb2OverRdma_Smb302_{Read,Write}_SMB2_CHANNEL_RDMA_V1_INVALIDATE` fail on Server 2025 (Write: STATUS_INVALID_PARAMETER from the server before any RDMA transfer; Read: client 0xC0000005 mid RDMA write). Upstream guards them with `Inconclusive` for Platform >= 2025 and RoCE with a Windows driver; keep those guards. "V1" is the SMB2 buffer-descriptor version, unrelated to the NDSPI v2 provider API; the SDK's `RDMANdv2::Bind` succeeds, so do not blame missing memory windows.
+- ksmbd (kernel 7.0.0-38) answers a negotiate with PreferredSendSize 0 with `MaxFragmentedSize = 0`: it clamps `max_recv_size = min(max_recv_size, preferred_send_size)` then derives `max_fragmented_recv_size = credits * max_recv_size / 2`. SUT defect; the test's floor check is correct.
+- An empty Data Transfer message (DataLength 0, RemainingDataLength 0) is a legal credit grant ([MS-SMBD] 3.1.5.4/3.1.5.8): READ-response validators must skip it. Idle/keepalive timers (120 s/5 s) are Windows defaults ([MS-SMBD] Appendix B <4>, <8>): gate timing asserts on `Platform`.
+- Windows Server 2025 over RoCE returns STATUS_INVALID_PARAMETER for every V1-family WRITE (`RDMA_V1` and `RDMA_V1_INVALIDATE`, dialects 3.0.2 and 3.1.1) although [MS-SMB2] 3.3.5.13 allows it; those tests are `Inconclusive` for `Platform >= WindowsServer2025`. `BVT_Smb2OverRdma_Smb302_{Read,Write}_SMB2_CHANNEL_RDMA_V1_INVALIDATE` also fail there (Read: client 0xC0000005 mid RDMA write); keep the guards. "V1" is the SMB2 buffer-descriptor version, unrelated to the NDSPI v2 provider API; `RDMANdv2::Bind` succeeds, so do not blame missing memory windows.
+- STATUS_INVALID_PARAMETER conditions for transform structures apply only when `Channel == SMB2_CHANNEL_RDMA_TRANSFORM` on 3.1.1 ([MS-SMB2] 3.3.5.13). A client with negotiated RDMATransformIds MUST use RDMA_TRANSFORM ([MS-SMB2] 3.2.4.7).
+- `Smb2OverSmbdTestClient` always set `SMB2_FLAGS_SIGNED` on WRITE; `SmbdAdapter.SetWriteRequestSigned(false)` clears it (needed to build the FlagsSignedNotSet scenario).
+
+## Rules for fixing tests (learned the hard way)
+- Never turn a timeout/exception into `Assert.Pass` (vacuous pass). Use a real assertion (e.g. reconnect and assert success) or `Assert.Inconclusive` with the reason.
+- Platform-specific expectation: gate with `TestConfig.IsWindowsPlatform` / `TestConfig.Platform >= Platform.WindowsServer2025`, not a spec assertion.
+- Missing environment (file, NIC) is `Inconclusive`, not a protocol failure.
+- After EACH fix: rebuild, run the targeted tests on the Windows control SUT, then the full suite before commit. Run MSBuild without `/m` if you see MSB3030 "could not copy ... not found" (parallel-build race); a rebuild fixes it.
+- Keep `Platform` in source and bin ptfconfig consistent with the SUT; reset to `NonWindows` before the Linux run.
+- Update `docs/Analysis_*` reports, the Test Design Spec and User Guide when behaviour/descriptions change.
 
 ## Gotchas
 - PowerShell: never name a function `R` or `H` (aliases). Use `net use ... /REQUIREPRIVACY` to test SMB encryption.
+- The ptfconfig is XML-namespaced: use `GetElementsByTagName('Property')`, not `SelectNodes('//Property')`.
+- The `edit` tool: if `old_str` spans a neighbouring line, `new_str` must re-include it, or that line is deleted.
 - `git push` needs `GIT_TERMINAL_PROMPT=0`; commit messages via file, not here-strings.
 - Cleanup: `SmbdTestBase.TestCleanup` -> `DeleteFile.ps1` mounts the share on the driver; "Cannot find path" noise is for files a failed test never created.

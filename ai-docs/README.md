@@ -55,7 +55,7 @@ Located in [`.github/skills/`](../.github/skills/), each subdirectory is a skill
 | Skill | Trigger Keywords | What it provides |
 |---|---|---|
 | [`file-server`](../.github/skills/file-server/SKILL.md) | FileServer, SMB, SMB2, SMB3, CIFS, MS-SMB2, MS-FSCC, MS-FSA, MS-DFSC, MS-FSRVP, MS-RSVD, MS-SQOS, file sharing | **Critical domain classification rules** (FSA vs SMB2 vs DFSC etc.), reusable adapter/base class inventory, test templates, test execution patterns. Covers 10 sub-domains via `references/`. |
-| [`smbd`](../.github/skills/smbd/SKILL.md) | MS-SMBD, SMB Direct, RDMA, RoCE, ksmbd, TestSuites/MS-SMBD | Running the SMBD suite, Windows-control-run method, trace/log debugging (trx, rdma.pcap decoding), failure classification (spec / SUT / test), MS Learn MCP spec lookup, known ksmbd findings. |
+| [`smbd`](../.github/skills/smbd/SKILL.md) | MS-SMBD, SMB Direct, RDMA, RoCE, ksmbd, TestSuites/MS-SMBD | Running the SMBD suite, Windows-control-run method, trace/log debugging (trx, rdma.pcap decoding), failure classification (spec / SUT / test), MS Learn MCP spec lookup, known ksmbd findings, optional SUT debug scripts (`TestSuites/MS-SMBD/src/Batch/Debug/Invoke-SutSsh.ps1`, `Invoke-SutWinRM.ps1`). |
 | [`generate-protocol-diff`](../.github/skills/generate-protocol-diff/SKILL.md) | Protocol diff, spec comparison, protocol version changes | Guidance for diffing protocol specification versions to identify changes requiring new or updated test cases. |
 
 #### How to Use a Skill
