@@ -687,6 +687,19 @@ To debug a test case
 
 * In Visual Studio, in the Solution Explorer window, right-click the **Solution ‘MS-SMBD_Server’**, and select **Build Solution**.
 
+### Collecting logs from the SUT (optional)
+
+Two helper scripts in `Batch\SutDebug` run a single command on the SUT using `SutComputerName`, `SutUserName` and `SutPassword` from `MS-SMBD_ServerTestSuite.deployment.ptfconfig`. They are debugging aids only; the test suite does not use them, and nothing breaks if they cannot connect.
+
+| Script | SUT | Example |
+| --- | --- | --- |
+| `Invoke-SutSsh.ps1` | Linux (ksmbd), needs `sshd` and the Windows OpenSSH client | `.\Invoke-SutSsh.ps1 -Sudo -Command "dmesg -T \| grep -i ksmbd \| tail -40"` |
+| `Invoke-SutWinRM.ps1` | Windows, needs PSRemoting on the SUT and the SUT in the driver's TrustedHosts | `.\Invoke-SutWinRM.ps1 -Command "Get-NetAdapterRdma"` |
+
+For ksmbd, debug output can be enabled with `echo rdma > /sys/class/ksmbd-control/debug` (toggles; also `conn`, `smb`). The driver's RDMA NICs must use the **Private** network category, otherwise ping, SSH and WinRM to the SUT are blocked.
+
+Test run notes: `testFile_ReadLargeFile.txt` (8 MiB) must exist in the `SMBDTest` share on non-Windows SUTs; tests that read it report Inconclusive with a message if it is missing. Set `Platform` in the deployment ptfconfig to match the SUT (`NonWindows` for ksmbd).
+
 ## Capturing RDMA Traffic
 
 This section describes how to capture RDMA traffic when running the MS-SMBD

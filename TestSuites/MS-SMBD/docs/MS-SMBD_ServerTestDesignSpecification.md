@@ -1699,7 +1699,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **SmbdCreditMgmt**| | 
 |  **Test ID**|  **SmbdCreditMgmt_NegativeParameter_CreditRequested**| 
 |  **Priority**| P1| 
-|  **Description** | Verify the connection will terminated if CreditsRequested is 0 in SMBD Negotiate Request.| 
+|  **Description** | Verify the connection will terminated if CreditsRequested is 0 in an SMBD Data Transfer message ([MS-SMBD] 3.1.5.8).| 
 |  **Prerequisites**| N/A| 
 |  **Test Execution Steps**| Set **ExpectedCreditRequested** = 1| 
 | | Connect to the server over RDMA| 
@@ -1795,7 +1795,8 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Register buffer for RDMA Read and get **BufferDescriptor**| 
 | | Modify **Offset = buffer length + 1** in  **BufferDescriptor** | 
 | | Send SMB2 READ request over RDMA Channel| 
-| | Verify no SMB2 READ response received.| 
+| | Verify no SMB2 READ response received (a failed RDMA operation or a timeout is acceptable; the server must not crash).| 
+| | Disconnect, reconnect, and establish a new SMB2 session to verify the server is still serving requests.| 
 |  **Requirements Covered**| N/A| 
 |  **Cleanup**| N/A| 
 
@@ -1812,7 +1813,8 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Register buffer for RDMA Write and get **BufferDescriptor**.| 
 | | Modify **Length = Original Length + 1** in  **BufferDescriptor** | 
 | | Send SMB2 READ request over RDMA Channel| 
-| | Verify no SMB2 READ response received.| 
+| | Verify no SMB2 READ response received (a failed RDMA operation or a timeout is acceptable; the server must not crash).| 
+| | Disconnect, reconnect, and establish a new SMB2 session to verify the server is still serving requests.| 
 |  **Requirements Covered**| N/A| 
 |  **Cleanup**| N/A| 
 
@@ -1829,7 +1831,8 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Register buffer for RDMA Write and get **BufferDescriptor**.| 
 | | Modify **Token = Original Token + 1** in  **BufferDescriptor** | 
 | | Send SMB2 READ request over RDMA Channel| 
-| | Verify no SMB2 READ response received.| 
+| | Verify no SMB2 READ response received (a failed RDMA operation or a timeout is acceptable; the server must not crash).| 
+| | Disconnect, reconnect, and establish a new SMB2 session to verify the server is still serving requests.| 
 |  **Requirements Covered**| N/A| 
 |  **Cleanup**| N/A| 
 
@@ -1846,7 +1849,8 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Register buffer for RDMA Write and get **BufferDescriptor**.| 
 | | Deregister the **BufferDescritpor** | 
 | | Send SMB2 READ request over RDMA Channel| 
-| | Verify no SMB2 READ response received.| 
+| | Verify no SMB2 READ response received (a failed RDMA operation or a timeout is acceptable; the server must not crash).| 
+| | Disconnect, reconnect, and establish a new SMB2 session to verify the server is still serving requests.| 
 |  **Requirements Covered**| N/A| 
 |  **Cleanup**| N/A| 
 
@@ -1946,7 +1950,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Establish SMB2 session **without** SigningAlgorithm and open file.| 
 | | Register memory with size **Smb2 Negotiated MaxWriteSize** for RDMA read.| 
 | | Copy file content into registered memory.| 
-| | Create SMB2 WRITE Request package with RDMA Channel Information containing SMB2_RDMA_TRANSFORM and SMB2_RDMA_CRYPTO_TRANSFORM structures.| 
+| | Create SMB2 WRITE Request package with the **SMB2_FLAGS_SIGNED** header flag cleared and RDMA Channel Information containing SMB2_RDMA_TRANSFORM and an SMB2_RDMA_CRYPTO_TRANSFORM of type SIGNING ([MS-SMB2] 3.3.5.13).| 
 | | Send SMB2 WRITE Request over SMBD Data Transfer.| 
 | | Verify server returned SMB2 WRITE Response with STATUS_INVALID_PARAMETER.| 
 |  **Requirements covered**| N/A| 
@@ -2468,7 +2472,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **Prerequisites**| N/A| 
 |  **Test Execution Steps**| Connect to server over RDMA.| 
 | | SMBD negotiate with peer.| 
-| | Establish SMB2 session and open file on **SMB 3.02** or later dialect.| 
+| | Establish SMB2 session and open file on the **SMB 3.02** dialect (no RDMA transforms are negotiated, so plain SMB2_CHANNEL_RDMA_V1 is the correct channel, [MS-SMB2] 3.2.4.7).| 
 | | Register buffer and bind to a memory window for RDMA Read.| 
 | | Write file content into registered buffer.| 
 | | Send SMB2 WRITE request to server using descriptor describes the registered buffer with Channel field set to **SMB2_CHANNEL_RDMA_V1**.| 
@@ -2478,6 +2482,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Delete file on server| 
 |  **Requirements covered**| N/A| 
 |  **Cleanup**| N/A| 
+|  **Platform note**| Inconclusive on Windows Server 2025 over RoCE: it rejects V1-family WRITE with STATUS_INVALID_PARAMETER (product behaviour).| 
 
 | &#32;| &#32; |
 | -------------| ------------- |
