@@ -689,7 +689,16 @@ To debug a test case
 
 ### Collecting logs from the SUT (optional)
 
-Two helper scripts in `Batch\SutDebug` run a single command on the SUT using `SutComputerName`, `SutUserName` and `SutPassword` from `MS-SMBD_ServerTestSuite.deployment.ptfconfig`. They are debugging aids only; the test suite does not use them, and nothing breaks if they cannot connect.
+**Automatic, per test case.** Set `SutLog.Enabled` to `true` in the deployment ptfconfig. After each test the SUT's own log for that test is saved in the test's diagnostics folder (next to `rdma.pcap` and `ptf-log.ndjson`):
+
+| SUT (`Platform`) | File | How |
+| --- | --- | --- |
+| Linux, `NonWindows` | `sut-ksmbd.log` | SSH + sudo. Markers `WPTS-BEGIN-<id>` / `WPTS-END-<id>` are written to `/dev/kmsg` and the `dmesg` slice between them is saved, so SUT/driver clock skew does not matter. For useful ksmbd detail enable debug first (see below). |
+| Windows | `sut-windows.log` | WinRM. The SMB Server and SMB Direct event logs since the SUT's own start time are saved. Needs PSRemoting on the SUT and the SUT in the driver's TrustedHosts. |
+
+It is best-effort: if the SUT cannot be reached, collection is skipped for the rest of the run and no test is affected. It adds roughly 1-3 s per test.
+
+**Manual.** Two helper scripts in `Batch\SutDebug` run a single command on the SUT using `SutComputerName`, `SutUserName` and `SutPassword` from `MS-SMBD_ServerTestSuite.deployment.ptfconfig`. They are debugging aids only; the test suite does not use them, and nothing breaks if they cannot connect.
 
 | Script | SUT | Example |
 | --- | --- | --- |

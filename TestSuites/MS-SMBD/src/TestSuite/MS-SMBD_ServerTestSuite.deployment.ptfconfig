@@ -61,6 +61,14 @@
     -->
 	  <Property name="DriverPlatform" value="WindowsServer2025"/>
 
+	  <!--
+	    Optional debugging aid. When true, the SUT's own log for each test case is saved in the test's diagnostics
+	    folder: sut-ksmbd.log (Platform=NonWindows, over SSH, needs sshd + sudo) or sut-windows.log (Windows SUT, over
+	    WinRM, needs PSRemoting + TrustedHosts). Uses SutUserName/SutPassword. Best-effort: if the SUT cannot be
+	    reached the collection is skipped for the rest of the run and no test is affected.
+	  -->
+	  <Property name="SutLog.Enabled" value="true"/>
+
 	  <!--The transport of RDMA card
 	        InfiniBand,
 			RoCE,

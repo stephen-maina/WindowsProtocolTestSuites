@@ -6,6 +6,7 @@ using Microsoft.Protocols.TestSuites.Smbd.Adapter;
 using Microsoft.Protocols.TestSuites.Diagnostics.Lifecycle;
 using Microsoft.Protocols.TestSuites.Diagnostics.Runner;
 using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
+using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Sut;
 using Microsoft.Protocols.TestTools;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
@@ -21,6 +22,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         #region Variables
         private ISutProtocolControlAdapter sutProtocolControlAdapter;
         private DiagnosticsInvocationLifecycle diagnosticsLifecycle;
+        private SutLogCollector sutLogCollector;
         protected SmbdAdapter smbdAdapter;
         protected List<string> fileNameList;
 
@@ -45,6 +47,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     AppContext.BaseDirectory,
                 CreateRunnerTestExecutionIdentity);
             sutProtocolControlAdapter = BaseTestSite.GetAdapter<ISutProtocolControlAdapter>();
+            // WHAT/WHY: start the per-test SUT log window (best-effort debugging aid, see SutLogCollector).
+            // SPEC: not protocol behaviour.
+            sutLogCollector = SutLogCollector.Create(
+                BaseTestSite.Properties,
+                BaseTestSite.TestProperties.TryGetValue("CurrentTestCaseName", out object testName)
+                    ? testName as string
+                    : null);
+            sutLogCollector?.Begin();
             this.smbdAdapter = new SmbdAdapter(BaseTestSite, LogSmbdEndpointEvent);
             fileNameList = new List<string>();
             SmbdUtilities.LogTestCaseDescription(BaseTestSite);
@@ -83,6 +93,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
             finally
             {
+                try
+                {
+                    // WHAT/WHY: close the SUT log window and store the slice next to the test's other artifacts.
+                    sutLogCollector?.EndAndSave(diagnosticsLifecycle?.ArtifactDirectoryPath);
+                }
+                catch
+                {
+                }
+
                 if (cleanupCompleted)
                 {
                     diagnosticsLifecycle?.MarkCleanupCompleted();

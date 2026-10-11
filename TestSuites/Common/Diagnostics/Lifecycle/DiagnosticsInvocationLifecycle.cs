@@ -85,6 +85,9 @@ public sealed class DiagnosticsInvocationLifecycle : IDisposable
 
     public bool IsEnabled => runtime is not null;
 
+    // Lets suite-specific collectors (for example SUT logs) add files next to the standard artifacts.
+    public string? ArtifactDirectoryPath => runtime?.ArtifactInvocation.DirectoryPath;
+
     public LifecycleStatus CleanupStatus =>
         (LifecycleStatus)Volatile.Read(ref cleanupStatus);
 
