@@ -1,4 +1,4 @@
-﻿# MS-SMBD Server Test Suite User Guide
+# MS-SMBD Server Test Suite User Guide
 
 ## Contents
 
@@ -689,23 +689,41 @@ To debug a test case
 
 ### Collecting logs from the SUT (optional)
 
-**Automatic, per test case.** Set `SutLog.Enabled` to `true` in the deployment ptfconfig. After each test the SUT's own log for that test is saved in the test's diagnostics folder (next to `rdma.pcap` and `ptf-log.ndjson`):
+**Automatic, per test case.** After each test case the SUT's own log for that test is saved in the test's diagnostics folder (`C:\WPTS-Diagnostics\session-<time>\tests\<TestName>__<id>\`, next to `rdma.pcap` and `ptf-log.ndjson`). It is off unless you enable it.
 
-| SUT (`Platform`) | File | How |
+| SUT (`Platform`) | File | What is collected |
 | --- | --- | --- |
-| Linux, `NonWindows` | `sut-ksmbd.log` | SSH + sudo. Markers `WPTS-BEGIN-<id>` / `WPTS-END-<id>` are written to `/dev/kmsg` and the `dmesg` slice between them is saved, so SUT/driver clock skew does not matter. For useful ksmbd detail enable debug first (see below). |
-| Windows | `sut-windows.log` | WinRM. The SMB Server and SMB Direct event logs since the SUT's own start time are saved. Needs PSRemoting on the SUT and the SUT in the driver's TrustedHosts. |
+| Linux, `NonWindows` | `sut-linux-dmesg.log` | The kernel log (`dmesg`) for the test's time window. Because it is the whole kernel log, it works for **any in-kernel Linux SMB server (ksmbd or another implementation)**, not only ksmbd. Markers `WPTS-BEGIN-<id>` / `WPTS-END-<id>` are written to `/dev/kmsg` and the `dmesg` lines between them are saved, so SUT/driver clock skew does not matter. |
+| Windows | `sut-windows.log` | The SMB Server and SMB Direct event logs since the SUT's own start time, over WinRM. |
 
-It is best-effort: if the SUT cannot be reached, collection is skipped for the rest of the run and no test is affected. It adds roughly 1-3 s per test.
+#### Enabling collection from a Linux SUT
 
+1. **Driver:** the Windows OpenSSH client must be installed (`C:\Windows\System32\OpenSSH\ssh.exe`; Settings > Optional features > OpenSSH Client). On a Linux driver, `ssh` must be on the PATH.
+2. **Driver network:** the NICs used to reach the SUT must be on the **Private** network category (`Get-NetConnectionProfile`; set with `Set-NetConnectionProfile -InterfaceAlias <name> -NetworkCategory Private`). Otherwise ping and SSH are blocked.
+3. **SUT:** install and start the SSH server (`sudo apt install openssh-server`; `systemctl status ssh`) and make sure port 22 is reachable (`sudo ufw status`, `sudo iptables -S`).
+4. **SUT account:** `SutUserName` must be allowed to run `sudo` with `SutPassword` (reading `dmesg` and writing `/dev/kmsg` need root). Check with `ssh <user>@<sut> "sudo -S -p '' true"` typed with the password.
+5. **Ptfconfig:** in `MS-SMBD_ServerTestSuite.deployment.ptfconfig` set `SutComputerName`, `SutUserName`, `SutPassword`, `Platform` = `NonWindows`, and `<Property name="SutLog.Enabled" value="true"/>`.
+6. **Make the server log something useful (implementation specific).** `dmesg` only holds what the SMB server writes to the kernel log. With default settings that is usually very little.
+   * ksmbd: `echo rdma | sudo tee /sys/class/ksmbd-control/debug` (this toggles; also `conn`, `smb`, `auth`, `vfs`, `oplock`, `ipc`). Read it back with `cat /sys/class/ksmbd-control/debug`; `[x]` means on.
+   * Other in-kernel implementations: use whatever debug switch the implementation provides, for example dynamic debug: `echo 'module <module_name> +p' | sudo tee /sys/kernel/debug/dynamic_debug/control`.
+   * Raise the kernel ring buffer if a single test produces a lot of output (boot parameter `log_buf_len=16M`), because old lines are overwritten.
+7. **Run the tests.** Open `sut-linux-dmesg.log` in the failing test's folder. If the file is missing, the SUT could not be reached (collection turns itself off for the rest of the run and no test is affected).
+
+Notes: the SSH password is passed through `SSH_ASKPASS` and stdin, not on a command line. Collection adds roughly 1-3 s per test. A user-space SMB server (for example Samba) logs to its own log files, not `dmesg`; for those use the manual script below to fetch them.
+
+#### Enabling collection from a Windows SUT
+
+1. SUT: run `Enable-PSRemoting -Force`; `SutUserName` must be a local administrator.
+2. Driver (elevated, once): `Set-Item WSMan:\localhost\Client\TrustedHosts -Value <SutComputerName> -Concatenate -Force`.
+3. Ptfconfig: set `Platform` to the SUT's Windows version (for example `WindowsServer2025`) and `SutLog.Enabled` = `true`.
 **Manual.** Two helper scripts in `Batch\SutDebug` run a single command on the SUT using `SutComputerName`, `SutUserName` and `SutPassword` from `MS-SMBD_ServerTestSuite.deployment.ptfconfig`. They are debugging aids only; the test suite does not use them, and nothing breaks if they cannot connect.
 
 | Script | SUT | Example |
 | --- | --- | --- |
-| `Invoke-SutSsh.ps1` | Linux (ksmbd), needs `sshd` and the Windows OpenSSH client | `.\Invoke-SutSsh.ps1 -Sudo -Command "dmesg -T \| grep -i ksmbd \| tail -40"` |
+| `Invoke-SutSsh.ps1` | Linux (any SMB server), needs `sshd` and the Windows OpenSSH client | `.\Invoke-SutSsh.ps1 -Sudo -Command "dmesg -T \| grep -i ksmbd \| tail -40"` |
 | `Invoke-SutWinRM.ps1` | Windows, needs PSRemoting on the SUT and the SUT in the driver's TrustedHosts | `.\Invoke-SutWinRM.ps1 -Command "Get-NetAdapterRdma"` |
 
-For ksmbd, debug output can be enabled with `echo rdma > /sys/class/ksmbd-control/debug` (toggles; also `conn`, `smb`). The driver's RDMA NICs must use the **Private** network category, otherwise ping, SSH and WinRM to the SUT are blocked.
+The driver's RDMA NICs must use the **Private** network category, otherwise ping, SSH and WinRM to the SUT are blocked.
 
 Test run notes: `testFile_ReadLargeFile.txt` (8 MiB) must exist in the `SMBDTest` share on non-Windows SUTs; tests that read it report Inconclusive with a message if it is missing. Set `Platform` in the deployment ptfconfig to match the SUT (`NonWindows` for ksmbd).
 

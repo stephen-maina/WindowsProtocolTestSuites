@@ -12,7 +12,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Sut;
 
 /// <summary>
 /// WHAT: Collects the SUT's own log for the duration of one test case, so a failure can be debugged from the
-/// product's side (ksmbd kernel log on Linux, SMB Server / SMB Direct event logs on Windows) without having to
+/// product's side (kernel log (dmesg) on Linux, which covers ksmbd or any other SMB server implementation, SMB Server / SMB Direct event logs on Windows) without having to
 /// map one large log back to test cases afterwards.
 /// WHY: Driver-side traces show what the driver sent and received, not why the SUT reacted. The SUT clock can
 /// differ from the driver clock, so the window is delimited with SUT-side markers (Linux) or the SUT's own
@@ -24,7 +24,7 @@ public sealed class SutLogCollector
     public const string EnabledProperty = "SutLog.Enabled";
 
     private const int CommandTimeoutMilliseconds = 30000;
-    private const string LinuxLogFileName = "sut-ksmbd.log";
+    private const string LinuxLogFileName = "sut-linux-dmesg.log";
     private const string WindowsLogFileName = "sut-windows.log";
 
     // After one connection failure every later test would wait for the connect timeout again, so give up for the run.
