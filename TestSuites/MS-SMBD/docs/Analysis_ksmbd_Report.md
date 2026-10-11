@@ -26,6 +26,8 @@ Tests: `SmbdDataTransfer_NegativeParameter_*`, `SmbdCreditMgmt_NegativeParameter
 ### 3. Credit stall with a small credit window
 With 1 client credit (`BVT_..._OperationWithMinimumCredits`) and with reassembly of many small segments (`SmallLengthSegment`, `VariableLengthSegment`), ksmbd stops granting credits once receive buffers are held in reassembly. Client bookkeeping verified correct (263 sent against 263 granted). Windows control passes. (Mechanism medium confidence.)
 
+Evidence (kernel 7.0.0-38, pcap + dmesg): in `OperationWithMinimumCredits` the client sends fragment 1 (remRem=64308); ksmbd answers with an empty message granting 1 credit; the client uses it for fragment 2 (remRem=62968) and then correctly stops (`SendCredits`=0, [MS-SMBD] 3.1.5.1). ksmbd sends no further grant until its keepalive ~120 s later. In `SmallLengthSegment` the client sends exactly 255 one-byte fragments (all 255 credits), ksmbd logs `RFC1002 header 65536 bytes` and grants nothing until the keepalive. Reassembly holds the receive buffers, so no credits can be reissued ([MS-SMBD] 3.1.5.8: the receiver must grant credits to let the sender continue).
+
 ### 4. Encrypted SMB2 over SMB Direct never answered (24 + 2 tests)
 - Encrypted TREE_CONNECT (transform header, 254 bytes) receives no SMB2 reply; ksmbd sends only an empty SMBD credit-grant and does not disconnect. Client times out after ~120 s.
 - Pcap: ksmbd selected cipher AES-128-CCM; SessionFlags 0; transform header well-formed (session id 2, 11-byte nonce, OriginalMessageSize 120, Flags 1).
