@@ -1402,7 +1402,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             // WHAT: retry the whole connect/negotiate/session setup up to 3 times, waiting between attempts.
             // WHY: multi-scenario NegativeParameter tests reconnect right after the server terminated the previous
             //      connection; the server may still be tearing down the old session/connection, so the new SMB2 session
-            //      setup can transiently fail (e.g. STATUS_ACCESS_DENIED). That is test setup, not the behaviour under test.
+            //      setup can transiently fail. That is test setup, not the behaviour under test. (A persistent ACCESS_DENIED
+            //      here was NOT a teardown race: it was stale client crypto state, now cleared in ConnectToServerOverRDMA.)
             // SPEC: [MS-SMBD] 3.1.7.1 / 3.1.5.8 - the server terminates the connection; the spec gives no bound on how
             //       quickly the upper layer releases the old session, so the client must not assume it is instantaneous.
             NtStatus status = NtStatus.STATUS_SUCCESS;

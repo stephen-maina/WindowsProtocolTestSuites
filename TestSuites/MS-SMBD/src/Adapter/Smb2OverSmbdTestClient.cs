@@ -187,6 +187,15 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         {
             this.decoder.TransportType = Smb2TransportType.Rdma;
             messageId = 0;
+
+            // WHAT: drop all per-session crypto state before a new RDMA connection is made.
+            // WHY: GenerateCryptoKeys keys cryptoInfoTable by SessionId and treats an existing entry as re-authentication,
+            //      reusing the OLD session key. A server that hands out the same SessionId on a new connection (ksmbd does,
+            //      Windows does not) then verifies a signature made with the wrong key -> "bad smb2 signature" / ACCESS_DENIED.
+            // SPEC: [MS-SMB2] 3.2.4.2 / 3.2.5.3 - Session (and its keys) belongs to one Connection; a new connection starts
+            //       with an empty SessionTable, and SessionId values are only unique per server-assigned session.
+            cryptoInfoTable.Clear();
+
             return smbdClient.ConnectToServerOverRdma(
                 clientIp,
                 serverIp,

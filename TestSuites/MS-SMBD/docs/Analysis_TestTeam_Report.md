@@ -28,5 +28,13 @@ Every change carries a WHAT/WHY/SPEC comment in the code.
 
 New platform finding: Windows Server 2025 over RoCE rejects every V1-family WRITE (V1 and V1_INVALIDATE, 3.0.2 and 3.1.1) with STATUS_INVALID_PARAMETER, although [MS-SMB2] 3.3.5.13 allows V1. `Smb2OverRdma_Write_SMB2_CHANNEL_RDMA_V1` is gated Inconclusive on 2025 and runs on other platforms.
 
+## Fixed after the Ubuntu (ksmbd) runs
+| # | Defect | Fix |
+|---|---|---|
+| 9 | `SMB2_FLAGS_SIGNED` was set on every request, even for encryption-only sessions (zero signature) | Flag is set only when the session signs ([MS-SMB2] 2.2.1, 3.3.5.2.4) |
+| 10 | Client kept crypto state across reconnects. A server that reuses a SessionId on a new connection (ksmbd does, Windows does not) made `GenerateCryptoKeys` treat it as re-authentication with the old key, giving "bad smb2 signature" / ACCESS_DENIED | `cryptoInfoTable` is cleared in `ConnectToServerOverRDMA` ([MS-SMB2] 3.2.4.2). Fixes the multi-scenario `SmbdDataTransfer_NegativeParameter_DataLength_AgainstMessageLength`, `DataLength_AgainstMaxReceiveSize` and `DataOffset_AgainstMessageLength` on ksmbd |
+
+Both are spec-level client defects; neither is gated by Platform. Validate on Windows Server 2025 when it is reconnected.
+
 ## Still open
 `SmallLengthSegment`/`VariableLengthSegment` and `OperationWithMinimumCredits` stall on ksmbd (SUT issue, see ksmbd report); retest on Ubuntu to confirm.
