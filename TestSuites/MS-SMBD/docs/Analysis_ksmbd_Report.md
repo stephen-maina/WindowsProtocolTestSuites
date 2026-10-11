@@ -42,3 +42,7 @@ Three `NegativeParameter_*` tests re-open a session 50 ms after killing the firs
 ## Not ksmbd issues (for context)
 - `BVT_Smb2OverRdma_Smb302_*_INVALIDATE` fail on Windows Server 2025 too. Upstream `origin/main` already guards them as Inconclusive on Server 2025 and on RoCE with a Windows driver; the guards had been commented out in this branch. On 2025 the WRITE is rejected with STATUS_INVALID_PARAMETER before any RDMA transfer (well-formed request, Channel=2). Product behaviour of 2025, not a ksmbd issue.
 - Empty credit-grant messages are legal ([MS-SMBD] 3.1.5.8); tests that treated them as data were fixed.
+
+## Confirmed on kernel 7.0.0-38 with ksmbd debug (rdma/conn/smb): PreferredSendSizeWithZero
+Client sent PreferredSendSize 0, MaxRecvSize 8192, MaxFragmentedSize 262144. ksmbd log: `MaxSendSize: 0 ... MaxFragmentedSize: 262144`, then it replied with MaxFragmentedSize 0.
+Cause (ksmbd negotiate code): `sp->max_recv_size = min(sp->max_recv_size, preferred_send_size)` = 0, then `sp->max_fragmented_recv_size = (recv_credit_max * sp->max_recv_size) / 2` = 0, and that value is sent as the response MaxFragmentedSize. The server's own receive limit is derived from the peer's preferred send size, so a client sending 0 makes the server advertise it cannot receive any fragmented payload. Per [MS-SMBD] 2.2.2 the response fields describe the server's own receive capability; the test (floor on MaxFragmentedSize) is correct. Defect: ksmbd.
