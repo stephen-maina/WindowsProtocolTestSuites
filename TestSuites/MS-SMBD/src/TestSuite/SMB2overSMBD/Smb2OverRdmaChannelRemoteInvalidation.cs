@@ -445,8 +445,12 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         {
             EstablishConnectionAndOpenFile(fileName, Smb300OnlyDialects);
 
-            uint fileSize = smbdAdapter.Smb2MaxReadSize;
-            fileSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
+            // WHAT: use a small (4 KiB) file instead of the full RdmaChannelDataSizeInByte (1 MiB).
+            // WHY:  the expected outcome (STATUS_INVALID_PARAMETER) does not depend on the amount of data. Seeding 1 MiB with
+            //       inline WRITEs needs one request per (MaxSendSize - headers) bytes; against a peer with a small MaxSendSize
+            //       (ksmbd: 1364) that is ~840 round trips and the test ran for many minutes.
+            // SPEC: [MS-SMB2] 3.3.5.12 - the Channel/dialect check fails the READ before any file data is touched.
+            uint fileSize = Math.Min(smbdAdapter.TestConfig.RdmaChannelDataSizeInByte, 4096u);
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Populate file with ordinary inline SMB2 WRITE requests.");
