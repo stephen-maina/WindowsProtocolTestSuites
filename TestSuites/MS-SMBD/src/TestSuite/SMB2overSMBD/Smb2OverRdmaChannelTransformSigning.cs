@@ -233,8 +233,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             // is not empty, so a server that did not accept the negotiate context makes this scenario untestable.
             BaseTestSite.Assume.IsTrue(
                 smbdAdapter.SelectedRdmaTransformIds.Contains(Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING),
-                "Server MUST return SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate " +
-                "context for this scenario. Connection.RDMATransformIds is [{0}].",
+                "Server did not select SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate " +
+                "context (optional per [MS-SMB2] 3.3.5.4), so this scenario is not testable. Connection.RDMATransformIds is [{0}].",
                 string.Join(", ", smbdAdapter.SelectedRdmaTransformIds));
 
            
