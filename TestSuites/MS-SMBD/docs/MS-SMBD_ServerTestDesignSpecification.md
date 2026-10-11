@@ -1582,7 +1582,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Verify server will send message in **KeepAliveInterval** seconds. | 
 | | Verify the received message with SMB_DIRECT_RESPONSE_REQUESTED flag.| 
 | | Send empty SMBD Data Transfer message with SMB_DIRECT_RESPONSE_REQUESTED as response.| 
-| | Verify will receive server returned SMBD Data Transfer message in 5 seconds.| 
+| | Verify will receive server returned SMBD Data Transfer message in 5 seconds. (Windows only: the 5 s timer and repeated keepalive are Windows defaults, [MS-SMBD] Appendix B <4>; other SUTs only verify the first keepalive.)| 
 | | Stop responding.| 
 | | Verify server will send message in **KeepAliveInterval** seconds. | 
 | | Send empty SMBD Data Transfer message as response.| 
