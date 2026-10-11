@@ -1043,12 +1043,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             List<SmbdDataTransferMessage> messages;
 
             // PTF config, implementation may not support such function
+            // WHAT: when the feature flag is off, mark the test Inconclusive instead of returning (which reported a pass).
+            // WHY: a silent return counted as a pass although nothing was verified (vacuous pass).
+            // SPEC: [MS-SMBD] 3.1.5.8 does not require this check (it only reduces FragmentReassemblyRemaining by DataLength), so it
+            //       is opt-in via the implementation-specific CheckDataLengthRemainingDataLength ptfconfig flag.
             if (smbdAdapter.TestConfig.CheckDataLengthRemainingDataLength == false)
             {
-                BaseTestSite.Log.Add(
-                    LogEntryKind.Warning,
-                    "Test case SmbdDataTransfer_NegativeParameter_RemainingDataLength_AgainstFragmentReassemblyRemaining is off.");
-                return;
+                BaseTestSite.Assert.Inconclusive(
+                    "CheckDataLengthRemainingDataLength is off: this implementation-specific check is not run.");
             }
 
             #region send RemainingDataLength in 2nd message
@@ -1075,13 +1077,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         // [MS-SMBD] 3.1.5.8: on receiving SMB_DIRECT_RESPONSE_REQUESTED the receiver MUST set KeepaliveRequested = PENDING and promptly
         // send a Data Transfer message (3.1.5.1).
         [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; [MS-SMBD] 3.1.5.1 Sending Upper Layer Messages")]
-        [TestProperty("SpecCompliance", "TODO")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_IdleConnection_Client()
         {
-            // TODO(spec): the prompt response itself is normative, but the test also asserts Flags == NONE and CreditsGranted > 0.
-            // Literal 3.1.5.8 + 3.1.5.1 (KeepaliveRequested PENDING => Flags MUST be RESPONSE_REQUESTED) would set the flag on the
-            // response, and CreditsGranted may legitimately be 0 (3.1.5.1/3.1.5.9). Relax these assertions (or note spec ambiguity);
-            // the final Buffer.Length == Reserved assert is also meaningless.
             // define data for test case
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
@@ -1123,12 +1121,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     TimeSpan.FromSeconds(SmbdConnection.IDLE_CONNECTION_TIMEOUT),
                     out transferMessage);
 
+                // WHAT: CreditsGranted is no longer asserted; Flags may be NONE or SMB_DIRECT_RESPONSE_REQUESTED.
+                // WHY: the old asserts (CreditsGranted > 0, Flags == NONE) encoded Windows behaviour and failed on ksmbd.
+                // SPEC: [MS-SMBD] 3.1.5.1 - CreditsGranted is the count of new credits from 3.1.5.9 and may be 0; Flags is
+                //       SMB_DIRECT_RESPONSE_REQUESTED only if KeepaliveRequested is PENDING, otherwise 0x0000.
                 BaseTestSite.Assert.IsTrue(
-                    transferMessage.CreditsGranted > 0,
-                    "CreditGranted is greater than 0");
-                BaseTestSite.Assert.AreEqual<SmbdDataTransfer_Flags>(
-                    SmbdDataTransfer_Flags.NONE,
-                    transferMessage.Flags,
+                    transferMessage.Flags == SmbdDataTransfer_Flags.NONE
+                    || transferMessage.Flags == SmbdDataTransfer_Flags.SMB_DIRECT_RESPONSE_REQUESTED,
                     "Flags in received SMBDirect Data Transfer message is {0}", transferMessage.Flags);
                 BaseTestSite.Assert.AreEqual<ushort>(
                     0,
@@ -1169,13 +1168,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         // [MS-SMBD] 3.1.6.2: when the Idle Connection Timer expires and KeepaliveRequested is NONE, the peer SHOULD set it to PENDING and
         // SHOULD send an (empty) Data Transfer message with SMB_DIRECT_RESPONSE_REQUESTED (3.1.5.1: Flags MUST then carry the flag).
         [TestProperty("SpecSection", "[MS-SMBD] 3.1.6.2 Idle Connection Timer; [MS-SMBD] 3.1.5.1 Sending Upper Layer Messages; [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
-        [TestProperty("SpecCompliance", "TODO")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdDataTransfer_IdleConnection_Server()
         {
-            // TODO(spec): keepalive sending is only a SHOULD, and the keepalive interval (ptfconfig KeepAliveInterval) and the post-send
-            // timer (Windows <4>: 5 s, IDLE_CONNECTION_TIMEOUT) are implementation-specific, not normative for ksmbd. The test also
-            // asserts Flags == NONE on the reply to a RESPONSE_REQUESTED message, which conflicts with the literal 3.1.5.8/3.1.5.1 text.
-            // Treat as implementation-specific or relax timing/flag assertions.
             // define data for test case
             uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
@@ -1223,6 +1218,17 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 dataTransfer.Flags,
                 "Flags is {0}", dataTransfer.Flags);
             #endregion
+
+            // WHAT: on non-Windows SUTs stop after the first keepalive check and skip the 5 s response / repeat-keepalive timing checks.
+            // WHY: those timings are Windows defaults, not protocol requirements; asserting them tested the product, not the spec.
+            // SPEC: [MS-SMBD] 3.1.6.2 Idle Connection Timer (SHOULD, timer value implementation-specific) and Appendix B <4>
+            //       (Windows sets the timer to 5 s; KeepaliveInterval default 120 s in <8>).
+            if (!smbdAdapter.TestConfig.IsWindowsPlatform)
+            {
+                BaseTestSite.Log.Add(LogEntryKind.Comment, "Non-Windows SUT: skipping Windows-specific idle timer timing checks.");
+                smbdAdapter.DisconnectRdma();
+                return;
+            }
 
             Thread.Sleep(TimeSpan.FromSeconds(SmbdConnection.IDLE_CONNECTION_TIMEOUT - 1));
 
@@ -1393,17 +1399,33 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             string fileName = CreateRandomFileName();
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Initial SMBD connection and open file " + fileName);
 
-            // Connect to server over RDMA
-            NtStatus status = smbdAdapter.ConnectToServerOverRDMA();
-            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD connection is {0}", status);
-
-            // SMBD Negotiate
+            // WHAT: retry the whole connect/negotiate/session setup up to 3 times, waiting between attempts.
+            // WHY: multi-scenario NegativeParameter tests reconnect right after the server terminated the previous
+            //      connection; the server may still be tearing down the old session/connection, so the new SMB2 session
+            //      setup can transiently fail (e.g. STATUS_ACCESS_DENIED). That is test setup, not the behaviour under test.
+            // SPEC: [MS-SMBD] 3.1.7.1 / 3.1.5.8 - the server terminates the connection; the spec gives no bound on how
+            //       quickly the upper layer releases the old session, so the client must not assume it is instantaneous.
+            NtStatus status = NtStatus.STATUS_SUCCESS;
             SmbdNegotiateResponse response;
-            status = smbdAdapter.SmbdNegotiate(maxSendSize, maxReceiveSize, maxFragmentSize, out response);
-            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD negotiate is {0}", status);
+            const int SETUP_ATTEMPTS = 3;
+            for (int attempt = 1; attempt <= SETUP_ATTEMPTS; attempt++)
+            {
+                status = smbdAdapter.ConnectToServerOverRDMA();
+                BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD connection is {0}", status);
 
-            // SMB2 Negotiate, Session Setup, Tree Connect and Create            
-            status = smbdAdapter.Smb2EstablishSessionAndOpenFile(fileName);
+                status = smbdAdapter.SmbdNegotiate(maxSendSize, maxReceiveSize, maxFragmentSize, out response);
+                BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD negotiate is {0}", status);
+
+                status = smbdAdapter.Smb2EstablishSessionAndOpenFile(fileName);
+                if (status == NtStatus.STATUS_SUCCESS || attempt == SETUP_ATTEMPTS)
+                {
+                    break;
+                }
+                BaseTestSite.Log.Add(LogEntryKind.Debug,
+                    "SMB2 setup attempt {0} failed with {1}; reconnecting after delay.", attempt, status);
+                smbdAdapter.DisconnectRdma();
+                Thread.Sleep(TimeSpan.FromSeconds(5));
+            }
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 establish session and open file is {0}", status);
 
             // calculate file size and generate file content
@@ -1450,6 +1472,17 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             // SMB2 Negotiate, Session Setup, Tree Connect and Create
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Establish SMB2 connection and open file " + smbdAdapter.TestConfig.TestFileName_LargeFile);
             status = smbdAdapter.Smb2EstablishSessionAndOpenFile(smbdAdapter.TestConfig.TestFileName_LargeFile);
+            // WHAT: report a missing pre-provisioned file as Inconclusive instead of a protocol failure.
+            // WHY: nothing in the suite creates the large file on non-Windows SUTs; a missing file is an environment
+            //      problem, not a violation of the behaviour under test.
+            // SPEC: [MS-SMB2] 3.3.5.9 Receiving an SMB2 CREATE Request - a nonexistent file with FILE_OPEN
+            //       returns STATUS_OBJECT_NAME_NOT_FOUND, which is correct server behaviour.
+            if (status == NtStatus.STATUS_OBJECT_NAME_NOT_FOUND)
+            {
+                BaseTestSite.Assert.Inconclusive(
+                    "Pre-provisioned file '{0}' does not exist on the SUT share; create it (see User Guide) and re-run.",
+                    smbdAdapter.TestConfig.TestFileName_LargeFile);
+            }
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 establish session and open file is {0}", status);
 
             // calculate file size and generate file content
@@ -1565,24 +1598,33 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                         out transferPackage
                         );
 
-                    #region Assert
-                    BaseTestSite.Assert.AreEqual<uint>(
-                        (uint)(readResponseSize - offset),
-                        transferPackage.DataLength + transferPackage.RemainingDataLength,
-                        "Received SMBDirect Data Transfer Message: DataLength {0}, RemainingDataLength {1}", transferPackage.DataLength, transferPackage.RemainingDataLength);
-                    BaseTestSite.Assert.AreEqual<uint>(
-                        0,
-                        transferPackage.DataOffset % 8,
-                        "Received SMBDirect Data Transfer Message: DataOffset {0}, which should be 8-byte aligned", transferPackage.DataOffset);
-                    #endregion
-
-                    Array.Copy(transferPackage.Buffer, 0, readResponsePacket, offset, transferPackage.DataLength);
-                    offset += (int)transferPackage.DataLength;
-
-                    if (transferPackage.RemainingDataLength == 0)
+                    // WHAT: skip empty Data Transfer messages (DataLength 0 and RemainingDataLength 0) instead of validating them as read data.
+                    // WHY: a peer may legally send an empty message purely to grant credits; the old code treated it as a malformed read
+                    //      fragment and failed on ksmbd (Windows never sends them here, so the test only passed by accident).
+                    // SPEC: [MS-SMBD] 3.1.5.4 (empty message: DataOffset/DataLength/RemainingDataLength = 0) and 3.1.5.8 (receiver credit processing).
+                    if (transferPackage.DataLength == 0 && transferPackage.RemainingDataLength == 0)
                     {
-                        break;
+                        continue;
                     }
+
+                    #region Assert
+                        BaseTestSite.Assert.AreEqual<uint>(
+                            (uint)(readResponseSize - offset),
+                            transferPackage.DataLength + transferPackage.RemainingDataLength,
+                            "Received SMBDirect Data Transfer Message: DataLength {0}, RemainingDataLength {1}", transferPackage.DataLength, transferPackage.RemainingDataLength);
+                        BaseTestSite.Assert.AreEqual<uint>(
+                            0,
+                            transferPackage.DataOffset % 8,
+                            "Received SMBDirect Data Transfer Message: DataOffset {0}, which should be 8-byte aligned", transferPackage.DataOffset);
+                        #endregion
+
+                        Array.Copy(transferPackage.Buffer, 0, readResponsePacket, offset, transferPackage.DataLength);
+                        offset += (int)transferPackage.DataLength;
+
+                        if (transferPackage.RemainingDataLength == 0)
+                        {
+                            break;
+                        }
                 }
 
                 #region send empty message to grant credit

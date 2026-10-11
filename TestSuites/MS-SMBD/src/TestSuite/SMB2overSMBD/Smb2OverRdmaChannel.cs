@@ -400,12 +400,17 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
             catch (TimeoutException)
             {
-                BaseTestSite.Assert.Pass("No SMB2 READ response received");
+                // WHAT: log the missing response and continue to the reconnect check instead of Assert.Pass.
+                // WHY: Assert.Pass ended the test here, so the "server will not crash" check below never ran (vacuous pass).
+                // SPEC: [MS-SMB2] 3.3.5.12 / [MS-SMBD] 3.1.4.5 do not define the response to an invalid descriptor, so no response is
+                //       acceptable; the verifiable requirement is that the server remains available for a new connection.
+                BaseTestSite.Log.Add(LogEntryKind.Comment, "No SMB2 READ response received for the invalid descriptor; verifying server availability next.");
             }
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Disconnect and reconnect to verify server is available.");
             smbdAdapter.DisconnectRdma();
-            smbdAdapter.ConnectToServerOverRDMA();
+            NtStatus reconnectStatus = smbdAdapter.ConnectToServerOverRDMA();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, reconnectStatus, "Server should accept a new RDMA connection, status {0}", reconnectStatus);
         }
 
         [TestMethod()]
@@ -449,12 +454,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
             catch (TimeoutException)
             {
-                BaseTestSite.Assert.Pass("No SMB2 READ response received");
+                // WHAT/WHY/SPEC: same as Smb2OverRdmaChannel_InvalidBufferDescriptor_Offset - no response is acceptable
+                // ([MS-SMB2] 3.3.5.12 / [MS-SMBD] 3.1.4.5 leave it undefined); availability is verified below instead of Assert.Pass.
+                BaseTestSite.Log.Add(LogEntryKind.Comment, "No SMB2 READ response received for the invalid descriptor; verifying server availability next.");
             }
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Disconnect and reconnect to verify server is available.");
             smbdAdapter.DisconnectRdma();
-            smbdAdapter.ConnectToServerOverRDMA();
+            NtStatus reconnectStatus = smbdAdapter.ConnectToServerOverRDMA();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, reconnectStatus, "Server should accept a new RDMA connection, status {0}", reconnectStatus);
         }
 
         [TestMethod()]
@@ -498,12 +506,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
             catch (TimeoutException)
             {
-                BaseTestSite.Assert.Pass("No SMB2 READ response received");
+                // WHAT/WHY/SPEC: same as Smb2OverRdmaChannel_InvalidBufferDescriptor_Offset ([MS-SMB2] 3.3.5.12 / [MS-SMBD] 3.1.4.5).
+                BaseTestSite.Log.Add(LogEntryKind.Comment, "No SMB2 READ response received for the invalid descriptor; verifying server availability next.");
             }
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Disconnect and reconnect to verify server is available.");
             smbdAdapter.DisconnectRdma();
-            smbdAdapter.ConnectToServerOverRDMA();
+            NtStatus reconnectStatus = smbdAdapter.ConnectToServerOverRDMA();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, reconnectStatus, "Server should accept a new RDMA connection, status {0}", reconnectStatus);
         }
 
         [TestMethod()]
@@ -545,12 +555,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
             catch (TimeoutException)
             {
-                BaseTestSite.Assert.Pass("No SMB2 READ response received");
+                // WHAT/WHY/SPEC: same as Smb2OverRdmaChannel_InvalidBufferDescriptor_Offset ([MS-SMB2] 3.3.5.12 / [MS-SMBD] 3.1.4.4, 3.1.4.5).
+                BaseTestSite.Log.Add(LogEntryKind.Comment, "No SMB2 READ response received for the invalid descriptor; verifying server availability next.");
             }
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Disconnect and reconnect to verify server is available.");
             smbdAdapter.DisconnectRdma();
-            smbdAdapter.ConnectToServerOverRDMA();
+            NtStatus reconnectStatus = smbdAdapter.ConnectToServerOverRDMA();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, reconnectStatus, "Server should accept a new RDMA connection, status {0}", reconnectStatus);
         }
 
         #endregion

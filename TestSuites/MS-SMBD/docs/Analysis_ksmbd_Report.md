@@ -40,5 +40,5 @@ ksmbd does not return `SMB2_RDMA_TRANSFORM_CAPABILITIES` (0x0007). Allowed by [M
 Three `NegativeParameter_*` tests re-open a session 50 ms after killing the first connection; session setup succeeds but tree connect returns ACCESS_DENIED. Likely a teardown race in ksmbd; the test will wait/retry (see test report). Medium-low confidence.
 
 ## Not ksmbd issues (for context)
-- `BVT_Smb2OverRdma_Smb302_*_INVALIDATE` fail on Windows Server 2025 too (no NDSPI memory windows on this NIC).
+- `BVT_Smb2OverRdma_Smb302_*_INVALIDATE` fail on Windows Server 2025 too. Upstream `origin/main` already guards them as Inconclusive on Server 2025 and on RoCE with a Windows driver; the guards had been commented out in this branch. On 2025 the WRITE is rejected with STATUS_INVALID_PARAMETER before any RDMA transfer (well-formed request, Channel=2). Product behaviour of 2025, not a ksmbd issue.
 - Empty credit-grant messages are legal ([MS-SMBD] 3.1.5.8); tests that treated them as data were fixed.

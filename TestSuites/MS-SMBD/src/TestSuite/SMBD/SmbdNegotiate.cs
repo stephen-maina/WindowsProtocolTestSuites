@@ -775,7 +775,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     }
                     catch (TimeoutException e)
                     {
-                        BaseTestSite.Assert.Pass("Cannot send or receive packets from peer. \nException: {0}\n{1}", e.Message, e.StackTrace);
+                        // WHAT: record the timeout instead of Assert.Pass; the SMBD negotiate status was already asserted above.
+                        // WHY: the old Pass ended the test and hid the outcome of the follow-up SMB2 attempt.
+                        // SPEC: [MS-SMBD] 3.1.5.6 - an unsupported version range is failed with STATUS_NOT_SUPPORTED; Appendix B <5>
+                        //       (Windows Server 2012). With the negotiate failed, no SMB2 response is the expected outcome.
+                        BaseTestSite.Log.Add(LogEntryKind.Comment, "No SMB2 response after failed SMBD negotiate (expected). " + e.Message);
                     }
                 }
             }
@@ -815,7 +819,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                         }
                         catch (TimeoutException e)
                         {
-                            BaseTestSite.Assert.Pass("Cannot send or receive packets from peer. \nException: {0}\n{1}", e.Message, e.StackTrace);
+                            // WHAT/WHY/SPEC: as above - [MS-SMBD] 3.1.5.6 STATUS_NOT_SUPPORTED was asserted; a timeout on the follow-up SMB2 attempt is expected.
+                            BaseTestSite.Log.Add(LogEntryKind.Comment, "No SMB2 response after failed SMBD negotiate (expected). " + e.Message);
                         }
                     }
                 }

@@ -144,6 +144,11 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                         // down. Fail fast with the actual status instead of looping
                         // through the cancelled completions and then waiting the
                         // full connection timeout.
+                        // WHAT: the exception message carries the real NTSTATUS from ReceiveMessage; the type stays TimeoutException.
+                        // WHY: every failure (timeout, disconnect, cancelled receive) used to look like a plain timeout, hiding the
+                        //      cause; tests that expect "no response" still catch TimeoutException, so the type is unchanged.
+                        // SPEC: [MS-SMBD] 3.1.7.1 Connection Loss - after loss/termination no further messages are delivered, so a
+                        //       failed receive means the SMB2 response will never arrive.
                         throw new TimeoutException(string.Format(
                             "SMBD ReceiveMessage failed with status 0x{0:X8} while waiting for the SMB2 response.",
                             (uint)ret));
@@ -661,7 +666,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             WriteRequest(
                 creditCharge,
                 creditRequest,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
+                WriteRequestHeaderFlags,
                 messageId,
                 sessionId,
                 TreeId,
@@ -675,6 +680,12 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
             return WriteResponse(messageId, out this.packetHeader, out responsePayload);
         }
+
+        /// <summary>
+        /// SMB2 header flags used by Smb2WriteOverRdmaChannel. Defaults to FLAGS_SIGNED; a test can clear it to build a
+        /// request that has an RDMA signing transform but no SMB2_FLAGS_SIGNED bit ([MS-SMB2] 3.3.5.13 step 1.10).
+        /// </summary>
+        public Packet_Header_Flags_Values WriteRequestHeaderFlags = Packet_Header_Flags_Values.FLAGS_SIGNED;
 
         public uint Smb2WriteOverRdmaChannel(
             UInt64 offset,

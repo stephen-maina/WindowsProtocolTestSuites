@@ -215,14 +215,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         // Negotiate Request) with CreditsRequested = 0.
         [TestMethod()]
         [TestCategory("SmbdCreditMgmt")]
-        [Description("Verify the connection will be terminated if CreditsRequested is 0 in SMBD Negotiate Request.")]
+        [Description("Verify the connection will be terminated if CreditsRequested is 0 in an SMBD Data Transfer message.")]
         [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message")]
-        [TestProperty("SpecCompliance", "TODO")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void SmbdCreditMgmt_NegativeParameter_CreditRequested()
         {
-            // TODO(spec): Description is wrong; the zero CreditsRequested is sent in a Data Transfer message (3.1.5.8),
-            // after a successful negotiate, not in the Negotiate Request (3.1.5.6, covered by
-            // SmbdNegotiate_NegativeParameter_CreditsRequested). Behavior asserted is correct; fix the Description.
+            // The zero CreditsRequested is sent in a Data Transfer message (3.1.5.8) after a successful negotiate; the
+            // Negotiate Request case (3.1.5.6) is covered by SmbdNegotiate_NegativeParameter_CreditsRequested.
             // define data for test case
             const ushort RECEIVE_CREDIT_MAX = 10;
             const ushort SEND_CREDIT_TARGET = 10;
@@ -421,11 +420,22 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                         LogEntryKind.Debug,
                         "Received a SMBDirect Data Transfer message, current Connection.ReceiveCredits is {0}", smbdAdapter.ClientConnection.ReceiveCredits);
 
-                    #region Assert
                     BaseTestSite.Assert.AreEqual<NtStatus>(
                         NtStatus.STATUS_SUCCESS,
                         status,
                         "Received SMBDirect Data Transfer Message with status {0}", status);
+
+                    // WHAT: skip empty Data Transfer messages (DataLength 0 and RemainingDataLength 0) instead of validating them as read data.
+                    // WHY: a peer may legally send an empty message purely to grant credits; the old code treated it as a malformed read
+                    //      fragment and failed on ksmbd (Windows never sends them here, so the test only passed by accident).
+                    // SPEC: [MS-SMBD] 3.1.5.4 (empty message: DataOffset/DataLength/RemainingDataLength = 0) and 3.1.5.8 (receiver credit processing).
+                    if (transferPackage.DataLength == 0 && transferPackage.RemainingDataLength == 0)
+                    {
+                        BaseTestSite.Log.Add(LogEntryKind.Debug, "Skip empty SMBDirect Data Transfer message (credit grant), CreditsGranted {0}", transferPackage.CreditsGranted);
+                        continue;
+                    }
+
+                    #region Assert
                     BaseTestSite.Assert.AreEqual<uint>(
                         (uint)(readResponseSize - offset),
                         transferPackage.DataLength + transferPackage.RemainingDataLength,
@@ -445,8 +455,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     }
                 }
 
-                BaseTestSite.Assert.IsTrue(transferPackage.CreditsGranted > 0,
-                    "SMBDirect Data Tranfer message with last credit should with CreditsGranted greater than 0");
+                // WHAT: assert the last-credit rule only when receive credits are exhausted and more fragments follow.
+                // WHY: an unconditional CreditsGranted > 0 check fails on legal messages that carry a zero grant.
+                // SPEC: [MS-SMBD] 3.1.5.1 "If Connection.SendCredits is 1 and the CreditsGranted field of the message is 0, stop processing".
+                if (smbdAdapter.ClientConnection.ReceiveCredits == 0 && transferPackage.RemainingDataLength != 0)
+                {
+                    BaseTestSite.Assert.IsTrue(transferPackage.CreditsGranted > 0,
+                        "SMBDirect Data Transfer message with last credit should have CreditsGranted greater than 0");
+                }
                 #region send empty message to grant credit
                 status = NtStatus.STATUS_SUCCESS;
                 do

@@ -7,19 +7,26 @@ Scope: tests that fail or pass incorrectly because of test, adapter or SDK defec
 |---|---|---|
 | `Smb2OverRdmaChannel_WriteLargeFile/WriteMultipleOperation/ReadWriteMultipleBufferDescriptorList` (`Smb2OverRdmaChannel.cs`) | Hard `Assert` that the server selects SIGNING RDMA transform; optional per [MS-SMB2] 3.3.5.4 / 2.2.43 | `Assume` |
 | `Signing_Write_AES_GMAC/CMAC/InvalidSignature` (`Smb2OverRdmaChannelTransformSigning.cs`) | Missing the `Assume` the Read variants have; with no transform negotiated server correctly returns INVALID_PARAMETER ([MS-SMB2] 3.3.5.13) | `Assume` only when the test offers SIGNING (negative tests that omit it still run) |
-| `BVT_Smb2OverRdma_Smb302_Write/Read_SMB2_CHANNEL_RDMA_V1_INVALIDATE` and `EstablishSignedRdmaConnectionAndOpenFile` (`...RemoteInvalidation.cs`) | Fail on Windows Server 2025 over RoCE (provider has no memory windows; STATUS_INVALID_PARAMETER / 0xC0000005). Original `Inconclusive` guards had been commented out. Signing assertion hard-failed | Guards restored; `Assume` on SIGNING |
+| `BVT_Smb2OverRdma_Smb302_Write/Read_SMB2_CHANNEL_RDMA_V1_INVALIDATE` and `EstablishSignedRdmaConnectionAndOpenFile` (`...RemoteInvalidation.cs`) | Fail on Windows Server 2025 over RoCE (WRITE: STATUS_INVALID_PARAMETER from the server; READ: client 0xC0000005). Upstream main already guards both; our first commit commented the guards out. Signing assertion hard-failed | Guards restored; `Assume` on SIGNING |
 | `ReadOverRdma_Encryption` AES-256 tests (`...TransformEncryption.cs`) | `Smb2Negotiate` overwrote the requested cipher list with CCM+GCM when `addDefaultEncryption` is true, so AES-256 tests never offered AES-256 | `addDefaultEncryption: false`; `Assume` on ENCRYPTION selected |
 
 Control run after fixes: 86 passed, 0 failed, 6 skipped on Windows Server 2025.
 
-## Open test defects (not yet fixed; prioritised)
-Details with line numbers and spec quotes: `docs/analysis/` (copies of the group reports).
+## Fixed in the spec-based fix round (validated on Windows Server 2025: 84 passed, 0 failed, 8 skipped)
+Every change carries a WHAT/WHY/SPEC comment in the code.
 
-1. **Credit tests misreading empty credit-grant messages** (`ConsumeAllReceiveCredits`, `ReceiveMaxReceiveSize`, `IdleConnection_Client/Server`): `ValidateReadResponse` treats ksmbd's legal empty credit grant ([MS-SMBD] 3.1.5.8) as the first READ data; idle tests assert `CreditsGranted > 0` and `Flags == NONE` although zero grant is legal, and read the second empty reply as the next keepalive. Also "exactly 10 credits" and the Send Credit Grant Timer are not in the spec; idle timers 120 s/5 s are Windows Appendix B defaults.
-2. **Windows-only expectations**: `NegotiateBasicChecker` asserts `MaxReadWriteSize >= 1 MiB`; `PreferredSendSizeMaxValue` has a stale 8136 branch (Appendix B says "and later").
-3. **Weak/vacuous passes**: version-range negotiate tests swallow `TimeoutException` with `Assert.Pass`; `InvalidBufferDescriptor_*` use `catch(TimeoutException){Assert.Pass}`; `ZeroTransformCount` and `AgainstFragmentReassemblyRemaining` (with `CheckDataLengthRemainingDataLength=false`) pass without assertions.
-4. **Malformed requests**: `EncryptionAndSigningStructure` (two ENCRYPTION structs, TransformCount 3 with 2 appended); `WriteMultipleOperation` reuses nonce/ciphertext/signature; `transformCount` not reset per loop iteration; `FlagsSignedNotSet` never builds its scenario (adapter always sets SIGNED); `Smb2OverRdma_Write/Read_SMB2_CHANNEL_RDMA_V1` actually use CHANNEL_RDMA_TRANSFORM.
-5. **Description errors**: `NegativeParameter_CreditRequested` says Negotiate Request but sends a data transfer.
-6. **Setup race**: three `NegativeParameter_*` tests reconnect 50 ms after killing the first session; add a 6-10 s settle and tree-connect retry.
-7. **Adapter**: `ExpectPacket` reports every bad status as `TimeoutException`; surface the real status. A credit ping-pong and inline writes chunked at ~1.25 KB observed in the SDK (medium confidence).
-8. **Environment**: no script creates `testFile_ReadLargeFile.txt` on non-Windows SUTs; add a preflight check.
+| # | Defect | Fix |
+|---|---|---|
+| 1 | Credit tests misread empty credit-grant messages; idle tests asserted Windows-only timers/flags | `ValidateReadResponse` skips empty Data Transfer messages ([MS-SMBD] 3.1.5.4/3.1.5.8); idle tests accept Flags NONE or RESPONSE_REQUESTED; Windows 5 s/repeat timing gated by platform ([MS-SMBD] 3.1.6.2, Appendix B <4>, <8>) |
+| 2 | Windows-only negotiate expectations | Already gated by `IsWindowsPlatform` / `WindowsMaxPreferredSendSize` |
+| 3 | Vacuous passes | `InvalidBufferDescriptor_*` now reconnect and assert success; version-range tests no longer `Assert.Pass`; `AgainstFragmentReassemblyRemaining` is Inconclusive when its flag is off |
+| 4 | Malformed requests | Real SIGNING structure and per-iteration `transformCount` in `EncryptionAndSigningStructure`; `FlagsSignedNotSet` really clears SMB2_FLAGS_SIGNED (`SetWriteRequestSigned`, [MS-SMB2] 3.3.5.13); V1 write test uses `CHANNEL_RDMA_V1` on 3.0.2 |
+| 5 | `NegativeParameter_CreditRequested` description | Corrected |
+| 6 | Reconnect race | `Initialize_SendSmbdDataTransferTestCase` retries connect/negotiate/session up to 3 times with a 5 s settle |
+| 7 | `ExpectPacket` hides real status | Message carries the NTSTATUS (type kept as `TimeoutException`, which callers catch) |
+| 8 | Large file not provisioned | READ-init reports Inconclusive on STATUS_OBJECT_NAME_NOT_FOUND |
+
+New platform finding: Windows Server 2025 over RoCE rejects every V1-family WRITE (V1 and V1_INVALIDATE, 3.0.2 and 3.1.1) with STATUS_INVALID_PARAMETER, although [MS-SMB2] 3.3.5.13 allows V1. `Smb2OverRdma_Write_SMB2_CHANNEL_RDMA_V1` is gated Inconclusive on 2025 and runs on other platforms.
+
+## Still open
+`SmallLengthSegment`/`VariableLengthSegment` and `OperationWithMinimumCredits` stall on ksmbd (SUT issue, see ksmbd report); retest on Ubuntu to confirm.

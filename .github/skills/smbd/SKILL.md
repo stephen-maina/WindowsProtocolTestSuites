@@ -31,11 +31,22 @@ Suite: `TestSuites/MS-SMBD/src/MS-SMBD_Server.sln` (92 tests; adapters in `src/A
 - Key sections: MS-SMBD 3.1.5.1 (receive), 3.1.5.6/3.1.5.7 (negotiate sizes, "at least" minimums), 3.1.5.8 (data transfer validation, credit rules), 3.1.4.2/4.5/4.6 (send, RDMA write/read); MS-SMB2 2.2.43 / 3.3.5.4 / 3.3.5.12 / 3.3.5.13 (RDMA transform, optional).
 - Appendix B values (idle timers 120 s/5 s, 1 MiB MaxReadWriteSize, 8136 send size) are Windows defaults, not normative: gate on `Platform`.
 
+## Mandatory: comment every test-suite code change
+
+Every edit to test-suite code (TestSuite, Adapter, config-driven logic) MUST carry a comment at the change site that states:
+
+1. **What** the code now does (e.g. "skip empty credit-grant messages before validating the READ response").
+2. **Why** the change was made (the defect: test asserted product behaviour, vacuous pass, wrong precondition, etc.).
+3. **Spec reference**: document, section number and the normative wording or requirement level (MUST/SHOULD/MAY), e.g. `[MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message`.
+   For product-specific behaviour, cite the Appendix B product-behavior note and gate the code behind a `Platform` check.
+
+Also keep the `SpecSection` TestProperty accurate. Do not leave `TODO(spec)` comments once a test is fixed. Verify the section against the spec (MS Learn MCP) before citing it.
+
 ## Known findings (Linux ksmbd vs Windows Server 2025 control)
 - ksmbd does not select the RDMA transform context (optional). Tests that need it must `Assume`, not `Assert`.
 - Encrypted SMB2 TREE_CONNECT over SMB Direct hangs on ksmbd; the Windows control passes the encryption tests: ksmbd issue.
 - ksmbd rejects valid negotiate minimums (MaxReceiveSize=128, MaxFragmentedSize=131072) and does not terminate on invalid data-transfer headers (3.1.5.8).
-- `BVT_Smb2OverRdma_Smb302_{Read,Write}_SMB2_CHANNEL_RDMA_V1_INVALIDATE` fail even on Server 2025 over RoCE (NDSPI memory windows); they are guarded with `Inconclusive`.
+- `BVT_Smb2OverRdma_Smb302_{Read,Write}_SMB2_CHANNEL_RDMA_V1_INVALIDATE` fail on Server 2025 (Write: STATUS_INVALID_PARAMETER from the server before any RDMA transfer; Read: client 0xC0000005 mid RDMA write). Upstream guards them with `Inconclusive` for Platform >= 2025 and RoCE with a Windows driver; keep those guards. "V1" is the SMB2 buffer-descriptor version, unrelated to the NDSPI v2 provider API; the SDK's `RDMANdv2::Bind` succeeds, so do not blame missing memory windows.
 
 ## Gotchas
 - PowerShell: never name a function `R` or `H` (aliases). Use `net use ... /REQUIREPRIVACY` to test SMB encryption.

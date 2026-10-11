@@ -273,13 +273,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             "if an RDMA_TRANSFORM_TYPE_ENCRYPTION and RDMA_TRANSFORM_TYPE_SIGNING structure are used together for the request")]
         // [MS-SMB2] 3.3.5.13 step 1.9: one ENCRYPTION and one SIGNING SMB2_RDMA_CRYPTO_TRANSFORM together -> STATUS_INVALID_PARAMETER.
         [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request")]
-        [TestProperty("SpecCompliance", "TODO")]
+        [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannelTransform_Encryption_WriteLargeFile_EncryptionAndSigningStructure_Fails()
         {
-            // TODO(spec): the request built by WriteOverRdma_Encryption does not match step 1.9: the "signing" structure is built with
-            // TransformType ENCRYPTION and is never appended to the Buffer (two ENCRYPTION structures are sent) while TransformCount is 3
-            // and RdmaDescriptorOffset counts three structures. INVALID_PARAMETER is returned for other reasons (1.7/1.8, bad offsets).
-            // Build one ENCRYPTION and one real SIGNING transform (and set SMB2_FLAGS_SIGNED consistently).
+            // WHAT: send exactly one ENCRYPTION and one SIGNING structure (TransformCount 2) by setting only addSigningTransform.
+            // WHY: previously addEncryptionTransform was also set, giving two ENCRYPTION structs, TransformCount 3 and no SIGNING
+            //      struct on the wire, so STATUS_INVALID_PARAMETER came from a malformed request, not from the intended condition.
+            // SPEC: [MS-SMB2] 3.3.5.13 step 1.9 - ENCRYPTION and SIGNING SMB2_RDMA_CRYPTO_TRANSFORM structures together => STATUS_INVALID_PARAMETER.
             Smb2RDMATransformId[] smb2RdmaTransformIds = new Smb2RDMATransformId[] {
                 Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING,
                 Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION
@@ -288,7 +288,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             {
                 SigningAlgorithm.AES_GMAC
             };
-            WriteOverRdma_Encryption(smb2RdmaTransformIds: smb2RdmaTransformIds, addEncryptionTransform: true, addSigningTransform: true, signingAlgorithms: signingAlgorithms);
+            WriteOverRdma_Encryption(smb2RdmaTransformIds: smb2RdmaTransformIds, addSigningTransform: true, signingAlgorithms: signingAlgorithms);
         }
 
         [TestMethod()]
@@ -786,7 +786,6 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             string fileName = CreateRandomFileName();
             BaseTestSite.Log.Add(LogEntryKind.TestStep, $"The filename ==> {fileName}");
 
-            var transformCount = setZeroTransformCount ? 0 : 1;
 
             EncryptionAlgorithm[] encryptionAlgorithms = encryptionAlgorithm == EncryptionAlgorithm.ENCRYPTION_NONE ? null : new EncryptionAlgorithm[] { encryptionAlgorithm };
             InitSmbdConnectionForTestCases(
@@ -845,9 +844,16 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 // iterations (which would make the server RDMA-Read from the wrong
                 // buffer when the write is split into multiple operations).
                 var descriptorOffset = 0;
+                // WHAT: reset TransformCount for every WRITE request instead of once for the whole test.
+                // WHY: it was declared outside the loop, so addEncryptionTransform/addSigningTransform kept incrementing it on each
+                //      iteration and requests after the first advertised more structures than they carried.
+                // SPEC: [MS-SMB2] 2.2.43 SMB2_RDMA_TRANSFORM - TransformCount is the number of SMB2_RDMA_CRYPTO_TRANSFORM structures
+                //       that follow in this request.
+                var transformCount = setZeroTransformCount ? 0 : 1;
                 List<byte> totalBytes = new List<byte>();
 
                 // Build RDMA_CRYPTO_TRANSFORM
+                byte[] signingTransformBytes = null;
                 SMB2_RDMA_CRYPTO_TRANSFORM cryptoTransform = new()
                 {
                     TransformType = Smb2RDMATransformType.SMB2_RDMA_TRANSFORM_TYPE_ENCRYPTION,
@@ -869,15 +875,21 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
                 if (addSigningTransform)
                 {
+                    // WHAT: build a genuine SMB2_RDMA_TRANSFORM_TYPE_SIGNING structure and append it to the request below.
+                    // WHY: the old code built a second ENCRYPTION-typed struct, counted it in TransformCount, but never appended it,
+                    //      so TransformCount (3) did not match the structures sent (2) - a malformed request rather than the
+                    //      ENCRYPTION+SIGNING combination the test intends to exercise.
+                    // SPEC: [MS-SMB2] 2.2.43.1.1 SMB2_RDMA_CRYPTO_TRANSFORM (TransformType 0x0001 ENCRYPTION / 0x0002 SIGNING) and
+                    //       3.3.5.13 - ENCRYPTION and SIGNING structures together in one request => STATUS_INVALID_PARAMETER.
                     SMB2_RDMA_CRYPTO_TRANSFORM signingTransform = new()
                     {
-                        TransformType = Smb2RDMATransformType.SMB2_RDMA_TRANSFORM_TYPE_ENCRYPTION,
+                        TransformType = Smb2RDMATransformType.SMB2_RDMA_TRANSFORM_TYPE_SIGNING,
                         SignatureLength = (ushort)signature.Length,
                         NonceLength = (ushort)nonce.Length,
                         Signature = signature,
                         Nonce = nonce,
                     };
-                    var signingTransformBytes = TypeMarshal.ToBytes(signingTransform);
+                    signingTransformBytes = TypeMarshal.ToBytes(signingTransform);
                     if (shouldAlignBuffer)
                         Smb2Utility.Align8(ref signingTransformBytes);
                     transformCount++;
@@ -912,6 +924,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 if (addEncryptionTransform)
                 {
                     totalBytes.AddRange(cryptoTransformBytes);
+                }
+
+                if (addSigningTransform)
+                {
+                    totalBytes.AddRange(signingTransformBytes);
                 }
 
                 totalBytes.AddRange(channelInfo);

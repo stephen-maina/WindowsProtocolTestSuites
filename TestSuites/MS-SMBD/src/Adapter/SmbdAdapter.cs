@@ -437,6 +437,16 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             return client.Smb2CloseFile();
         }
 
+        /// <summary>
+        /// Controls whether SMB2 WRITE requests over an RDMA channel carry SMB2_FLAGS_SIGNED in the SMB2 header.
+        /// </summary>
+        public void SetWriteRequestSigned(bool signed)
+        {
+            client.WriteRequestHeaderFlags = signed
+                ? Packet_Header_Flags_Values.FLAGS_SIGNED
+                : Packet_Header_Flags_Values.NONE;
+        }
+
         public uint Smb2TreeDisconnect()
         {
             return client.Smb2TreeDisconnect();

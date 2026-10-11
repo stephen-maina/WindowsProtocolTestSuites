@@ -418,6 +418,13 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 signature[2] = temp;
             }
 
+            // WHAT: when the scenario is "session without signing", send the WRITE with SMB2_FLAGS_SIGNED cleared.
+            // WHY: the adapter always set FLAGS_SIGNED, so FlagsSignedNotSet never built its intended request and its
+            //      STATUS_INVALID_PARAMETER came from some other condition (it only appeared to pass).
+            // SPEC: [MS-SMB2] 3.3.5.13 - a SMB2_RDMA_CRYPTO_TRANSFORM of type SIGNING with SMB2_FLAGS_SIGNED not set in the
+            //       SMB2 header => STATUS_INVALID_PARAMETER.
+            smbdAdapter.SetWriteRequestSigned(enableSigning);
+
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send each write request according SMB2 write file limit with operationCount == " + effectiveOperationCount);
             for (int i = 0; i < effectiveOperationCount; ++i)
             {
