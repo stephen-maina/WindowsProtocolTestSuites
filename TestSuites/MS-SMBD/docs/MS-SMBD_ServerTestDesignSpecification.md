@@ -1,4 +1,4 @@
-﻿###MS-SMBD Protocol Server Test Design Specification
+###MS-SMBD Protocol Server Test Design Specification
 
 ## <a name="_Toc427489478"/>Contents
 * [Contents](#_Toc427489478)
@@ -746,7 +746,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **Prerequisites**| N/A| 
 |  **Test Execution Steps**| Connect the server over RDMA| 
 | | Sends Negotiate request ( **PreferredSendSize** **= 0,** other fields are valid)| 
-| | Verify server returned Negotiate responses with **STATUS_SUCCESS**. And **MaxReceiveSize** in Negotiate response must be 128.| 
+| | Verify server returned Negotiate responses with **STATUS_SUCCESS**. And **MaxReceiveSize** in Negotiate response must be at least 128 ([MS-SMBD] 3.1.5.6); Windows servers must also return exactly 128 (the PreferredSendSize clamp is only a SHOULD, so other servers are only warned).| 
 |  **Requirements Covered**| N/A| 
 |  **Cleanup**| N/A| 
 
@@ -760,10 +760,10 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **Test Execution Steps**| Set **ExpectedSendSize** = 128| 
 | | Connect the server over RDMA| 
 | | Sends Negotiate request ( **PreferredSendSize** **= ( ExpectedSendSize** **- 1)**, other fields are valid)| 
-| | Verify server returned Negotiate response with **STATUS_SUCCESS**. And MaxReceiveSize in Negotiate response must be 128| 
+| | Verify server returned Negotiate response with **STATUS_SUCCESS**. And MaxReceiveSize in Negotiate response must be at least 128 ([MS-SMBD] 3.1.5.6); Windows servers must also return exactly 128 (clamp is only a SHOULD, other servers are only warned)| 
 | | Connect the server over RDMA| 
 | | Sends Negotiate request ( **PreferredSendSize**  **=  ExpectedSendSize** , other fields are valid)| 
-| | Verify server returned Negotiate response with **STATUS_SUCCESS**. And MaxReceiveSize in Negotiate response must be 128| 
+| | Verify server returned Negotiate response with **STATUS_SUCCESS**. And MaxReceiveSize in Negotiate response must be at least 128 ([MS-SMBD] 3.1.5.6); Windows servers must also return exactly 128 (clamp is only a SHOULD, other servers are only warned)| 
 |  **Requirements Covered**| N/A| 
 |  **Cleanup**| N/A| 
 

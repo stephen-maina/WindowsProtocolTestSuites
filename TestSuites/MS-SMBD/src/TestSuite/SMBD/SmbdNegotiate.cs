@@ -82,11 +82,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 MAX_FRAGMENT_SIZE,
                 out response);
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify the response.MaxReceiveSize is " + SmbdConnection.FLOOR_MAX_RECEIVE_SIZE);
-            BaseTestSite.Assert.AreEqual<uint>(
-                SmbdConnection.FLOOR_MAX_RECEIVE_SIZE,
-                response.MaxReceiveSize,
-                "MaxReceiveSize is {0}", response.MaxReceiveSize);
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify the response.MaxReceiveSize is at least " + SmbdConnection.FLOOR_MAX_RECEIVE_SIZE);
+            VerifyMaxReceiveSize(response, PREFERRED_SEND_SIZE);
         }
 
         // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
@@ -117,11 +114,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 MAX_FRAGMENT_SIZE,
                 out response);
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify the response.MaxReceiveSize is " + SmbdConnection.FLOOR_MAX_RECEIVE_SIZE);
-            BaseTestSite.Assert.AreEqual<uint>(
-                SmbdConnection.FLOOR_MAX_RECEIVE_SIZE,
-                response.MaxReceiveSize,
-                "MaxReceiveSize is {0}", response.MaxReceiveSize);
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify the response.MaxReceiveSize is at least " + SmbdConnection.FLOOR_MAX_RECEIVE_SIZE);
+            VerifyMaxReceiveSize(response, preferredSendSize);
 
             preferredSendSize = ExpectedSendSize;
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Scenario 1: SMBD negotiate with preferredSendSize set to " + preferredSendSize);
@@ -132,11 +126,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                MAX_FRAGMENT_SIZE,
                out response);
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify the response.MaxReceiveSize is " + SmbdConnection.FLOOR_MAX_RECEIVE_SIZE);
-            BaseTestSite.Assert.AreEqual<uint>(
-                SmbdConnection.FLOOR_MAX_RECEIVE_SIZE,
-                response.MaxReceiveSize,
-                "MaxReceiveSize is {0}", response.MaxReceiveSize);
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify the response.MaxReceiveSize is at least " + SmbdConnection.FLOOR_MAX_RECEIVE_SIZE);
+            VerifyMaxReceiveSize(response, preferredSendSize);
         }
 
         // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
@@ -825,6 +816,41 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
         }
 
+        /// <summary>
+        /// WHAT: checks the MaxReceiveSize returned in a Negotiate Response.
+        /// WHY: [MS-SMBD] 3.1.5.6 only says the receiver SHOULD (Appendix A &lt;6&gt;) set Connection.MaxReceiveSize to
+        /// min(Connection.MaxReceiveSize, PreferredSendSize); the result MUST NOT be below 128. A server that
+        /// returns its own fixed receive size (e.g. Tuxera's rdma_max_receive_size) is conformant, so the clamp is
+        /// asserted only for Windows, which implements it.
+        /// SPEC: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message.
+        /// </summary>
+        private void VerifyMaxReceiveSize(SmbdNegotiateResponse response, uint preferredSendSize)
+        {
+            BaseTestSite.Assert.IsTrue(
+                response.MaxReceiveSize >= SmbdConnection.FLOOR_MAX_RECEIVE_SIZE,
+                "MaxReceiveSize in negotiate response is {0}, expected at least {1}",
+                response.MaxReceiveSize, SmbdConnection.FLOOR_MAX_RECEIVE_SIZE);
+
+            bool clamped = preferredSendSize < SmbdConnection.FLOOR_MAX_RECEIVE_SIZE
+                ? response.MaxReceiveSize == SmbdConnection.FLOOR_MAX_RECEIVE_SIZE
+                : response.MaxReceiveSize <= preferredSendSize;
+
+            if (smbdAdapter.TestConfig.IsWindowsPlatform)
+            {
+                BaseTestSite.Assert.IsTrue(
+                    clamped,
+                    "MaxReceiveSize in Windows negotiate response is {0}, expected it clamped to PreferredSendSize {1} (at least 128)",
+                    response.MaxReceiveSize, preferredSendSize);
+            }
+            else if (!clamped)
+            {
+                BaseTestSite.Log.Add(
+                    LogEntryKind.Warning,
+                    "SUT returned MaxReceiveSize {0} for PreferredSendSize {1}; [MS-SMBD] 3.1.5.6 only SHOULD clamp it.",
+                    response.MaxReceiveSize, preferredSendSize);
+            }
+        }
+
         public void NegotiateBasicChecker(
             SmbdNegotiateResponse response,
             ushort creditsRequested,
@@ -877,11 +903,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
             if (preferredSendSize >= SmbdConnection.FLOOR_MAX_RECEIVE_SIZE)
             {
-                // sever MUST set Connection.MaxReceiveSize to the smaller(Connection.MaxReceiveSize, PreferredSendSize)
-                // If the result is smaller than 128, then Connection.MaxReceiveSize MUST be set to 128.
-                BaseTestSite.Assert.IsTrue(
-                    response.MaxReceiveSize >= SmbdConnection.FLOOR_MAX_RECEIVE_SIZE && response.MaxReceiveSize <= preferredSendSize,
-                    "MaxReceiveSize in negotiate response is {0}", response.MaxReceiveSize);
+                VerifyMaxReceiveSize(response, preferredSendSize);
             }
             // server MUST set Connection.MaxSendSize to the smaller(Connection.MaxSendSize, MaxReceiveSize).
             BaseTestSite.Assert.IsTrue(
