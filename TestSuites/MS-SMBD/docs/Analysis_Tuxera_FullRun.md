@@ -62,4 +62,4 @@ These do not fail tests; they are what an implementer should know.
 |---|---|---|---|---|
 | Windows Server 2025 | 84 | 0 | 8 | none |
 | Tuxera (run #2) | 58 | 0 | 34 | none; skips are the optional RDMA transforms |
-| ksmbd | see `Analysis_ksmbd_FullRun3.md` and the post-Tuxera ksmbd run below | | | defects in negotiate minimums, credits, encrypted responses |
+| ksmbd (run #4) | 44 | 38 | 10 | defects in negotiate minimums, credits, encrypted responses; see `Analysis_ksmbd_FullRun4.md` |
