@@ -796,6 +796,22 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 addDefaultEncryption: false,
                 enableEncryption: encryptionAlgorithms != null);
 
+            // WHAT: skip when the server did not select the encryption RDMA transform, as the READ helper already does.
+            // WHY: the RDMA transform is optional; without it Channel=SMB2_CHANNEL_RDMA_TRANSFORM is invalid and the
+            //      server correctly answers STATUS_INVALID_PARAMETER, so the test would be checking a feature the SUT did not offer.
+            // SPEC: [MS-SMB2] 2.2.3.1.7 SMB2_RDMA_TRANSFORM_CAPABILITIES, 3.3.5.4 Receiving an SMB2 NEGOTIATE Request.
+            if (channel == Channel_Values.CHANNEL_RDMA_TRANSFORM
+                && smb2RdmaTransformIds != null
+                && Array.IndexOf(smb2RdmaTransformIds, Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION) >= 0)
+            {
+                BaseTestSite.Assume.IsTrue(
+                    smbdAdapter.SelectedRdmaTransformIds != null &&
+                    Array.IndexOf(
+                        smbdAdapter.SelectedRdmaTransformIds,
+                        Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_ENCRYPTION) >= 0,
+                    "Server does not select SMB2_RDMA_TRANSFORM_ENCRYPTION.");
+            }
+
             uint writeSize;
             uint effectiveOperationCount;
             ComputeWritePlan(operationCount, out writeSize, out effectiveOperationCount);
