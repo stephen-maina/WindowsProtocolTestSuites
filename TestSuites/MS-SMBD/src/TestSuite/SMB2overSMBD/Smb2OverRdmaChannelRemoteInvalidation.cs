@@ -318,7 +318,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdma_Read_SMB2_CHANNEL_RDMA_V1()
         {
-            EstablishSignedRdmaConnectionAndOpenFile(fileName);
+            bool transformSelected = EstablishSignedRdmaConnectionAndOpenFile(fileName);
+            Channel_Values seedChannel = transformSelected ? Channel_Values.CHANNEL_RDMA_TRANSFORM : Channel_Values.CHANNEL_RDMA_V1;
 
             uint fileSize = smbdAdapter.Smb2MaxReadSize;
             fileSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
@@ -336,7 +337,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 "Register buffer should succeed.");
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Write content to file over RDMA.");
-            status = Smb2WriteOverRdma(fileName, fileContent, Channel_Values.CHANNEL_RDMA_TRANSFORM, descp);
+            status = Smb2WriteOverRdma(fileName, fileContent, seedChannel, descp);
             BaseTestSite.Assert.AreEqual<NtStatus>(
                 NtStatus.STATUS_SUCCESS,
                 status,
@@ -538,7 +539,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 channel);
         }
 
-        private void EstablishSignedRdmaConnectionAndOpenFile(string fileName)
+        private bool EstablishSignedRdmaConnectionAndOpenFile(string fileName)
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Establish SMB 3.1.1 connection over RDMA with RDMA signing and open file " + fileName);
 
@@ -568,16 +569,23 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 signingAlgorithms: signingAlgorithms);
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 establish session and open file is {0}", status);
 
-            BaseTestSite.Assume.IsTrue(
+            // WHAT: report whether the optional signing transform was selected instead of skipping the test when it was not.
+            // WHY: the plain RDMA_V1 READ scenario does not need a transform; only the seeding WRITE channel depends on it.
+            // SPEC: [MS-SMB2] 3.3.5.4 (transform selection is optional) and 3.3.5.13.
+            bool transformSelected =
                 smbdAdapter.SelectedRdmaTransformIds != null &&
                 Array.IndexOf(
                     smbdAdapter.SelectedRdmaTransformIds,
-                    Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING) >= 0,
-                "Server does not select SMB2_RDMA_TRANSFORM_SIGNING (optional per [MS-SMB2] 3.3.5.4).");
-            BaseTestSite.Assert.AreEqual<SigningAlgorithm>(
-                SigningAlgorithm.AES_CMAC,
-                smbdAdapter.SelectedSigningAlgorithm,
-                "Server MUST select AES_CMAC so the signing transform uses a 16-byte signature and no nonce.");
+                    Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING) >= 0;
+            if (transformSelected)
+            {
+                BaseTestSite.Assert.AreEqual<SigningAlgorithm>(
+                    SigningAlgorithm.AES_CMAC,
+                    smbdAdapter.SelectedSigningAlgorithm,
+                    "Server MUST select AES_CMAC so the signing transform uses a 16-byte signature and no nonce.");
+            }
+
+            return transformSelected;
         }
 
         private byte[] BuildSignedRdmaTransformChannelInfo(byte[] content, SmbdBufferDescriptorV1 descriptor, Smb2Command command)

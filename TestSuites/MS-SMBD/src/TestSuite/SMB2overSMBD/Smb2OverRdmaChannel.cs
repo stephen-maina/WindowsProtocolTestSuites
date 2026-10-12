@@ -664,13 +664,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             };
 
             InitSmbdConnectionForTestCases(fileName, rdmaTransformIds);
-            // RDMA transform is optional ([MS-SMB2] 2.2.3.1.7 / 3.3.5.4): skip when the server does not select it.
-            BaseTestSite.Assume.IsTrue(
+            // WHAT: no longer skip when the server does not select SMB2_RDMA_TRANSFORM_SIGNING; write with plain SMB2_CHANNEL_RDMA_V1 instead.
+            // WHY: the RDMA transform is optional, but an RDMA WRITE over a plain buffer descriptor is mandatory server behaviour,
+            //      so skipping hid a core scenario on servers that do not implement transforms (e.g. Tuxera).
+            // SPEC: [MS-SMB2] 3.3.5.4 (the server selects RDMATransformIds only if it supports them) and 3.3.5.13 (WRITE with SMB2_CHANNEL_RDMA_V1).
+            bool transformSelected =
                 smbdAdapter.SelectedRdmaTransformIds != null &&
                 Array.IndexOf(
                     smbdAdapter.SelectedRdmaTransformIds,
-                    Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING) >= 0,
-                "Server does not select SMB2_RDMA_TRANSFORM_SIGNING in the SMB2_RDMA_TRANSFORM_CAPABILITIES negotiate context.");
+                    Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING) >= 0;
 
             uint writeSize;
             uint effectiveOperationCount;
@@ -681,7 +683,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             byte[] fileContent = Encoding.ASCII.GetBytes(Smb2Utility.CreateRandomStringInByte((int)writeSize));
 
             // Check if session has signing enabled by checking if the decoder has crypto info
-            bool needsSigning = smbdAdapter.Decoder.CryptoInfoTable.Count > 0;
+            bool needsSigning = transformSelected && smbdAdapter.Decoder.CryptoInfoTable.Count > 0;
 
             // Sign the content once before the loop if needed
             byte[] nonce = null;
