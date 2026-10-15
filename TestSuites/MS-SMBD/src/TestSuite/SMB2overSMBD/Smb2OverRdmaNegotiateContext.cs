@@ -60,6 +60,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.4 Receiving an SMB2 NEGOTIATE Request")]
         public void Smb2OverRdmaNegotiateContext_RdmaTransform_TwoContexts_Fails()
         {
+            // [MS-SMB2] 3.3.5.4: a server with IsRDMATransformSupported FALSE ignores the context, so the rule only applies to
+            // servers that implement the optional feature.
+            AssumeServerProcessesRdmaTransformContext();
+
             Smb2NegotiateResponsePacket response = ConnectAndSendRawNegotiate(
                 new DialectRevision[] { DialectRevision.Smb311 },
                 BuildPreauthContext(),

@@ -75,6 +75,28 @@ Inconclusive (documented, not hidden):
 
 ## 7. Result on other implementations
 
-Not yet run in this change. Run `Smb2OverRdmaNegotiateContext`, `Smb2OverRdmaChannelValidation`,
-`Smb2OverRdmaTransformEdge`, `SmbdProtocolGaps` and `Smb2MultiChannelGaps` against ksmbd and Tuxera with
-`Platform=NonWindows`; failures there are implementation findings unless the log shows a harness problem.
+### Tuxera
+Not valid. The evaluation licence had expired and nearly every case returned `STATUS_EVALUATION_EXPIRATION`
+(0xC0000268) at Negotiate. Re-run with a renewed licence.
+
+### ksmbd (kernel 7.0.0-38, `Platform=NonWindows`)
+First run of the 51 tests: 30 passed, 11 failed, 10 inconclusive. Test defects found were corrected (see below);
+the remaining failures are ksmbd findings, verified against SUT dmesg and the spec.
+
+Test corrections:
+- `RdmaTransform_TwoContexts_Fails` now gated on a well-formed probe (optional feature, [MS-SMB2] 3.3.5.4).
+- `Read_RdmaV1_LengthExceedsMaxReadSize` is Inconclusive unless the server rejects it ([MS-SMB2] 3.3.5.12 <360>, SHOULD only).
+- READ-channel negatives now use a seeded file so `STATUS_END_OF_FILE` cannot mask the validation.
+
+ksmbd findings (spec MUST):
+| Test | Observed | Spec |
+|---|---|---|
+| `Read_UndefinedChannel_Smb302/Smb311`, `Read_RdmaTransform_Smb302` | `STATUS_SUCCESS` | [MS-SMB2] 3.3.5.12: 3.0.2/3.1.1 Channel other than NONE/RDMA_V1/RDMA_V1_INVALIDATE MUST fail with `STATUS_INVALID_PARAMETER` |
+| `Read_RdmaV1_LengthZero` | connection dropped; kernel stack in `smb_direct_rdma_xmit` from `smb2_read` | descriptor/length validation, [MS-SMB2] 3.3.5.12 |
+| `Write_RdmaV1_RemainingBytesZero` | connection dropped | [MS-SMB2] 3.3.5.13 |
+| `Encryption_WriteUnknownTransformType` | `WARNING` in `smb_direct_writev` (transport_rdma.c:1637), "Failed to send message: -22", connection dropped | [MS-SMB2] 3.3.5.13 |
+| `Write_RdmaV1_RemainingBytesExceedsMaxWriteSize`, `Write_RdmaV1_DescriptorLengthSumLessThanRemainingBytes` | `STATUS_SUCCESS` | [MS-SMB2] 3.3.5.13 (agent-read rule; re-verify before reporting upstream) |
+| `Failover_DropOneRdmaChannel` | `STATUS_USER_SESSION_DELETED` on surviving channel | [MS-SMB2] 3.3.7.1 |
+
+Inconclusive on ksmbd: all RDMA-transform tests (ksmbd does not implement SMB2_RDMA_TRANSFORM_CAPABILITIES) and the two
+8 MiB `MaxReadWriteSize` tests (SMB2 MaxRead/WriteSize is 4 MiB).

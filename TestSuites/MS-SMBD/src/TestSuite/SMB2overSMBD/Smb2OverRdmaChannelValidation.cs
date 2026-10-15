@@ -299,7 +299,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannel_Read_RdmaV1_LengthZero_InvalidParameter()
         {
-            OpenClient(DefaultDialects, false, null);
+            OpenClient(DefaultDialects, false, (int)SeedFileSize);
             SmbdBufferDescriptorV1 descp = MakeDescriptor(SeedFileSize, SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE);
             byte[] channelInfo = TypeMarshal.ToBytes<SmbdBufferDescriptorV1>(descp);
 
@@ -453,7 +453,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdmaChannel_Read_RdmaV1_LengthExceedsMaxReadSize_InvalidParameter()
         {
-            OpenClient(DefaultDialects, false, null);
+            OpenClient(DefaultDialects, false, (int)SeedFileSize);
             uint length = client.Smb2MaxReadSize + 1;
             SmbdBufferDescriptorV1 descp = MakeDescriptor(length, SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE);
 
@@ -466,6 +466,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 out readResponse,
                 out readData);
 
+            // [MS-SMB2] 3.3.5.12 <361>: rejecting Length > MaxReadSize is only a SHOULD, so any other outcome is not a violation.
+            if (status != NtStatus.STATUS_INVALID_PARAMETER)
+            {
+                BaseTestSite.Assert.Inconclusive("Server did not reject READ Length > MaxReadSize (status {0}); the spec only says SHOULD.", status);
+            }
             AssertInvalidParameter(status, "READ RDMA_V1 with Length > MaxReadSize");
         }
         #endregion
@@ -605,7 +610,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
         private void ReadWithChannelAndExpectInvalidParameter(DialectRevision[] dialects, Channel_Values channel)
         {
-            OpenClient(dialects, false, null);
+            OpenClient(dialects, false, (int)SeedFileSize); // seeded so STATUS_END_OF_FILE cannot mask the channel validation
             SmbdBufferDescriptorV1 descp = MakeDescriptor(SeedFileSize, SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE);
 
             READ_Response readResponse;
