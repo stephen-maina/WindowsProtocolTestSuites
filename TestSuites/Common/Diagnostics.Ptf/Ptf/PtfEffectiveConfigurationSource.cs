@@ -5,7 +5,7 @@ using System;
 using System.Collections.Specialized;
 using Microsoft.Protocols.TestSuites.Diagnostics.Configuration;
 
-namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
+namespace Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 
 public sealed class PtfEffectiveConfigurationSource : IEffectiveConfigurationSource
 {

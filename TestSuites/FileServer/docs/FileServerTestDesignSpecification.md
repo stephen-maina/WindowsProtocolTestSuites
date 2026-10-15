@@ -2494,7 +2494,7 @@ This is used to test SMB2 common user scenarios.
 |**Test ID**|TreeMgmt_SMB311_TREE_CONNECT_EXTENSION_PRESENT|
 |**Description**|Once a client has successfully connected to a infrastructure share it must set the SMB2_SHAREFLAG_EXTENSION_PRESENT flag and use SMB2 TREE_CONNECT Request Extension for tree connect requests.|
 ||This test case is designed to test server can handle a TreeConnect request with flag SMB2_SHAREFLAG_EXTENSION_PRESENT successfully.|
-|**Prerequisites**|The server implements dialect 3.11 and the server supports infrastructure share (for windows)|
+|**Prerequisites**|The server implements dialect 3.11 and the server supports infrastructure share (for windows). The test reports Inconclusive when the SUT is not a Windows platform, because the identity is obtained with the Windows-only GetUserSid adapter script.|
 |**Test Execution Steps**|Start a client by sending the following requests: NEGOTIATE (dialect 3.11); SESSION_SETUP (with domain credential).|
 ||Client sends TREE_CONNECT request with flag SMB2_SHAREFLAG_EXTENSION_PRESENT and SMB2_REMOTED_IDENTITY_TREE_CONNECT context (with another domain account passed in the context) and expects STATUS_SUCCESS.|
 ||Client sends CREATE request and expects STATUS_SUCCESS.|

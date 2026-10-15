@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Adapter\CommonAdapter.csproj" />
+    <ProjectReference Include="..\..\..\..\Common\Diagnostics.Ptf\Microsoft.Protocols.TestSuites.Diagnostics.Ptf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -14,17 +14,13 @@ using Microsoft.Protocols.TestSuites.Diagnostics.Lifecycle;
 using Microsoft.Protocols.TestSuites.Diagnostics.Providers;
 using Microsoft.Protocols.TestSuites.Diagnostics.Runner;
 using Microsoft.Protocols.TestSuites.Diagnostics.Storage;
-using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Configuration;
-using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Runner;
-using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Storage;
 
-namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
+namespace Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 
 public static class PtfDiagnosticsLifecycle
 {
     private const string CurrentTestCaseName = "CurrentTestCaseName";
     private const string DriverPlatformPropertyName = "DriverPlatform";
-    private const string UnknownInvocation = "MS-SMBD.UnknownInvocation";
     private const string RdmaSnifferEnabledProperty = "Diagnostics.Capture.RdmaSniffer.Enabled";
     private const string RdmaSnifferToolPathProperty = "Diagnostics.Capture.RdmaSniffer.ToolPath";
 
@@ -45,6 +41,7 @@ public static class PtfDiagnosticsLifecycle
         IReadOnlyDictionary<string, object> testProperties,
         ILogger logger,
         string buildOutputRoot,
+        PtfDiagnosticsSuite suite,
         Func<RunnerTestExecutionIdentity>? runnerIdentityFactory = null,
         Func<DiagnosticsCaptureConfiguration, ICaptureProvider>?
             captureProviderFactory = null,
@@ -54,12 +51,13 @@ public static class PtfDiagnosticsLifecycle
         ArgumentNullException.ThrowIfNull(testProperties);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentException.ThrowIfNullOrWhiteSpace(buildOutputRoot);
+        ArgumentNullException.ThrowIfNull(suite);
 
         var source = new PtfEffectiveConfigurationSource(effectiveProperties);
         return DiagnosticsInvocationLifecycle.Start(
             source,
-            () => ReadInvocationName(testProperties),
-            () => ReadInvocationName(testProperties),
+            () => ReadInvocationName(testProperties, suite),
+            () => ReadInvocationName(testProperties, suite),
             displayName => runnerIdentityFactory is null
                 ? InvocationIdentity.Create(
                     runId: "ptf",
@@ -67,7 +65,7 @@ public static class PtfDiagnosticsLifecycle
                     attemptIdentity: "initial",
                     dataRowIdentity: string.Empty)
                 : runnerIdentityFactory().CreateInvocationIdentity(
-                    SmbdRunnerContext.ReadRunId()),
+                    suite.ReadRunId()),
             (configuration, identity) =>
             {
                 string normalizedBuildOutputRoot =
@@ -126,7 +124,7 @@ public static class PtfDiagnosticsLifecycle
                     provider,
                     ReadSensitiveValues(effectiveProperties));
             },
-            SmbdDiagnosticsConfigurationProperties.PropertyMap,
+            suite.PropertyMap,
             ConfigurationPolicy);
     }
 
@@ -250,7 +248,8 @@ public static class PtfDiagnosticsLifecycle
     }
 
     private static string ReadInvocationName(
-        IReadOnlyDictionary<string, object> testProperties)
+        IReadOnlyDictionary<string, object> testProperties,
+        PtfDiagnosticsSuite suite)
     {
         if (testProperties.TryGetValue(
                 CurrentTestCaseName,
@@ -261,7 +260,7 @@ public static class PtfDiagnosticsLifecycle
             return testCaseName;
         }
 
-        return UnknownInvocation;
+        return suite.UnknownInvocationName;
     }
 
     private static IReadOnlyList<string> ReadSensitiveValues(

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Microsoft.Protocols.TestTools;
 using Microsoft.Protocols.TestTools.Logging;
 using Microsoft.Protocols.TestSuites.Diagnostics.Logging;
+using Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

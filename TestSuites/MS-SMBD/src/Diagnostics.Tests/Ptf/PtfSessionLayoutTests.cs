@@ -5,6 +5,7 @@ using System;
 using System.Collections.Specialized;
 using System.IO;
 using Microsoft.Protocols.TestSuites.Diagnostics.Identity;
+using Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

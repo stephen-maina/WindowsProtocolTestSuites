@@ -7,7 +7,7 @@ using Microsoft.Protocols.TestTools;
 using Microsoft.Protocols.TestTools.Logging;
 using Microsoft.Protocols.TestSuites.Diagnostics.Logging;
 
-namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
+namespace Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 
 public sealed class PtfInvocationLogBridge
 {

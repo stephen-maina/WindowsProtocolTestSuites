@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 using Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter;
 using Microsoft.Protocols.TestTools;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
@@ -36,14 +37,44 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.TestSuite
 
         protected Dictionary<string, Assembly> TestcaseAssemblies;
 
+        private PtfTestDiagnostics diagnostics;
+
         protected override void TestInitialize()
         {
             base.TestInitialize();
+            // WHAT/WHY: shared per-test diagnostics and SUT log window (best-effort, see PtfTestDiagnostics).
+            // SPEC: not protocol behaviour.
+            diagnostics = PtfTestDiagnostics.Begin(
+                BaseTestSite,
+                FileServerDiagnosticsSuite.Definition,
+                Path.GetDirectoryName(GetType().Assembly.Location) ?? AppContext.BaseDirectory,
+                FileServerDiagnosticsSuite.SutProperties,
+                TestContext?.ManagedType,
+                TestContext?.ManagedMethod,
+                TestContext?.TestDisplayName ?? TestContext?.TestName,
+                TestContext?.TestRunCount);
             LogTestCaseDescription();
             sutProtocolController = BaseTestSite.GetAdapter<ISutProtocolControlAdapter>();
         }
 
         protected override void TestCleanup()
+        {
+            bool cleanupCompleted = false;
+            try
+            {
+                CleanupTestArtifacts();
+                base.TestCleanup();
+                cleanupCompleted = true;
+            }
+            finally
+            {
+                diagnostics?.End(cleanupCompleted);
+                diagnostics?.Dispose();
+                diagnostics = null;
+            }
+        }
+
+        private void CleanupTestArtifacts()
         {
             foreach (var directory in testDirectories)
             {
@@ -66,8 +97,6 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.TestSuite
                 {
                 }
             }
-
-            base.TestCleanup();
         }
 
         protected string GetTestFileName(string share)

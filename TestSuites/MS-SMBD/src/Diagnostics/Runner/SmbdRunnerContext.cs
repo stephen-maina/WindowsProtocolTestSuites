@@ -2,7 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Storage;
+using Microsoft.Protocols.TestSuites.Diagnostics.Storage;
 
 namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Runner;
 

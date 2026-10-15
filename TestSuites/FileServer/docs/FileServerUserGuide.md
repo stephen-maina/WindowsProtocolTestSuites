@@ -3541,6 +3541,19 @@ You can also review test results in the following ways:
 >[!NOTE]
 >The StandardOutput data can also be displayed separately in HTML format.
 
+#### Per-test SUT logs and diagnostics (optional)
+
+To diagnose a failure you often need the SUT's side of the exchange. Set these properties in **CommonTestSuite.deployment.ptfconfig** (or in the Protocol Test Manager configuration):
+
+| Property | Default | Effect |
+|---|---|---|
+| `SutLog.Enabled` | `false` | When `true`, the SUT's own log for each test case is saved in that test's diagnostics folder: `sut-linux-dmesg.log` for a Linux SUT (`Platform` = `NonWindows`; kernel log between per-test markers, so it covers ksmbd or any other implementation) or `sut-windows.log` for a Windows SUT (SMB Server event logs). Needs `Diagnostics.Enabled=true`. Uses `SutComputerName`, `AdminUserName` and `PasswordForAllUsers`; a Linux SUT needs ssh access and sudo rights. Collection is best-effort and never fails a test. |
+| `Diagnostics.Enabled` | `false` | Creates a diagnostics folder per test case (manifest and PTF log) at `<Diagnostics.ArtifactRoot>\session-<timestamp>\tests\<Test>__<id>\`. |
+| `Diagnostics.ArtifactRoot` | `C:\WPTS-Diagnostics` | Root folder for the artifacts. |
+| `DriverPlatform` | `WindowsServer2025` | Platform of the machine running the tests; selects the capture provider. |
+
+This is the same shared component that MS-SMBD uses (`TestSuites\Common\Diagnostics.Ptf`). For a whole-run packet capture with per-test SUT dmesg slices, `Batch\SutDebug\Run-FileServerWithSutLogs.ps1` can also be used.
+
 ## <a name="8"/> 8 Creating a Custom Test Environment
 
 If you want to create a Test Suite to customize a testing environment and test cases to your own specifications, review the following documentation:

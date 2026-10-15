@@ -202,6 +202,17 @@ To collect traces for a specific protocol:
 dotnet-trace collect --providers Microsoft-WindowsProtocolsTestSuite-Kerberos --process-id <pid>
 ```
 
+## Shared Per-Test Diagnostics (all PTF suites)
+
+Reusable, suite-neutral diagnostics live under `TestSuites\Common\`. Do not copy them into a suite; reference them.
+
+| Project | Contents |
+|---|---|
+| `Common\Diagnostics` | PTF-free core: configuration, artifact storage, capture providers (netsh, Mellanox sniffer), lifecycle |
+| `Common\Diagnostics.Ptf` | `PtfTestDiagnostics` (one-call per-test wiring), `PtfDiagnosticsLifecycle`, `PtfDiagnosticsSuite` (suite definition), `SutLogCollector` (per-test SUT log: Linux dmesg markers via ssh, Windows event logs via WinRM) |
+
+Adopting it in a suite needs three things: a `PtfDiagnosticsSuite` definition (name, property map, optional run-id reader), a `PtfTestDiagnostics.Begin(...)` call in `TestInitialize`, and `End(cleanupCompleted)` + `Dispose()` in `TestCleanup`. Examples: `MS-SMBD\src\TestSuite\SmbdTestBase.cs` and `FileServer\src\Common\TestSuite\CommonTestBase.cs` (covers SMB2, DFSC, RSVD, SQOS, Auth, FSRVP, ServerFailover). Suites with different property names pass `SutLogCollector.PropertyNames`. Enable with `Diagnostics.Enabled` and `SutLog.Enabled`; artifacts go to `<ArtifactRoot>\session-<ts>\tests\<Test>__<id>\`.
+
 ## Key Code Pattern: SMB2 Request/Response
 
 ```csharp

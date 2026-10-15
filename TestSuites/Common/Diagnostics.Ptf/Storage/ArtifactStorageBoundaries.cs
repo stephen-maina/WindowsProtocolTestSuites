@@ -4,9 +4,9 @@
 using System;
 using System.IO;
 
-namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Storage;
+namespace Microsoft.Protocols.TestSuites.Diagnostics.Storage;
 
-internal static class ArtifactStorageBoundaries
+public static class ArtifactStorageBoundaries
 {
     public static string FindSourceRoot(string buildOutputRoot)
     {

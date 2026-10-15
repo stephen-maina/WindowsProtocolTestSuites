@@ -8,7 +8,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Sut;
+namespace Microsoft.Protocols.TestSuites.Diagnostics.Sut;
 
 /// <summary>
 /// WHAT: Collects the SUT's own log for the duration of one test case, so a failure can be debugged from the
@@ -63,9 +63,19 @@ public sealed class SutLogCollector
     public string? LastError { get; private set; }
 
     /// <summary>
+    /// Names of the configuration properties that locate and authenticate to the SUT. Suites name these differently
+    /// (MS-SMBD: SutUserName/SutPassword; FileServer: AdminUserName/PasswordForAllUsers).
+    /// </summary>
+    public sealed record PropertyNames(
+        string Host = "SutComputerName",
+        string User = "SutUserName",
+        string Password = "SutPassword",
+        string Platform = "Platform");
+
+    /// <summary>
     /// Returns null when collection is not enabled or not applicable.
     /// </summary>
-    public static SutLogCollector? Create(NameValueCollection properties, string? testName)
+    public static SutLogCollector? Create(NameValueCollection properties, string? testName, PropertyNames? names = null)
     {
         if (properties == null ||
             !bool.TryParse(properties[EnabledProperty], out bool enabled) ||
@@ -75,10 +85,11 @@ public sealed class SutLogCollector
             return null;
         }
 
-        string host = properties["SutComputerName"];
-        string user = properties["SutUserName"];
-        string password = properties["SutPassword"];
-        string platform = properties["Platform"] ?? string.Empty;
+        names ??= new PropertyNames();
+        string? host = properties[names.Host];
+        string? user = properties[names.User];
+        string? password = properties[names.Password];
+        string platform = properties[names.Platform] ?? string.Empty;
         if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(user))
         {
             return null;
@@ -128,7 +139,7 @@ public sealed class SutLogCollector
     /// Marks the end of the window, fetches the SUT log for it and writes it into the test's artifact folder.
     /// Never throws.
     /// </summary>
-    public void EndAndSave(string artifactDirectory)
+    public void EndAndSave(string? artifactDirectory)
     {
         if (!started || string.IsNullOrWhiteSpace(artifactDirectory) || !Directory.Exists(artifactDirectory))
         {
@@ -137,7 +148,7 @@ public sealed class SutLogCollector
 
         try
         {
-            string output;
+            string output = string.Empty;
             bool ok;
             string fileName;
             if (kind == SutKind.Linux)
@@ -153,7 +164,7 @@ public sealed class SutLogCollector
             else
             {
                 fileName = WindowsLogFileName;
-                ok = RunWindows(BuildWindowsFetchScript(windowsStartTime), out output);
+                ok = RunWindows(BuildWindowsFetchScript(windowsStartTime ?? string.Empty), out output);
             }
 
             if (ok)

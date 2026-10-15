@@ -13,6 +13,7 @@ using Microsoft.Protocols.TestSuites.Diagnostics.Configuration;
 using Microsoft.Protocols.TestSuites.Diagnostics.Errors;
 using Microsoft.Protocols.TestSuites.Diagnostics.Lifecycle;
 using Microsoft.Protocols.TestSuites.Diagnostics.Providers;
+using Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
 using Microsoft.Protocols.TestSuites.Diagnostics.Runner;
 using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Runner;
@@ -43,6 +44,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 new Dictionary<string, object>(),
                 logger,
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 () =>
                 {
                     identityFactoryCalls++;
@@ -90,6 +92,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 testProperties,
                 logger,
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 () =>
                 {
                     identityFactoryCalls++;
@@ -154,6 +157,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 testProperties,
                 logger,
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 () => new RunnerTestExecutionIdentity(
                     "Lifecycle",
                     "Composition",
@@ -247,6 +251,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                     testProperties,
                     new TestLogger(),
                     buildRoot,
+                    SmbdDiagnosticsSuite.Definition,
                     () => new RunnerTestExecutionIdentity(
                         "Lifecycle",
                         "RunnerManaged",
@@ -325,6 +330,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 testProperties,
                 new TestLogger(),
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 () => new RunnerTestExecutionIdentity(
                     "Lifecycle",
                     "ProviderSelection",
@@ -379,6 +385,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 },
                 new TestLogger(),
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 () => new RunnerTestExecutionIdentity(
                     "Lifecycle",
                     "PlatformSelection",
@@ -435,6 +442,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 new Dictionary<string, object>(),
                 new TestLogger(),
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 captureProviderFactory: _ =>
                 {
                     factoryCalls++;
@@ -477,6 +485,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 new Dictionary<string, object>(),
                 new TestLogger(),
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 captureProviderFactory: _ =>
                 {
                     factoryCalls++;
@@ -524,6 +533,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 new Dictionary<string, object>(),
                 new TestLogger(),
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 captureProviderFactory: _ =>
                 {
                     factoryCalls++;
@@ -566,6 +576,7 @@ public sealed class PtfDiagnosticsLifecycleTests
                 new Dictionary<string, object>(),
                 new TestLogger(),
                 buildRoot,
+                SmbdDiagnosticsSuite.Definition,
                 runnerIdentityFactory: null,
                 captureProviderFactory: _ =>
                 {

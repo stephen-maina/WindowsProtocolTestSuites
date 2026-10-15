@@ -184,6 +184,16 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.TreeMgmt
             #region Check Applicability
             TestConfig.CheckPlatform(Platform.WindowsServer2019);
             TestConfig.CheckDialect(DialectRevision.Smb311);
+            // WHAT: the extension identity is built from a SID obtained with the Windows-only GetUserSid adapter script,
+            //       and the share is a clustered infrastructure share.
+            // WHY:  on a non-Windows SUT the script never completes, which blocks the whole run; the test cannot
+            //       observe the protocol behaviour there.
+            // SPEC: [MS-SMB2] 2.2.9.1 / 3.3.5.7 (SMB2_REMOTED_IDENTITY_TREE_CONNECT context) is protocol-defined,
+            //       but only meaningful where the SUT can supply an identity and an infrastructure share.
+            if (!TestConfig.IsWindowsPlatform)
+            {
+                BaseTestSite.Assert.Inconclusive("This test requires a Windows SUT (identity lookup adapter) with a clustered infrastructure file server.");
+            }
             #endregion
 
             Smb2FunctionalClient client = new Smb2FunctionalClient(TestConfig.Timeout, TestConfig, BaseTestSite);

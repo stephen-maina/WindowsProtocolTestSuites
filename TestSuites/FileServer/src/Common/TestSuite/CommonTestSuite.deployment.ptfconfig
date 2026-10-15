@@ -284,6 +284,44 @@
         </Description>
       </Property>
 
+      <Property name="SutLog.Enabled" value="false">
+        <Choice>true,false</Choice>
+        <Description>
+          Optional debugging aid. When true, the SUT's own log for each test case (Linux: dmesg between per-test markers,
+          Windows: SMB Server event logs) is saved as sut-linux-dmesg.log / sut-windows.log in the test's diagnostics
+          folder. Requires Diagnostics.Enabled=true. Uses SutComputerName, AdminUserName and PasswordForAllUsers; on a
+          Linux SUT (Platform=NonWindows) ssh access with sudo rights is needed. Never fails a test.
+        </Description>
+      </Property>
+
+      <Property name="Diagnostics.Enabled" value="false">
+        <Choice>true,false</Choice>
+        <Description>
+          Enables the shared per-test diagnostics (artifact folder per test, manifest and PTF log). See the shared
+          Diagnostics.* properties documented for MS-SMBD; the same keys apply here.
+        </Description>
+      </Property>
+
+      <Property name="Diagnostics.ArtifactRoot" value="C:\WPTS-Diagnostics">
+        <Description>Root folder for diagnostics artifacts. Each run writes to session-timestamp\tests\TestName__id\.</Description>
+      </Property>
+
+      <Property name="DriverPlatform" value="WindowsServer2025">
+        <Description>Platform of the machine running the tests (same values as MS-SMBD's DriverPlatform); selects the capture provider.</Description>
+      </Property>
+
+      <Property name="Diagnostics.Capture.Provider" value="Automatic" />
+      <Property name="Diagnostics.Capture.ToolPath" value="" />
+      <Property name="Diagnostics.Capture.Targets" value="" />
+      <Property name="Diagnostics.Capture.TrafficScope" value="RdmaFocused" />
+      <Property name="Diagnostics.Capture.StartTimeout" value="00:00:30" />
+      <Property name="Diagnostics.Capture.StopTimeout" value="00:01:00" />
+      <Property name="Diagnostics.Capture.MaxDuration" value="00:05:00" />
+      <Property name="Diagnostics.Capture.MaxBytes" value="536870912" />
+      <Property name="Diagnostics.Capture.Format" value="Native" />
+      <Property name="Diagnostics.Logs.NativeEnabled" value="false" />
+      <Property name="Diagnostics.Retention" value="KeepAll" />
+
       <Property name="SupportedSecurityPackage" value="Negotiate">
         <Choice>Negotiate,Kerberos,Ntlm</Choice>
         <Description>

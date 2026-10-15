@@ -10,7 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
+namespace Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 
 /// <summary>
 /// Groups the artifacts of one test run ("session") under
