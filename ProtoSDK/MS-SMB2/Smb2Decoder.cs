@@ -882,7 +882,20 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
             }
             else
             {
-                packet.FromBytes(messageBytes, out consumedLength, out expectedLength);
+                try
+                {
+                    packet.FromBytes(messageBytes, out consumedLength, out expectedLength);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    throw new InvalidOperationException(string.Format(
+                        "Failed to decode {0} response with status {1} ({2} bytes after decryption): {3}. Bytes: {4}",
+                        smb2Header.Command,
+                        smb2Header.Status,
+                        messageBytes.Length,
+                        ex.Message,
+                        BitConverter.ToString(messageBytes, 0, Math.Min(messageBytes.Length, 96))), ex);
+                }
             }
 
             return packet;

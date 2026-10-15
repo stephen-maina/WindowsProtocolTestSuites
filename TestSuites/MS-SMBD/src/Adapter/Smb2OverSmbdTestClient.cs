@@ -160,7 +160,20 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                 int consumedLength;
                 int expectedLength;
                 //byte[] smb2Response = response.Skip((int)transferHeaderSize).ToArray();
-                StackPacket[] stackPackets = decoder.Smb2DecodePacketCallback(endpoint, smb2Response, out consumedLength, out expectedLength);
+                StackPacket[] stackPackets;
+                try
+                {
+                    stackPackets = decoder.Smb2DecodePacketCallback(endpoint, smb2Response, out consumedLength, out expectedLength);
+                }
+                catch (Exception ex)
+                {
+                    // Diagnostics only: record the raw response so an undecodable reply can be analysed.
+                    throw new InvalidOperationException(string.Format(
+                        "Failed to decode SMB2 response ({0} bytes): {1}. First bytes: {2}",
+                        smb2Response.Length,
+                        ex.Message,
+                        BitConverter.ToString(smb2Response, 0, Math.Min(smb2Response.Length, 96))), ex);
+                }
                 return (T)stackPackets[0];
             }
             else

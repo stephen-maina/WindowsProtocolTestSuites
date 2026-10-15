@@ -2553,6 +2553,20 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **Requirements covered**| N/A| 
 |  **Cleanup**| N/A| 
 
+## <a name="_Toc427489519"/>Gap-closing Test Cases
+
+The following 51 test cases were added to close the gaps listed in [Analysis_TestGaps.md](Analysis_TestGaps.md).
+Each carries `SpecSection`/`SpecCompliance` properties and a WHAT/WHY/SPEC comment in the source. Expected results come from
+the specification; product-specific gates are listed in the analysis report.
+
+| Class (file) | Scenario | Spec |
+|---|---|---|
+| `Smb2OverRdmaNegotiateContext` (6) | Two RDMA contexts, `DataLength` too small, `TransformCount` 0 → `STATUS_INVALID_PARAMETER`; no common transform → response `SMB2_RDMA_TRANSFORM_NONE`; unknown ID not echoed; context ignored on 3.0.2 | [MS-SMB2] 3.3.5.4, 2.2.3.1.6, 2.2.4.1.6 |
+| `Smb2OverRdmaChannelValidation` (23) | `RDMA_TRANSFORM` on 3.0/3.0.2, undefined `Channel`, zero `ChannelInfoOffset`/`Length`, `RemainingBytes` 0, non-zero inline `DataOffset`/`Length`, first descriptor length 0, descriptor sum < `RemainingBytes`, `RemainingBytes` > `MaxWriteSize`, `Length` > `MaxReadSize`, RDMA channel over TCP → `STATUS_INVALID_PARAMETER`; READ at/past EOF and `MinimumCount` → `STATUS_END_OF_FILE` | [MS-SMB2] 3.3.5.12, 3.3.5.13, [MS-FSA] 2.1.5.2 |
+| `Smb2OverRdmaTransformEdge` (6) | Encryption transform on an unencrypted request and unknown `TransformType` → `STATUS_INVALID_PARAMETER`; READ with no negotiated transform; READ response crypto-transform fields for AES-GMAC and AES-CMAC | [MS-SMB2] 3.3.5.12, 3.3.5.13, 2.2.43, 2.2.43.1 |
+| `SmbdProtocolGaps` (9) | Reserved/Padding ignored; second Negotiate Request terminates; Data Transfer before negotiation rejected; credit cap and growth; fragmented READ response headers; exact `MaxReadWriteSize` READ/WRITE | [MS-SMBD] 2.2.1, 2.2.3, 3.1.4.5, 3.1.4.6, 3.1.5.3, 3.1.5.4, 3.1.5.6, 3.1.5.8, 3.1.5.9 |
+| `Smb2MultiChannelGaps` (7) | `FSCTL_QUERY_NETWORK_INTERFACE_INFO` over RDMA; session-bind negatives (`STATUS_INVALID_PARAMETER`, `STATUS_USER_SESSION_DELETED`, `STATUS_REQUEST_NOT_ACCEPTED`); RDMA failover; 8 concurrent connections; requests exceeding initial credits | [MS-SMB2] 3.3.5.5, 3.3.5.15.11, 3.3.7.1, 3.3.1.2, [MS-SMBD] 3.1.5.1, 3.1.5.9 |
+
 ## <a name="_Toc427489520"/>Appendix
 
 ### <a name="_Toc427489521"/>Glossary
