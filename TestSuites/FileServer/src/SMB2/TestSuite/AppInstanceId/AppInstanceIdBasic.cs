@@ -80,6 +80,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.AppInstanceId)]
         [Description("The case is designed to test when client fails over to a new client, the previous open can be closed by the new client with the same AppInstanceId.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 - Create with SMB2_CREATE_APP_INSTANCE_ID matching an existing Open's AppInstanceId: server MUST close the existing Open.
         public void BVT_AppInstanceId()
         {
             // Client1 opens a file with DurableHandleRequestV2 and AppInstanceId.
@@ -102,6 +103,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.AppInstanceId)]
         [TestCategory(TestCategories.InvalidIdentifier)]
         [Description("The case is designed to test when client fails over to a new client, the previous opened file cannot be closed by the new client with different AppInstanceId.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 - Only Opens with an equal AppInstanceId are closed; a different AppInstanceId leaves the existing Open intact.
         public void AppInstanceId_Negative_DifferentAppInstanceIdInReopen()
         {
             // Client1 opens a file with DurableHandleRequestV2 and AppInstanceId.
@@ -126,6 +128,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [Description("The case is designed to test if the server implements dialect 3.11, " +
             "and when client fails over to a new client, the previous open can be closed by the new client with the same AppInstanceId. " +
             "AppInstanceId should work without DH2Q create context.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 / 2.2.13.2.13 - SMB2_CREATE_APP_INSTANCE_ID processing on dialect 3.1.1 (supported when server implements 3.x).
         public void AppInstanceId_Smb311()
         {
             // Client1 opens a file with create context AppInstanceId, no create context DurableHandleRequestV2
@@ -150,6 +153,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Positive)]
         [Description("The case is designed to test if the server implements dialect 3.02, " +
             "and when client fails over to a new client, check if the Open is closed.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 / 2.2.13.2.13 - SMB2_CREATE_APP_INSTANCE_ID processing on dialect 3.0.2 (supported when server implements 3.x).
         public void AppInstanceId_Smb302()
         {
             // Client1 opens a file with create context AppInstanceId, no create context DurableHandleRequestV2

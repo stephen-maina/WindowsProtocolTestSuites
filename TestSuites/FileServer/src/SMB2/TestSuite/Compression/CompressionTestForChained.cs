@@ -19,6 +19,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can decompress WRITE request and compress READ response correctly using chained compression and PatternV1.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 2 / 2.2.42.2 - chained compressed WRITE with Pattern_V1 payload; server MUST decompress chain; READ reply 3.3.4.1.5 (SHOULD).
         public void BVT_SMB2Compression_Chained_PatternV1()
         {
             // When both IsGlobalEncryptDataEnabled and IsGlobalRejectUnencryptedAccessEnabled are true, the case become encryption scenario and it is covered in test case BVT_SMB2Compression_Chained_PatternV1_Encrypted.
@@ -32,6 +33,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can decompress WRITE request and compress READ response correctly using chained compression and PatternV1 when encryption is enabled.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 step 8, 3.3.5.2.1.2 step 2 / 2.2.42.2 - chained Pattern_V1 compression inside an encrypted message.
         public void BVT_SMB2Compression_Chained_PatternV1_Encrypted()
         {
             SMB2ChainedCompression_Variant(CompressionTestVariant.BasicChainedReadWrite, needPatternV1: true, needCompressionAlgorithm: true, needEncryption: true);
@@ -42,6 +44,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle chained and compressed WRITE request correctly using supported compression algorithms. The PatternV1 compressible data appear at front.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 2 / 2.2.42.2.2 - chained WRITE with Pattern_V1 segment at the front MUST be decompressed.
         public void SMB2Compression_Chained_PatternV1_CompressedWriteRequest_PatternV1AtFront()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -54,6 +57,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle chained and compressed WRITE request correctly using supported compression algorithms. The PatternV1 compressible data appear at end.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 2 / 2.2.42.2.2 - chained WRITE with Pattern_V1 segment at the end MUST be decompressed.
         public void SMB2Compression_Chained_PatternV1_CompressedWriteRequest_PatternV1AtEnd()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -66,6 +70,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle chained and compressed WRITE request correctly using supported compression algorithms. The PatternV1 compressible data appear at both front and end.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 2 / 2.2.42.2.2 - chained WRITE with Pattern_V1 segments at front and end MUST be decompressed.
         public void SMB2Compression_Chained_PatternV1_CompressedWriteRequest_PatternV1AtFrontAndEnd()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -78,6 +83,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can chain and compress read request correctly if SMB2_READFLAG_REQUEST_COMPRESSED is specified in request and response is compressible.")]
+        // SPEC: [MS-SMB2] 3.3.4.1.5 / 3.1.4.4 - chained compression of a compressible READ reply (server SHOULD compress; 2.2.42.2).
         public void SMB2Compression_Chained_PatternV1_CompressibleReadResponse()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -90,6 +96,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server will not chain or compress read request if SMB2_READFLAG_REQUEST_COMPRESSED is specified in request and response is incompressible.")]
+        // SPEC: [MS-SMB2] 3.3.4.1.5 / 3.1.4.4 - incompressible READ reply is sent uncompressed (compression is only a SHOULD).
         public void SMB2Compression_Chained_PatternV1_IncompressibleReadResponse()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -104,6 +111,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can decompress large file WRITE request and compress READ response correctly using chained compression and PatternV1.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 / 3.3.4.1.5 - large-file chained Pattern_V1 compression; decompressed size MUST equal OriginalCompressedSegmentSize.
         public void SMB2Compression_Chained_PatternV1_LargeFile()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -116,6 +124,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle chained and compressed large file WRITE request correctly using supported compression algorithms. The PatternV1 compressible data appear at front.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 2 / 2.2.42.2.2 - large chained WRITE with Pattern_V1 at the front MUST be decompressed.
         public void SMB2Compression_Chained_PatternV1_CompressedWriteRequest_PatternV1AtFront_LargeFile()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -128,6 +137,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle chained and compressed large file WRITE request correctly using supported compression algorithms. The PatternV1 compressible data appear at end.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 2 / 2.2.42.2.2 - large chained WRITE with Pattern_V1 at the end MUST be decompressed.
         public void SMB2Compression_Chained_PatternV1_CompressedWriteRequest_PatternV1AtEnd_LargeFile()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -140,6 +150,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle chained and compressed large file WRITE request correctly using supported compression algorithms. The PatternV1 compressible data appear at both front and end.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 2 / 2.2.42.2.2 - large chained WRITE with Pattern_V1 at front and end MUST be decompressed.
         public void SMB2Compression_Chained_PatternV1_CompressedWriteRequest_PatternV1AtFrontAndEnd_LargeFile()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -152,6 +163,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can chain and compress large file read request correctly if SMB2_READFLAG_REQUEST_COMPRESSED is specified in request and response is compressible.")]
+        // SPEC: [MS-SMB2] 3.3.4.1.5 / 3.1.4.4 - large chained compression of a compressible READ reply (server SHOULD compress).
         public void SMB2Compression_Chained_PatternV1_CompressibleReadResponse_LargeFile()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -165,6 +177,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This test case is designed to test whether server will disconnect the connection if it received a compressed message with invalid CompressionAlgorithm in compression payload header.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 1.3 - chained CompressionAlgorithm neither NONE nor in Connection.CompressionIds: server MUST disconnect (3.3.7.1).
         public void SMB2Compression_Chained_InvalidCompressionAlgorithmInCompressionPayloadHeader()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -204,6 +217,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.OutOfBoundary)]
         [Description("This test case is designed to test whether server will disconnect the connection if it received a compressed message with invalid Length in compression payload header.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 3.1/3.2 - invalid payload Length in chained header (decompression fails / size mismatch): server MUST disconnect (3.3.7.1).
         public void SMB2Compression_Chained_InvalidLengthInCompressionPayloadHeader()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -243,6 +257,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.OutOfBoundary)]
         [Description("This test case is designed to test whether server will disconnect the connection if it received a compressed message with invalid Repetitions in compression pattern payload V1.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 3.2 / 2.2.42.2.2 - Pattern_V1 Repetitions yielding size != OriginalCompressedSegmentSize: server MUST disconnect (3.3.7.1).
         public void SMB2Compression_Chained_PatternV1_InvalidCompressionPatternPayloadV1Repetitions()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();

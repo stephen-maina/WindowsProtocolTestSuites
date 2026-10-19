@@ -25,6 +25,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file with lease before client failover and expect no lease state is maintained after client failover.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 - Existing Open closed on matching AppInstanceId; lease on the old open is not carried to the new Open.
         public void AppInstanceId_FileLeasing_NoLeaseInReOpen()
         {
             #region Check Applicability
@@ -46,6 +47,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file with lease before client failover and expect no lease state is maintained after client failover.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 - Existing directory Open closed on matching AppInstanceId; lease on the old open is not carried to the new Open.
         public void AppInstanceId_DirectoryLeasing_NoLeaseInReOpen()
         {
             #region Check Applicability

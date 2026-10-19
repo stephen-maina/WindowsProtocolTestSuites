@@ -50,6 +50,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.HvrsFsa)]
         [TestCategory(TestCategories.NonSmb)]
         [Description("This test case is designed to test whether the server supports the FSCTL_OFFLOAD_READ and FSCTL_OFFLOAD_WRITE.")]
+        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTL_OFFLOAD_READ/WRITE; [MS-FSA] offload read/write
         public void BVT_OffloadReadWrite()
         {
             // Check the flag, if IsOffLoadImplemented == false, skip this case
@@ -198,6 +199,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.HvrsFsa)]
         [TestCategory(TestCategories.NonSmb)]
         [Description("This test case is designed to test whether the server supports the FSCTL_SET_ZERO_DATA.")]
+        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTL_SET_ZERO_DATA
         public void BVT_SetZeroData()
         {
             CheckHvrsCapability(TestConfig.IsSetZeroDataImplemented, 
@@ -234,6 +236,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Bvt)]
         [TestCategory(TestCategories.HvrsFsa)]
         [Description("This test case is designed to test whether the server supports the FSCTL_FILE_LEVEL_TRIM")]
+        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTL_FILE_LEVEL_TRIM
         public void BVT_FileLevelTrim()
         {
             uint treeId;
@@ -291,6 +294,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.HvrsFsa)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test the server response when non-zero value is set to the Key field of FSCTL_FILE_LEVEL_TRIM request.")]
+        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTL_FILE_LEVEL_TRIM; invalid request MUST be failed by the object store ([MS-FSA])
         public void FileLevelTrim_Negative_NonZeroKeyInRequest()
         {
             uint treeId;
@@ -384,6 +388,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.HvrsFsa)]
         [TestCategory(TestCategories.NonSmb)]
         [Description("This test case is designed to test whether the server supports FSCTL_DUPLICATE_EXTENTS_TO_FILE")]
+        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTL_DUPLICATE_EXTENTS_TO_FILE
         public void BVT_DuplicateExtentsToFile()
         {
             // Check the platform and ReFS file system.

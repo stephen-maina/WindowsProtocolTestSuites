@@ -18,6 +18,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file via multi-channel with encryption on both channels.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 / 3.3.5.5.2 - encrypted requests accepted on all channels when Session.EncryptData is TRUE
         public void MultipleChannel_EncryptionOnBothChannels()
         {
             #region Check Applicability
@@ -85,6 +86,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Operate file via multi-channel only with encryption on main channel.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 - unencrypted request on main channel when encryption required MUST be rejected
         public void MultipleChannel_Negative_EncryptionOnMainChannel()
         {
             #region Check Applicability
@@ -162,6 +164,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Operate file via multi-channel only with encryption on alternative channel.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 - unencrypted request on alternate channel when encryption required MUST be rejected
         public void MultipleChannel_Negative_EncryptionOnAlternativeChannel()
         {
             #region Check Applicability

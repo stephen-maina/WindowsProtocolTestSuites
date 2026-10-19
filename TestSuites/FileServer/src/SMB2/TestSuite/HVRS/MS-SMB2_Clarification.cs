@@ -47,6 +47,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.HvrsSmb)]
         [TestCategory(TestCategories.Smb30)]
         [Description("This test case is designed to test whether the server supports the SMB 3.0 or higher dialect.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 / 3.3.5.2.2 - negotiated dialect behaviour (HVRS clarification)
         public void BVT_SMBDialect()
         {
             smb2Functionalclient.ConnectToServer(TestConfig.UnderlyingTransport, TestConfig.ShareServerName, TestConfig.ShareServerIP);
@@ -75,6 +76,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.HvrsSmb)]
         [TestCategory(TestCategories.Smb30)]
         [Description("This test case is designed to test whether the server supports persistent handles.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.10 - persistent handle (CREATE_DURABLE_HANDLE_REQUEST_V2 with PERSISTENT flag)
         public void BVT_PersistentHandles()
         {
             #region Check Applicability
@@ -126,6 +128,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.HvrsSmb)]
         [TestCategory(TestCategories.Smb30)]
         [Description("This test case is designed to test whether the server supports the FSCTL_LMR_REQUEST_RESILIENCY.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.9 - FSCTL_LMR_REQUEST_RESILIENCY: server MUST set Open.ResilientHandle and Open.ResilientTimeout
         public void BVT_Resiliency()
         {
             #region Check Applicaility

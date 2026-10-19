@@ -58,6 +58,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Smb2 dialect wildcard.")]
+        // SPEC: [MS-SMB2] 3.3.5.3 - multi-protocol SMB1 negotiate; server MUST answer with SMB2 wildcard 0x02FF when "SMB 2.???" is offered (3.3.5.4 greatest common dialect afterwards).
         public void BVT_Negotiate_Compatible_Wildcard()
         {
             //Send wildcard revision number to verify if the server supports SMB2.1 or future dialect revisions.
@@ -117,6 +118,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle compatible NEGOTIATE with dialect Smb 2.002.")]
+        // SPEC: [MS-SMB2] 3.3.5.3 - multi-protocol SMB1 negotiate containing only "SMB 2.002"; server MUST respond with SMB2 dialect 0x0202.
         public void BVT_Negotiate_Compatible_2002()
         {
             BaseTestSite.Log.Add(
@@ -143,6 +145,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Signing Required.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 - SMB2_NEGOTIATE_SIGNING_REQUIRED in SecurityMode: server MUST set Connection.ShouldSign and still succeed the negotiate.
         public void BVT_Negotiate_SigningEnabled()
         {
             BaseTestSite.Log.Add(
@@ -167,6 +170,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Smb 2.002 dialect.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 - server MUST select the greatest common dialect (2.0.2) and set Connection.Dialect/NegotiateDialect.
         public void BVT_Negotiate_SMB2002()
         {
             NegotiateWithSpecificDialect(DialectRevision.Smb2002);
@@ -177,6 +181,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Smb 2.1 dialect.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 - server MUST select the greatest common dialect (2.1) and set Connection.Dialect/NegotiateDialect.
         public void BVT_Negotiate_SMB21()
         {
             NegotiateWithSpecificDialect(DialectRevision.Smb21);
@@ -187,6 +192,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Smb 3.0 dialect.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 - server MUST select the greatest common dialect (3.0) and set Connection.Dialect/NegotiateDialect.
         public void BVT_Negotiate_SMB30()
         {
             NegotiateWithSpecificDialect(DialectRevision.Smb30);
@@ -197,6 +203,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Smb 3.02 dialect.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 - server MUST select the greatest common dialect (3.0.2) and set Connection.Dialect/NegotiateDialect.
         public void BVT_Negotiate_SMB302()
         {
             NegotiateWithSpecificDialect(DialectRevision.Smb302);
@@ -209,6 +216,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server (including the server doesn't implement dialect 3.11) " +
             " can handle NEGOTIATE with SMB 3.11 dialect and Negotiate Contexts.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 (steps 7-8) / 2.2.3.1.1, 2.2.3.1.2 - dialect 3.1.1: server MUST process PREAUTH_INTEGRITY and ENCRYPTION negotiate contexts and return them in the response.
         public void BVT_Negotiate_SMB311()
         {
             DialectRevision clientMaxDialectSupported = DialectRevision.Smb311;
@@ -237,6 +245,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and SMB2_PREAUTH_INTEGRITY_CAPABILITIES context")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 7 / 2.2.3.1.1 - server MUST select a supported hash (SHA-512) from SMB2_PREAUTH_INTEGRITY_CAPABILITIES and return it.
         public void BVT_Negotiate_SMB311_Preauthentication()
         {
             DialectRevision clientMaxDialectSupported = DialectRevision.Smb311;
@@ -266,6 +275,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and SMB2_PREAUTH_INTEGRITY_CAPABILITIES context and " +
             "SMB2_ENCRYPTION_CAPABILITIES context with AES-128-CCM preferred.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3 / 2.2.3.1.2 - server MUST set Connection.CipherId to one of the client's offered ciphers (AES-128-CCM preferred).
         public void BVT_Negotiate_SMB311_Preauthentication_Encryption_CCM()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -299,6 +309,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and SMB2_PREAUTH_INTEGRITY_CAPABILITIES context and " +
             "SMB2_ENCRYPTION_CAPABILITIES context with AES-256-CCM preferred.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3 / 2.2.3.1.2 - server MUST set Connection.CipherId to one of the client's offered ciphers (AES-256-CCM preferred).
         public void BVT_Negotiate_SMB311_Preauthentication_Encryption_AES_256_CCM()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -333,6 +344,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and SMB2_PREAUTH_INTEGRITY_CAPABILITIES context and " +
             "SMB2_ENCRYPTION_CAPABILITIES context with AES-128-GCM preferred.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3 / 2.2.3.1.2 - server MUST set Connection.CipherId to one of the client's offered ciphers (AES-128-GCM preferred).
         public void BVT_Negotiate_SMB311_Preauthentication_Encryption_GCM()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -365,6 +377,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and SMB2_PREAUTH_INTEGRITY_CAPABILITIES context and " +
             "SMB2_ENCRYPTION_CAPABILITIES context with AES-256-GCM preferred.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3 / 2.2.3.1.2 - server MUST set Connection.CipherId to one of the client's offered ciphers (AES-256-GCM preferred).
         public void BVT_Negotiate_SMB311_Preauthentication_Encryption_AES_256_GCM()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -398,6 +411,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and with all the three Negotiate Contexts.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 steps 1-9 - exactly one each of PREAUTH_INTEGRITY, ENCRYPTION, COMPRESSION contexts is valid and MUST be processed.
         public void Negotiate_SMB311_WithAllContexts()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -425,6 +439,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and without any Negotiate Contexts.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 1 - no SMB2_PREAUTH_INTEGRITY_CAPABILITIES context: MUST fail with STATUS_INVALID_PARAMETER.
         public void Negotiate_SMB311_WithoutAnyContexts()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -451,6 +466,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect, with SMB2_ENCRYPTION_CAPABILITIES Context and without SMB2_PREAUTH_INTEGRITY_CAPABILITIES Context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 1 - missing SMB2_PREAUTH_INTEGRITY_CAPABILITIES (ENCRYPTION only): MUST fail with STATUS_INVALID_PARAMETER.
         public void Negotiate_SMB311_WithEncryptionContextWithoutIntegrityContext()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -480,6 +496,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect, with SMB2_COMPRESSION_CAPABILITIES Context and without SMB2_PREAUTH_INTEGRITY_CAPABILITIES Context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 1 - missing SMB2_PREAUTH_INTEGRITY_CAPABILITIES (COMPRESSION only): MUST fail with STATUS_INVALID_PARAMETER.
         public void Negotiate_SMB311_WithCompressionContextWithoutIntegrityContext()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -508,6 +525,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect, with SMB2_ENCRYPTION_CAPABILITIES and SMB2_COMPRESSION_CAPABILITIES Contexts and without SMB2_PREAUTH_INTEGRITY_CAPABILITIES Context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 1 - missing SMB2_PREAUTH_INTEGRITY_CAPABILITIES (ENCRYPTION+COMPRESSION): MUST fail with STATUS_INVALID_PARAMETER.
         public void Negotiate_SMB311_WithEncryptionAndCompressionContextsWithoutIntegrityContext()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -538,6 +556,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and with an invalid HashAlgorithm in SMB2_PREAUTH_INTEGRITY_CAPABILITIES Context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 7.2 - no supported hash in HashAlgorithms: MUST fail with STATUS_SMB_NO_PREAUTH_INTEGRITY_HASH_OVERLAP.
         public void Negotiate_SMB311_InvalidHashAlgorithm()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -568,6 +587,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and with an invalid Cipher in SMB2_ENCRYPTION_CAPABILITIES Context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3 - no common cipher: server MUST set Connection.CipherId to 0.
         public void Negotiate_SMB311_InvalidCipher()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
@@ -599,6 +619,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect, with SMB2_SIGNING_CAPABILITIES context and with SMB2_PREAUTH_INTEGRITY_CAPABILITIES context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 / 2.2.3.1.7 - SMB2_SIGNING_CAPABILITIES: server MUST select one offered signing algorithm and return it in the response context.
         public void Negotiate_SMB311_SigningCapability()
         {
             CheckSigningCompatibility();
@@ -623,6 +644,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with supported compression algorithms in SMB2_COMPRESSION_CAPABILITIES context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 9 / 2.2.3.1.3 - SMB2_COMPRESSION_CAPABILITIES: server MUST set Connection.CompressionIds from the client's supported algorithms.
         public void BVT_Negotiate_SMB311_CompressionEnabled()
         {
             CheckCompressionApplicability();
@@ -655,6 +677,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with SMB2_COMPRESSION_CAPABILITIES_FLAG_CHAINED set in Flags field of SMB2_COMPRESSION_CAPABILITIES context when chained compression is supported.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 9 / 2.2.3.1.3 - CHAINED flag requested and supported: server MUST set Connection.SupportsChainedCompression and echo the flag.
         public void BVT_Negotiate_SMB311_Compression_IsChainedCompressionSupported()
         {
             CheckCompressionApplicability(true);
@@ -690,6 +713,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("A Boolean; if set, indicates that SMB2_TRANSPORT_CAPABILITIES negotiate context, as specified in section 2.2.3.1.5, is supported by the node.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 / 2.2.3.1.5 - SMB2_TRANSPORT_CAPABILITIES: server returns the context with SMB2_ACCEPT_TRANSPORT_LEVEL_SECURITY when supported.
         public void Negotiate_SMB311_IsTransportCapabilitiesSupported()
         {
             #region Check Applicability
@@ -734,6 +758,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with unsupported compression algorithms in SMB2_COMPRESSION_CAPABILITIES context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 9 - none of the offered compression algorithms supported: negotiate still succeeds with an empty/NONE CompressionAlgorithms list.
         public void Negotiate_SMB311_Compression_CompressionAlgorithmNotSupported()
         {
             CheckCompressionApplicability();
@@ -760,6 +785,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This test case is designed to test whether server ignores SMB2_COMPRESSION_CAPABILITIES context when negotiate with SMB dialect less than 3.1.1.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 6 / 2.2.3.1 - negotiate contexts apply only when Connection.Dialect is 3.1.1; for lower dialects the server ignores COMPRESSION context.
         public void Negotiate_SMB311_Compression_InvalidSmbDialect()
         {
             CheckCompressionApplicability();
@@ -790,6 +816,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This test case is designed to test whether server handle SMB2_COMPRESSION_CAPABILITIES context with invalid DataLength field when negotiate.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 9.1 - COMPRESSION context DataLength smaller than the structure: MUST fail with STATUS_INVALID_PARAMETER.
         public void Negotiate_SMB311_Compression_CompressionContextInvalidDataLength()
         {
             CheckCompressionApplicability();
@@ -836,6 +863,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This test case is designed to test whether server handle SMB2_COMPRESSION_CAPABILITIES context with invalid CompressionAlgorithmCount field when negotiate.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 9.2 - CompressionAlgorithmCount equal to 0: MUST fail with STATUS_INVALID_PARAMETER.
         public void Negotiate_SMB311_Compression_CompressionAlgorithmEmpty()
         {
             CheckCompressionApplicability();
@@ -863,6 +891,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can ignore SMB2_NETNAME_NEGOTIATE_CONTEXT_ID context when negotiate.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 6 / 2.2.3.1.4 - SMB2_NETNAME_NEGOTIATE_CONTEXT_ID: server MUST ignore this context.
         public void Negotiate_SMB311_ContextID_NetName()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send NEGOTIATE request with SMB2_NETNAME_NEGOTIATE_CONTEXT_ID context.");
@@ -899,6 +928,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with SMB2_COMPRESSION_CAPABILITIES_FLAG_CHAINED not set in Flags field of SMB2_COMPRESSION_CAPABILITIES context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 9 / 2.2.3.1.3 - CHAINED flag not requested: server MUST NOT set SMB2_COMPRESSION_CAPABILITIES_FLAG_CHAINED in the response.
         public void Negotiate_SMB311_Compression_FlagChainedNotSet()
         {
             CheckCompressionApplicability();
@@ -934,6 +964,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with SMB2_COMPRESSION_CAPABILITIES_FLAG_CHAINED set in Flags field of SMB2_COMPRESSION_CAPABILITIES context when chained compression is not supported.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 9 / 2.2.3.1.3 - CHAINED requested but unsupported: server MUST NOT set the CHAINED flag in the response.
         public void Negotiate_SMB311_Compression_ChainedCompressionNotSupported()
         {
             CheckCompressionApplicability();
@@ -971,6 +1002,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with SMB2_GLOBAL_CAP_NOTIFICATIONS set in Capabilities")]
+        // SPEC: [MS-SMB2] 3.3.5.4 / 2.2.4 - SMB2_GLOBAL_CAP_NOTIFICATIONS: server sets it in response Capabilities when it supports server-to-client notifications.
         public void Negotiate_SMB311_IsServerToClientNotificationsSupported()
         {
             #region Check Applicability
@@ -1013,6 +1045,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Bvt)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with SMB2_RDMA_TRANSFORM_CAPABILITES Context " +
             "with all flags set.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 / 2.2.3.1.6 - SMB2_RDMA_TRANSFORM_CAPABILITIES: server returns a subset of the offered RDMATransformIds (never more).
         public void BVT_Negotiate_SMB311_RdmaTransformCapabilities_IsSupported()
         {
             CheckRdmaCompatibility(true);
@@ -1068,6 +1101,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with SMB2_RDMA_TRANSFORM_CAPABILITES Context " +
             "with empty transform ids.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 / 2.2.3.1.6 - RDMA_TRANSFORM_CAPABILITIES TransformCount of 0: MUST fail with STATUS_INVALID_PARAMETER.
         public void Negotiate_SMB311_RdmaTransformCapabilities_EmptyTransformIds()
         {
             CheckRdmaCompatibility(true);
@@ -1094,6 +1128,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with SMB2_RDMA_TRANSFORM_CAPABILITIES " +
              "context having an invalid DataLength field.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 / 2.2.3.1.6 - RDMA_TRANSFORM_CAPABILITIES DataLength smaller than the structure: MUST fail with STATUS_INVALID_PARAMETER.
         public void Negotiate_SMB311_RdmaTransformCapabilities_InvalidDataLength()
         {
             CheckRdmaCompatibility(true);

@@ -66,6 +66,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.FsctlValidateNegotiateInfo)]
         [Description("Test whether server can handle IOCTL FSCTL_VALIDATE_NEGOTIATE_INFO.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.12 - FSCTL_VALIDATE_NEGOTIATE_INFO response MUST echo server Guid/Capabilities/SecurityMode/Dialect
         public void BVT_ValidateNegotiateInfo()
         {
             TestValidateNegotiateInfo(client, ValidateNegotiateInfoRequestType.None);
@@ -77,6 +78,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test whether server terminates the transport connection and free the connection object " + 
             "if no dialect is matched when determine the greatest common dialect between the dialects it implements and the dialects array of VALIDATE_NEGOTIATE_INFO request.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.12 item 3 - no common dialect: server MUST terminate the transport connection
         public void ValidateNegotiateInfo_Negative_InvalidDialects_NoCommonDialect()
         {
             TestValidateNegotiateInfo(client, ValidateNegotiateInfoRequestType.InvalidDialects, invalidDialects: new DialectRevision[] { DialectRevision.Smb2Unknown });
@@ -88,6 +90,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test whether the server terminates the transport connection and free the Connection object, " + 
             "if the value is not equal to Connection.Dialect when determine the greatest common dialect between the dialects it implements and the Dialects array of the VALIDATE_NEGOTIATE_INFO request.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.12 item 3 - greatest common dialect != Connection.Dialect: server MUST terminate the connection
         public void ValidateNegotiateInfo_Negative_InvalidDialects_CommonDialectNotExpected()
         {
             TestValidateNegotiateInfo(client, ValidateNegotiateInfoRequestType.InvalidDialects, invalidDialects: new DialectRevision[] { DialectRevision.Smb21 });
@@ -99,6 +102,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.InvalidIdentifier)]
         [Description("Test whether the server terminates the transport connection and free the Connection object, " + 
             "if the Guid received in the VALIDATE_NEGOTIATE_INFO request structure is not equal to the Connection.ClientGuid.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.12 item 4 - Guid != Connection.ClientGuid: server MUST terminate the connection
         public void ValidateNegotiateInfo_Negative_InvalidGuid()
         {
             TestValidateNegotiateInfo(client, ValidateNegotiateInfoRequestType.InvalidGuid);
@@ -110,6 +114,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test whether the server terminates the transport connection and free the Connection object, " + 
             "if the SecurityMode received in the VALIDATE_NEGOTIATE_INFO request structure is not equal to Connection.ClientSecurityMode.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.12 item 5 - SecurityMode != Connection.ClientSecurityMode: server MUST terminate the connection
         public void ValidateNegotiateInfo_Negative_InvalidSecurityMode()
         {
             TestValidateNegotiateInfo(client, ValidateNegotiateInfoRequestType.InvalidSecurityMode);
@@ -121,6 +126,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test whether the server terminates the transport connection and free the Connection object, " + 
             "if Connection.ClientCapabilities is not equal to the Capabilities received in the VALIDATE_NEGOTIATE_INFO request structure.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.12 item 6 - Capabilities != Connection.ClientCapabilities: server MUST terminate the connection
         public void ValidateNegotiateInfo_Negative_InvalidCapabilities()
         {
             TestValidateNegotiateInfo(client, ValidateNegotiateInfoRequestType.InvalidCapabilities);
@@ -132,6 +138,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.OutOfBoundary)]
         [Description("Test whether the server terminates the transport connection and free the Connection object, " + 
             "if MaxOutputResponse in the IOCTL request is less than the size of a VALIDATE_NEGOTIATE_INFO Response.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.12 item 2 - MaxOutputResponse < VALIDATE_NEGOTIATE_INFO response size: server MUST terminate the connection
         public void ValidateNegotiateInfo_Negative_InvalidMaxOutputResponse()
         {
             TestValidateNegotiateInfo(client, ValidateNegotiateInfoRequestType.InvalidMaxOutputResponse);
@@ -142,6 +149,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.FsctlValidateNegotiateInfo)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Test whether the server can terminate the transport connection when receiving a VALIDATE_NEGOTIATE_INFO request with dialect 3.1.1.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.12 item 1 - Connection.Dialect 3.1.1: server MUST terminate the connection on VALIDATE_NEGOTIATE_INFO
         public void ValidateNegotiateInfo_Negative_SMB311()
         {
             // This case is only applicable for the server that implements the SMB 3.1.1 dialect;

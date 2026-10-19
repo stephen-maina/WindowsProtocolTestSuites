@@ -16,6 +16,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate files with encrypted message before and after client failover.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 - Closing the existing Open on matching AppInstanceId; encrypted requests before and after failover (3.3.5.2.5 encryption).
         public void AppInstanceId_Encryption()
         {
             AppInstanceIdTestWithEncryption(encryptionInInitialOpen: true, encryptionInReOpen: true);
@@ -26,6 +27,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Operate files with encrypted message before failover but with unencrypted message after failover.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 / 3.3.5.2.5 - Unencrypted request after an encrypted session setup must be rejected by the server.
         public void AppInstanceId_Negative_EncryptionInInitialOpen_NoEncryptionInReOpen()
         {
             #region Check Applicability
@@ -39,6 +41,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Operate files with encrypted message before client failover but with unencrypted message after failover.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 / 3.3.5.2.5 - Encrypted re-open where the initial open was unencrypted; encryption enforcement per Session.EncryptData/Share.EncryptData.
         public void AppInstanceId_Negative_NoEncryptionInInitialOpen_EncryptionInReOpen()
         {
             #region Check Applicability

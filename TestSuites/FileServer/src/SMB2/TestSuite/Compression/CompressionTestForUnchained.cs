@@ -20,6 +20,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can compress WRITE request and READ response using unchained compression.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 1.2 / 2.2.42.1 - unchained COMPRESSION_TRANSFORM_HEADER: server MUST decompress WRITE; READ reply 3.3.4.1.5 (SHOULD).
         public void BVT_SMB2Compression_Unchained()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -32,6 +33,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can compress WRITE request and READ response using unchained compression for large file.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 1.2 / 2.2.42.1 - large-file unchained compression; decompressed size MUST equal OriginalCompressedSegmentSize.
         public void BVT_SMB2Compression_Unchained_LargeFile()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();

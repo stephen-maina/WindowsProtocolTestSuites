@@ -18,6 +18,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.AppInstanceId)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Operate file with lock during client failover and expect no lock is maintained after failover.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.13 - Existing Open closed on matching AppInstanceId; its byte-range locks are released with the Open.
         public void AppInstanceId_Lock_ExpectNoLockInReOpen()
         {
             #region Check Applicability

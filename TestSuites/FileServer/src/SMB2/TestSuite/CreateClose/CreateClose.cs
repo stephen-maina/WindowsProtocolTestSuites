@@ -71,6 +71,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.CreateClose)]
         [Description("This case is designed to test whether server can handle Create and Delete operations on file correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 / 3.3.5.10 - CREATE opens/creates the file and returns a FileId; CLOSE on that FileId succeeds.
         public void BVT_CreateClose_CreateAndCloseFile()
         {
             // Client1 create a file
@@ -97,6 +98,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.CreateClose)]
         [Description("This case is designed to test whether server can handle Create and Delete operations on directory correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 / 3.3.5.10 - CREATE with FILE_DIRECTORY_FILE opens/creates a directory; CLOSE succeeds.
         public void BVT_CreateClose_CreateAndCloseDirectory()
         {
             //Client1 create a directory
@@ -123,6 +125,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.CreateClose)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This case is designed to test whether server can handle Create operation with symbolic link in middle of file path.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - symbolic link in a non-final path component yields STATUS_STOPPED_ON_SYMLINK with SMB2_ERROR_CONTEXT symlink error response (2.2.2.2.1).
         public void CreateClose_SymbolicLinkInMiddle()
         {
             //Client1 create a file
@@ -140,6 +143,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.CreateClose)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This case is designed to test whether server can handle Create operation with symbolic link at last of file path.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - symbolic link as the final path component yields STATUS_STOPPED_ON_SYMLINK with symlink error response (2.2.2.2.1).
         public void CreateClose_SymbolicLinkAtLast()
         {
             if(testConfig.Platform >= Platform.WindowsServer2022)
@@ -162,6 +166,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.CreateClose)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This case is designed to test whether server can handle Create operation with other invalid symbolic link.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - CREATE through an invalid symbolic link is failed with the object-system error status.
         public void CreateClose_InvalidSymbolicLink()
         {
             //Client1 create a file
@@ -179,6 +184,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.CreateClose)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This case is designed to test whether server can handle file deletion request when desired access does not include DELETE or GENERIC_ALL.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - FILE_DELETE_ON_CLOSE without DELETE/GENERIC_ALL access: server SHOULD<283> fail with STATUS_ACCESS_DENIED.
         public void CreateClose_DeleteFile_DesiredAccessNotIncludeDeleteOrGenericAll()
         {
             //Client1 create a file
@@ -196,6 +202,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.CreateClose)]
         [TestCategory(TestCategories.Positive)]
         [Description("This case is designed to test whether server can handle Create and Delete operations on file with dot directory name correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - path handling in CREATE; "." components are normalized by the object store (Windows behaviour).
         public void CreateClose_CreateAndCloseFileWithDotDir()
         {
             // Client1 create a directory
@@ -222,6 +229,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.CreateClose)]
         [TestCategory(TestCategories.Positive)]
         [Description("This case is designed to test whether server can handle Create and Delete operations on directory with dot directory name correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - path handling in CREATE; "." components are normalized by the object store (Windows behaviour).
         public void CreateClose_CreateAndCloseDirWithDotDir()
         {
             // Client1 create a directory
@@ -248,6 +256,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.CreateClose)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This case is designed to test whether server can handle Create and Delete operations on file with double dot directory name correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - path handling in CREATE; ".." components are normalized/rejected by the object store (Windows behaviour).
         public void CreateClose_CreateAndCloseFileWithDoubleDotDir()
         {
             // Client1 create a directory
@@ -274,6 +283,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
         [TestCategory(TestCategories.CreateClose)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This case is designed to test whether server can handle Create and Delete operations on directory with double dot directory name correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - path handling in CREATE; ".." components are normalized/rejected by the object store (Windows behaviour).
         public void CreateClose_CreateAndCloseDirWithDoubleDotDir()
         {
             // Client1 create a directory

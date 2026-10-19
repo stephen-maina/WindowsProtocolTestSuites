@@ -116,6 +116,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.DirectoryLeasing)]
         [Description("Test whether server can handle lease break notification when multiple clients request caching lease.")]
+        // SPEC: [MS-SMB2] 3.3.4.7 / 3.3.5.22.2 - conflicting open from another client MUST trigger a lease break; ack with allowed state completes it.
         public void BVT_DirectoryLeasing_LeaseBreakOnMultiClients()
         {
             #region Prepare test directory
@@ -229,6 +230,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test whether server can handle READ lease break notification triggered by deleting child item on a directory.")]
+        // SPEC: [MS-SMB2] 3.3.4.7 - lease break notification (R lease, no ACK_REQUIRED) when a child is deleted (parent directory lease; see MS-FSA 2.1.5.x).
         public void DirectoryLeasing_BreakReadCachingByChildDeleted()
         {
             #region Prepare test directory and test file
@@ -300,6 +302,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test whether server can handle READ lease break notification triggered by adding child item on a directory.")]
+        // SPEC: [MS-SMB2] 3.3.4.7 - lease break notification when a child is added to a directory holding a lease.
         public void DirectoryLeasing_BreakReadCachingByChildAdded()
         {
             #region Prepare test directory and test file
@@ -373,6 +376,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test whether server can handle READ lease break notification triggered by modifying child item on a directory.")]
+        // SPEC: [MS-SMB2] 3.3.4.7 - lease break notification when a child is modified under a directory holding a lease.
         public void DirectoryLeasing_BreakReadCachingByChildModified()
         {
             #region Prepare test directory and test file
@@ -446,6 +450,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test whether server can handle READ lease break notification triggered by renaming child item on a directory.")]
+        // SPEC: [MS-SMB2] 3.3.4.7 - lease break notification when a child is renamed under a directory holding a lease.
         public void DirectoryLeasing_BreakReadCachingByChildRenamed()
         {
             #region Prepare test directory and test file
@@ -536,6 +541,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test whether server can handle HANDLE lease break notification triggered by renaming parent directory.")]
+        // SPEC: [MS-SMB2] 3.3.4.7 / 3.3.5.22.2 - H lease break (ACK_REQUIRED) when the directory itself is renamed; ack completes break.
         public void DirectoryLeasing_BreakHandleCachingByParentRenamed()
         {
             #region Prepare test directory
@@ -639,6 +645,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test whether server can handle HANDLE lease break notification triggered by a conflict open.")]
+        // SPEC: [MS-SMB2] 3.3.4.7 / 3.3.5.22.2 - H lease break (ACK_REQUIRED) on conflicting open; ack completes break.
         public void DirectoryLeasing_BreakHandleCachingByConflictOpen()
         {
             #region Prepare test directory
@@ -713,6 +720,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("Verify only SMB2_LEASE_READ_CACHING granted when client request SMB2_LEASE_READ_CACHING | SMB2_LEASE_WRITE_CACHING.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - granted Lease.LeaseState may be lower than requested; response LeaseState MUST reflect granted state (directory W not granted per object store).
         public void DirectoryLeasing_RWGrantedAsR()
         {
             VerifyGrantedLeaseState(LeaseStateValues.SMB2_LEASE_READ_CACHING | LeaseStateValues.SMB2_LEASE_WRITE_CACHING, LeaseStateValues.SMB2_LEASE_READ_CACHING);
@@ -723,6 +731,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("Verify only SMB2_ SMB2_LEASE_READ_CACHING | SMB2_LEASE_HANDLE_CACHING granted when client request SMB2_LEASE_READ_CACHING | SMB2_LEASE_WRITE_CACHING | SMB2_LEASE_HANDLE_CACHING.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - granted Lease.LeaseState may be lower than requested; response LeaseState MUST reflect granted state (directory W not granted per object store).
         public void DirectoryLeasing_RWHGrantedAsRH()
         {
             VerifyGrantedLeaseState(LeaseStateValues.SMB2_LEASE_READ_CACHING | LeaseStateValues.SMB2_LEASE_WRITE_CACHING | LeaseStateValues.SMB2_LEASE_HANDLE_CACHING, LeaseStateValues.SMB2_LEASE_READ_CACHING | LeaseStateValues.SMB2_LEASE_HANDLE_CACHING);

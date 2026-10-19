@@ -67,6 +67,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test reconnect with DurableHandleV1 after server has been disconnected.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.6 / 3.3.5.9.7 - DHnQ grants durable open; DHnC reconnect with valid FileId.Persistent/Open succeeds.
         public void DurableHandleV1_Reconnect_AfterServerDisconnect()
         {
             /// 1. Client requests a durable handle with LeaseV1 context
@@ -177,6 +178,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.DurableHandleV1BatchOplock)]
         [TestCategory(TestCategories.InvalidIdentifier)]
         [Description("Test reconnect with DurableHandleV1, without log off or disconnect and without previous session id.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect while the original Open.Session is still set (no PreviousSessionId): server MUST fail the request.
         public void DurableHandleV1_Reconnect_WithoutLogoffOrDisconnect_WithoutPreviousSessionIdSet()
         {
             DurableHandleV1_Reconnect_WithoutLogoff(false);
@@ -187,6 +189,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.DurableHandleV1BatchOplock)]
         [Description("Test reconnect with DurableHandleV1 and BatchOplock.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.6 / 3.3.5.9.7 - DHnQ with batch oplock grants durable open; DHnC reconnect restores the oplock.
         public void BVT_DurableHandleV1_Reconnect_WithBatchOplock()
         {
             /// 1. Client requests a durable handle with BatchOplock
@@ -296,6 +299,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("Test no durable handle is granted if requesting with DurableHandleV1 and LeaseV1 context, but SMB2_LEASE_HANDLE_CACHING bit is not set in LeaseState.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.6 - DHnQ with a lease lacking SMB2_LEASE_HANDLE_CACHING: Open.IsDurable is not set, no durable context in response.
         public void DurableHandleV1_WithLeaseV1_WithoutHandleCaching()
         {
             /// 1. Client requests a durable handle with LeaseV1 context, SMB2_LEASE_HANDLE_CACHING bit is not set in LeaseState.
@@ -362,6 +366,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect with matching Lease V1 (LeaseKey/ClientGuid) succeeds.
         public void BVT_DurableHandleV1_Reconnect_WithLeaseV1()
         {
             /// 1. Client requests a durable handle with LeaseV1 context
@@ -375,6 +380,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.Positive)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context and include create durable request.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect also carrying SMB2_CREATE_DURABLE_HANDLE_REQUEST: server MUST fail with STATUS_INVALID_PARAMETER.
         public void DurableHandleV1_Reconnect_IncludeCreateDurableHandle()
         {
             //Client requests a durable handle with LeaseV1.
@@ -388,6 +394,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedFields)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context, but the file name is different.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect with a different FileName than Open.FileName: server MUST fail with STATUS_INVALID_PARAMETER.
         public void DurableHandleV1_Reconnect_WithLeaseV1_WithDifferentFileName()
         {
             /// 1. Client requests a durable handle with LeaseV1 context
@@ -401,6 +408,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context and include SMB2_CREATE_DURABLE_HANDLE_REQUEST_V2.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect also carrying SMB2_CREATE_DURABLE_HANDLE_REQUEST_V2: server MUST fail with STATUS_INVALID_PARAMETER.
         public void DurableHandleV1_Reconnect_IncludeRequestV2()
         {
             //Client requests a durable handle with LeaseV1.
@@ -415,6 +423,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context and include SMB2_CREATE_DURABLE_HANDLE_RECONNECT_V2")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect also carrying SMB2_CREATE_DURABLE_HANDLE_RECONNECT_V2: server MUST fail with STATUS_INVALID_PARAMETER.
         public void DurableHandleV1_Reconnect_IncludeReconnectV2()
         {
             //Client requests a durable handle with LeaseV1.
@@ -428,6 +437,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context without FileId.Persistent")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - Open lookup by FileId.Persistent fails: server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV1_Reconnect_WithoutFileIdPersistent()
         {
             //Client requests a durable handle with LeaseV1.
@@ -441,6 +451,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context but with a different LeaseKey")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - Open.Lease.LeaseKey differs from request LeaseKey: server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV1_Reconnect_WithDifferentLeaseKey()
         {
             //Client requests a durable handle with LeaseV1.
@@ -454,6 +465,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context when request Lease is Null")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - Open.Lease is not NULL but the request has no lease (Lease V1): server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV1_Reconnect_LeaseIsNull()
         {
             //Client requests a durable handle with no LeaseV1.
@@ -468,6 +480,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context when Open.Session is not NULL")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - Open.Session is not NULL (open still attached to a session): server MUST fail the reconnect.
         public void DurableHandleV1_Reconnect_SessionIsNotNull()
         {
             //Client requests a durable handle with LeaseV1.
@@ -481,6 +494,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context without Smb2CreateRequestLease")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - Open.Lease is not NULL and the request has no SMB2_CREATE_REQUEST_LEASE: server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV1_Reconnect_WithoutRequestLease()
         {
             //Client requests a durable handle with LeaseV1.
@@ -494,6 +508,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.InvalidIdentifier)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context and different client guid.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - Open.Lease.ClientGuid differs from Connection.ClientGuid: server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV1_Reconnect_WithDifferentClientGuid()
         {
             //Client requests a durable handle with LeaseV1.
@@ -507,6 +522,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with LeaseV1 context without DurableHandleV1.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - Reconnect request with a lease context but without a durable context for an Open that is not durable: server MUST fail the request.
         public void DurableHandleV1_Reconnect_WithoutDurableHandle()
         {
             //Client requests with LeaseV1 without durable handle.
@@ -520,6 +536,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.FileAccessCheck)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context and different client credential account.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - Session.SecurityContext user differs from Open.DurableOwner: server MUST fail with STATUS_ACCESS_DENIED.
         public void DurableHandleV1_Reconnect_WithDifferentDurableOwner()
         {
             //Client requests with LeaseV1 with durable handle.

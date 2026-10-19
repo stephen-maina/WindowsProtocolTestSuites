@@ -20,6 +20,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.AppInstanceVersion)]
         [Description("Check when client fails over to a new client, the previous opened file can be reopened with a greater AppInstanceVersion.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.15 - New AppInstanceVersion greater than Open.AppInstanceVersion: server MUST close the existing Open.
         public void BVT_AppInstanceVersion_SMB311_GreaterVersion()
         {
             //Client1 opens a file with AppInstanceID and AppInstanceVersion.            
@@ -44,6 +45,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.AppInstanceVersion)]
         [Description("Check when client fails over to a new client, the previous opened file can NOT be reopened with the same AppInstanceVersion.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.15 - AppInstanceVersion not greater than Open.AppInstanceVersion: server MUST NOT close the existing Open and fails the create.
         public void BVT_AppInstanceVersion_SMB311_SameVersion()
         {
             //Client1 opens a file with AppInstanceID and AppInstanceVersion with dialect 311.                
@@ -139,6 +141,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.AppInstanceVersion)]
         [Description("Check when client fails over to a new client, the previous opened file can NOT be reopened with lower AppInstanceVersion.AppInstanceVersionHigh.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.15 - New AppInstanceVersionHigh lower than the Open's: server MUST fail the request and keep the Open.
         public void BVT_AppInstanceVersion_SMB311_LowerAppInstanceVersionHigh()
         {
             //Client1 opens a file with AppInstanceID and AppInstanceVersion with dialect 311.                    
@@ -164,6 +167,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.AppInstanceVersion)]
         [Description("Check when client fails over to a new client, the previous opened file can NOT be reopened with lower AppInstanceVersion.AppInstanceVersionLow.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.15 - New AppInstanceVersionLow lower than the Open's (equal High): server MUST fail the request and keep the Open.
         public void BVT_AppInstanceVersion_SMB311_LowerAppInstanceVersionLow()
         {
             //Client1 opens a file with AppInstanceID and AppInstanceVersion with dialect 311.                  
@@ -189,6 +193,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.AppInstanceVersion)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Check when client fails over to a new client, the previous opened file can NOT be reopened with no AppInstanceVersion.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.15 - Request without AppInstanceVersion context against an Open that has one: server MUST NOT close the existing Open.
         public void Negative_AppInstanceVersion_SMB311_NoVersion()
         {
             //Client1 opens a file with AppInstanceID and AppInstanceVersion with dialect 311.                     
@@ -212,6 +217,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.AppInstanceVersion)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Check if server can fail the create request if the second client send a create request with dialect302 and AppInstanceID create context. ")]
+        // SPEC: [MS-SMB2] 3.3.5.9.15 / 2.2.13.2.14 - SMB2_CREATE_APP_INSTANCE_VERSION is only processed for dialect 3.1.1; mixed 3.1.1/3.0.2 clients.
         public void AppInstanceVersion_SMB311_SMB302()
         {
             //Client1 opens a file with AppInstanceId and AppInstanceVersion with dialect 311.                    
@@ -236,6 +242,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compatibility)]
         [Description("Check when the first client negotiates dialect 3.02, the second client negotiates dialect 3.11," + 
             " the create request with SMB2_CREATE_APP_INSTANCE_VERSION create context sent by the second client should succeed.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.15 / 2.2.13.2.14 - SMB2_CREATE_APP_INSTANCE_VERSION is only processed for dialect 3.1.1; mixed 3.0.2/3.1.1 clients.
         public void AppInstanceVersion_SMB302_SMB311()
         {
             //Client1 opens a file with AppInstanceId and dialect 302.

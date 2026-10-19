@@ -46,6 +46,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Compound
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Compound)]
         [Description("Send compounded related requests (Create, Write and Close a same file) to SUT and verify response")]
+        // SPEC: [MS-SMB2] 3.3.5.2.7.2 - related compound: FileId from previous response used; each response padded to 8 bytes
         public void BVT_Compound_RelatedRequests()
         {
             Compound_RelatedRequests(
@@ -58,6 +59,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Compound
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Compound)]
         [Description("Send compounded unrelated requests (two Creates request to different files) to SUT and verify response")]
+        // SPEC: [MS-SMB2] 3.3.5.2.7.1 - unrelated compound: each request processed independently
         public void BVT_Compound_UnRelatedRequests()
         {
             Compound_UnrelatedRequests(
@@ -71,6 +73,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Compound
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Positive)]
         [Description("Send encrypted and compounded related requests (Create, Write and Close a same file) to SUT and verify response")]
+        // SPEC: [MS-SMB2] 3.3.5.2.7.2, 3.1.4.3 - related compound inside an encrypted transform (3.3.5.2.1.1)
         public void Compound_Encrypt_RelatedRequests()
         {
             Compound_RelatedRequests(
@@ -83,6 +86,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Compound
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Positive)]
         [Description("Send encrypted and compounded unrelated requests (two Creates request to different files) to SUT and verify response")]
+        // SPEC: [MS-SMB2] 3.3.5.2.7.1 - unrelated compound inside an encrypted transform (3.3.5.2.1.1)
         public void Compound_Encrypt_UnrelatedRequests()
         {
             Compound_UnrelatedRequests(

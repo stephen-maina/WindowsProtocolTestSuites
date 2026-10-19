@@ -69,6 +69,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.DirectoryLeasing)]
         [Description("This test case is designed to test whether server can handle READ|WRITE|HANDLE leasing on a directory correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - lease V2 on a directory; GLOBAL_CAP_DIRECTORY_LEASING (2.2.4) required; response LeaseState MUST equal Lease.LeaseState.
         public void BVT_DirectoryLeasing_ReadWriteHandleCaching()
         {            
             DirecotryLeasing(LeaseStateValues.SMB2_LEASE_WRITE_CACHING | LeaseStateValues.SMB2_LEASE_READ_CACHING | LeaseStateValues.SMB2_LEASE_HANDLE_CACHING);
@@ -79,6 +80,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle READ leasing on a directory correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - lease V2 on a directory (R only); response LeaseState MUST equal Lease.LeaseState.
         public void DirectoryLeasing_ReadCaching()
         {
             DirecotryLeasing(LeaseStateValues.SMB2_LEASE_READ_CACHING);
@@ -89,6 +91,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle READ|WRITE leasing on a directory correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - lease V2 on a directory (RW); response LeaseState MUST equal Lease.LeaseState.
         public void DirectoryLeasing_ReadWriteCaching()
         {
             DirecotryLeasing(LeaseStateValues.SMB2_LEASE_WRITE_CACHING | LeaseStateValues.SMB2_LEASE_READ_CACHING);
@@ -99,6 +102,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle READ|HANDLE leasing on a directory correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - lease V2 on a directory (RH); response LeaseState MUST equal Lease.LeaseState.
         public void DirectoryLeasing_ReadHandleCaching()
         {
             DirecotryLeasing(LeaseStateValues.SMB2_LEASE_READ_CACHING | LeaseStateValues.SMB2_LEASE_HANDLE_CACHING);
@@ -109,6 +113,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Negative test case to test SMB3 directory leasing feature using SMB2.1 dialect.")]
+        // SPEC: [MS-SMB2] 2.2.4 / 3.3.5.9 - directory leasing requires SMB 3.x (GLOBAL_CAP_DIRECTORY_LEASING); SMB 2.1 dialect gets no lease V2 support.
         public void DirectoryLeasing_Negative_SMB21()
         {
             DirecotryLeasing(
@@ -122,6 +127,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Negative test case to test SMB3 directory leasing feature using SMB2.002 dialect.")]
+        // SPEC: [MS-SMB2] 2.2.4 / 3.3.5.9 - directory leasing requires SMB 3.x (GLOBAL_CAP_DIRECTORY_LEASING); SMB 2.002 has no leasing.
         public void DirectoryLeasing_Negative_SMB2002()
         {
             DirecotryLeasing(
@@ -135,6 +141,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.InvalidIdentifier)]
         [Description("Negative test case to test SMB3 directory leasing with invalid lease key set in lease break acknowledgment message.")]
+        // SPEC: [MS-SMB2] 3.3.5.22.2 - server MUST fail the lease break ack with STATUS_OBJECT_NAME_NOT_FOUND when no Open matches the LeaseKey.
         public void DirectoryLeasing_Negative_InvalidLeaseKeyInLeaseBreakAck()
         {
             DirecotryLeasing(TestConfig.RequestDialects, 
@@ -148,6 +155,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Negative test case to test SMB3 directory leasing with invalid lease state set in lease break acknowledgment message.")]
+        // SPEC: [MS-SMB2] 3.3.5.22.2 - server MUST fail the lease break ack with STATUS_REQUEST_NOT_ACCEPTED if LeaseState is not a subset of Lease.BreakToLeaseState.
         public void DirectoryLeasing_Negative_InvalidLeaseStateInLeaseBreakAck()
         {
             DirecotryLeasing(TestConfig.RequestDialects,
@@ -161,6 +169,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DirectoryLeasing)]
         [TestCategory(TestCategories.InvalidIdentifier)]
         [Description("Negative test case to test SMB3 directory leasing with invalid client GUID set in lease break acknowledgment message.")]
+        // SPEC: [MS-SMB2] 3.3.5.22.2 - lease lookup uses Connection.ClientGuid and LeaseKey; mismatched ClientGuid yields no matching lease (STATUS_OBJECT_NAME_NOT_FOUND).
         public void DirectoryLeasing_Negative_InvalidClientGuidInLeaseBreakAck()
         {
             DirecotryLeasing(TestConfig.RequestDialects,

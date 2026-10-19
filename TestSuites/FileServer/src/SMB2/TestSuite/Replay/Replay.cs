@@ -81,6 +81,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.Replay)]
         [Description("This test case is designed to test whether server can handle the Replay request with invalid channel sequence correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.10 - Request with ChannelSequence older than Open.ChannelSequence MUST fail with STATUS_FILE_NOT_AVAILABLE (3.3.5.2.10)
         public void BVT_Replay_WriteWithInvalidChannelSequence()
         {
             ///1. mainChannelClient opens a file and write to it.
@@ -191,6 +192,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.Replay)]
         [Description("This test case is designed to test whether server can handle Replay operation correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 (replayed CREATE with SMB2_FLAGS_REPLAY_OPERATION) - server MUST return the existing open; see also 3.3.5.2.10
         public void BVT_Replay_ReplayCreate()
         {
             ///1. mainChannelClient opens a file

@@ -56,6 +56,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.SessionMgmt
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Session)]
         [Description("This test case is designed to test whether server can handle a new session.")]
+        // SPEC: [MS-SMB2] 3.3.5.5 step 1 / 3.3.5.5.1 - SESSION_SETUP with SessionId 0 creates a new session; server MUST complete authentication (3.3.5.5.3).
         public void BVT_SessionMgmt_NewSession()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "The client sends NEGOTIATE request.");
@@ -69,6 +70,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.SessionMgmt
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Session)]
         [Description("This test case is designed to test whether server can return error code when Session.SupportsNotifications is not equal to the incoming Connection.SupportsNotifications")]
+        // SPEC: [MS-SMB2] 3.3.5.5.2 - binding (SESSION_FLAG_BINDING), Dialect 3.1.1: Session.SupportsNotifications != Connection.SupportsNotifications MUST fail with STATUS_INVALID_PARAMETER.
         public void SessionMgmt_SupportsNotificationsMismatch()
         {
             Guid clientGuid = Guid.NewGuid();
@@ -128,6 +130,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.SessionMgmt
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Session)]
         [Description("This test case is designed to test whether server can handle reauthentication successfully.")]
+        // SPEC: [MS-SMB2] 3.3.5.5 step 6 / 3.3.5.5.2 - reauthentication on a Valid session: server SHOULD process it (optional; Windows 2008 returns STATUS_REQUEST_NOT_ACCEPTED).
         public void BVT_SessionMgmt_Reauthentication()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Client sends NEGOTIATE request.");
@@ -179,6 +182,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.SessionMgmt
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Session)]
         [Description("This test case is designed to test whether server can handle authentication after disconnection.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.3 - PreviousSessionId in SESSION_SETUP: after authentication the server MUST close/delete the previous session with the same user and ClientGuid.
         public void BVT_SessionMgmt_ReconnectSessionSetup()
         {
             Guid clientGuid = (TestConfig.RequestDialects.Length == 1 && TestConfig.RequestDialects[0] == DialectRevision.Smb2002) ? Guid.Empty : Guid.NewGuid();
@@ -222,6 +226,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.SessionMgmt
         [TestCategory(TestCategories.Session)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle reconnect with different dialect.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.3 - PreviousSessionId handling is independent of the dialect negotiated on the new connection.
         public void SessionMgmt_ReconnectWithDifferentDialect()
         {
             Guid clientGuid = Guid.NewGuid();

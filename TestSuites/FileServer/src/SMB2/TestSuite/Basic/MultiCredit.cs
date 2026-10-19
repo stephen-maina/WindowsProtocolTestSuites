@@ -55,6 +55,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.Credit)]
         [Description("This test case is designed to test whether server can handle one request which consumes more than one credit.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.5 - multi-credit: CreditCharge = (max(SendPayloadSize, ExpectedResponsePayloadSize) - 1)/65536 + 1 validated for READ/WRITE/IOCTL/QUERY_DIRECTORY/etc.
         public void BVT_MultiCredit_OneRequestWithMultiCredit()
         {
             TestConfig.CheckDialect(DialectRevision.Smb21);

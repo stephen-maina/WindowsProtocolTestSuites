@@ -69,6 +69,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.ResilientHan
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.FsctlLmrRequestResiliency)]
         [Description("Test whether server can request a durable open when receiving FSCTL_LMR_REQUEST_RESILLIENNCY successfully.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.9 - FSCTL_LMR_REQUEST_RESILIENCY sets Open.IsResilient and Open.ResilientTimeout; open can be reconnected.
         public void BVT_ResilientHandle_Reconnect()
         {
             #region Check Applicability
@@ -133,6 +134,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.ResilientHan
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.FsctlLmrRequestResiliency)]
         [Description("This test case is designed to test whether server can handle Lock request with specified LockSequence.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.9 / 3.3.5.14 - Resilient open: LockSequence replay semantics preserved across reconnect.
         public void BVT_ResilientHandle_LockSequence()
         {
             #region Check Applicability
@@ -266,6 +268,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.ResilientHan
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.FsctlLmrRequestResiliency)]
         [Description("Test whether server can request a durable open when receiving FSCTL_LMR_REQUEST_RESILLIENNCY successfully for lease level.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.9 - FSCTL_LMR_REQUEST_RESILIENCY on an open holding a lease; open can be reconnected.
         public void BVT_ResilientHandle_Reconnect_Lease()
         {
             #region Check Applicability
@@ -330,6 +333,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.ResilientHan
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.FsctlLmrRequestResiliency)]
         [Description("This test case is designed to test whether server can handle Lock request with specified LockSequence for lease level.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.9 / 3.3.5.14 - Resilient open with lease: LockSequence replay semantics preserved across reconnect.
         public void BVT_ResilientHandle_LockSequence_Lease()
         {
             #region Check Applicability

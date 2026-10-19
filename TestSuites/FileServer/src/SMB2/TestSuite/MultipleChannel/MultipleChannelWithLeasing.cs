@@ -20,6 +20,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.CombinedFeatureNonClusterRequired)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file via multi-channel with file lease and the lease break is expected from main channel.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.x / 3.3.5.9 - lease/oplock break is sent on a channel of the session; opens shared across channels
         public void MultipleChannel_FileLease()
         {
             #region Check Applicability

@@ -18,6 +18,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.MultipleChannel)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file via multi-channel with lock operation on different channels.")]
+        // SPEC: [MS-SMB2] 3.3.5.14 - LOCK on different channels of the same session; conflicting lock MUST fail with STATUS_LOCK_NOT_GRANTED/STATUS_FILE_LOCK_CONFLICT; multichannel 3.3.5.5.x
         public void MultipleChannel_LockUnlockOnDiffChannel()
         {
             MultipleChannelTestWithLock(false);
@@ -28,6 +29,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.MultipleChannel)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file via multi-channel with lock operation on same channel.")]
+        // SPEC: [MS-SMB2] 3.3.5.14 - LOCK/UNLOCK on same channel; lock state is per Open regardless of channel
         public void MultipleChannel_LockUnlockOnSameChannel()
         {
             MultipleChannelTestWithLock(true);

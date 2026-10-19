@@ -133,6 +133,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify that CANCEL request cancels CHANGE_NOTIFY request when there's no CHANGE_NOTIFY response from server.")]
+        // SPEC: [MS-SMB2] 3.3.5.16 - CANCEL of pending CHANGE_NOTIFY: server MUST complete it with STATUS_CANCELLED
         public void BVT_SMB2Basic_CancelRegisteredChangeNotify()
         {
             uint status;
@@ -198,6 +199,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.FileAccess)]
         [Description("This test case is designed to verify that If the connection is over QUIC, server sends correct response when a named pipe is opened.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 / 3.3.5.12 / 3.3.5.13 - named pipe open and IPC$ access over QUIC transport
         public void BVT_SMB2Basic_QuicTransport_OpenNamedPipe()
         {
             if(TestConfig.UnderlyingTransport != Smb2TransportType.Quic)
@@ -264,6 +266,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.QueryAndSetFileInfo)]
         [Description("This test case is designed to test whether server can handle QUERY and SET requests to a file correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.20 QUERY_INFO and 3.3.5.21 SET_INFO - file info classes processed via object store ([MS-FSCC] 2.4)
         public void BVT_SMB2Basic_QueryAndSet_FileInfo()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Starts a client by sending the following requests: NEGOTIATE; SESSION_SETUP; TREE_CONNECT.");
@@ -383,6 +386,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.QueryInfo)]
         [Description("This test case is designed to test whether server can handle QUERY requests to a file for FileAllInformation correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.20.1 - QUERY_INFO FileAllInformation (SMB2_0_INFO_FILE)
         public void BVT_SMB2Basic_Query_FileAllInformation()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Starts a client by sending the following requests: NEGOTIATE; SESSION_SETUP; TREE_CONNECT.");
@@ -487,6 +491,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DomainRequired)]
         [TestCategory(TestCategories.QueryInfo)]
         [Description("This test case is designed to verify the behavior of querying quota information with FILE_GET_QUOTA_INFO in SidBuffer.")]
+        // SPEC: [MS-SMB2] 3.3.5.20.4 - QUERY_INFO SMB2_0_INFO_QUOTA
         public void BVT_SMB2Basic_Query_Quota_Info()
         {
             QueryQuotaInfo(SidBufferFormat.FILE_GET_QUOTA_INFORMATION);
@@ -497,6 +502,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.QueryInfo)]
         [Description("This test case is designed to test whether server can handle QUERY requests to a data file for FileNormalizedNameInformation correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.20.1 - QUERY_INFO FileNormalizedNameInformation on a data file ([MS-FSCC] 2.4.28)
         public void BVT_SMB2Basic_Query_FileNormalizedNameInformation_DataFile()
         {
             QueryFileNormalizedNameInfo(FileType.DataFile);
@@ -507,6 +513,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.QueryInfo)]
         [Description("This test case is designed to test whether server can handle QUERY requests to a directory file for FileNormalizedNameInformation correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.20.1 - QUERY_INFO FileNormalizedNameInformation on a directory ([MS-FSCC] 2.4.28)
         public void BVT_SMB2Basic_Query_FileNormalizedNameInformation_DirectoryFile()
         {
             QueryFileNormalizedNameInfo(FileType.DirectoryFile);
@@ -517,6 +524,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.LockUnlock)]
         [Description("This test case is designed to test whether server can handle WRITE of locking content correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.14 - LOCK/UNLOCK: conflicting exclusive lock MUST fail with STATUS_LOCK_NOT_GRANTED / STATUS_FILE_LOCK_CONFLICT; LockSequence handling for resilient/durable opens
         public void BVT_SMB2Basic_LockAndUnLock()
         {
             uint status;
@@ -714,6 +722,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.OutOfBoundary)]
         [TestCategory(TestCategories.CreateClose)]
         [Description("Test the server response when it receives an invalid structure size of CREATE request.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.x / 3.3.5.9 - request with invalid StructureSize MUST fail with STATUS_INVALID_PARAMETER
         public void InvalidCreateRequestStructureSize()
         {
             uint status;
@@ -766,6 +775,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.QueryDir)]
         [Description("This test case is designed to verify QUERY_DIRECTORY with flag SMB2_REOPEN to a directory is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.18 - QUERY_DIRECTORY with SMB2_REOPEN on directory: enumeration restarts
         public void BVT_SMB2Basic_QueryDir_Reopen_OnDir()
         {
             QueryDir_Reopen(FileType.DirectoryFile);
@@ -776,6 +786,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.QueryDir)]
         [Description("This test case is designed to verify QUERY_DIRECTORY with flag SMB2_REOPEN to a file is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.18 - QUERY_DIRECTORY on a non-directory open MUST fail (STATUS_INVALID_PARAMETER)
         public void BVT_SMB2Basic_QueryDir_Reopen_OnFile()
         {
             QueryDir_Reopen(FileType.DataFile);
@@ -788,6 +799,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [Description("This test case is designed to verify QUERY_DIRECTORY with flag SMB2_REOPEN on an empty directory returns " +
             "STATUS_NO_MORE_FILES (Windows 10 v1803 through Windows 11, Windows Server 2019) or STATUS_NO_SUCH_FILE " +
             "(Windows 11 v22H2 and later with patches, Windows Server 2022+ with patches).")]
+        // SPEC: [MS-SMB2] 3.3.5.18 - QUERY_DIRECTORY on empty directory after REOPEN; STATUS_NO_MORE_FILES when no entries
         public void BVT_SMB2Basic_QueryDir_Reopen_OnEmptyDir_NoFilesReturned()
         {
             QueryDir_Reopen_EmptyDirectory();
@@ -798,6 +810,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY for CompletionFilter FILE_NOTIFY_CHANGE_FILE_NAME is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY completes with FILE_NOTIFY_INFORMATION for FILE_NOTIFY_CHANGE_FILE_NAME
         public void BVT_SMB2Basic_ChangeNotify_ChangeFileName()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -881,6 +894,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY for CompletionFilter FILE_NOTIFY_CHANGE_DIR_NAME is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_DIR_NAME
         public void BVT_SMB2Basic_ChangeNotify_ChangeDirName()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -964,6 +978,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY for CompletionFilter FILE_NOTIFY_CHANGE_ATTRIBUTES is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_ATTRIBUTES
         public void BVT_SMB2Basic_ChangeNotify_ChangeAttributes()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1045,6 +1060,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY for CompletionFilter FILE_NOTIFY_CHANGE_SIZE is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_SIZE
         public void BVT_SMB2Basic_ChangeNotify_ChangeSize()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1125,6 +1141,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY for CompletionFilter FILE_NOTIFY_CHANGE_LAST_ACCESS is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_LAST_ACCESS
         public void BVT_SMB2Basic_ChangeNotify_ChangeLastAccess()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1206,6 +1223,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY with CompletionFilter FILE_NOTIFY_CHANGE_LAST_WRITE is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_LAST_WRITE
         public void BVT_SMB2Basic_ChangeNotify_ChangeLastWrite()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1286,6 +1304,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY with CompletionFilter FILE_NOTIFY_CHANGE_CREATION is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_CREATION
         public void BVT_SMB2Basic_ChangeNotify_ChangeCreation()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1366,6 +1385,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY with CompletionFilter FILE_NOTIFY_CHANGE_EA is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_EA
         public void BVT_SMB2Basic_ChangeNotify_ChangeEa()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1438,6 +1458,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY with CompletionFilter FILE_NOTIFY_CHANGE_SECURITY is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_SECURITY
         public void BVT_SMB2Basic_ChangeNotify_ChangeSecurity()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1516,6 +1537,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY with CompletionFilter FILE_NOTIFY_CHANGE_STREAM_NAME is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_STREAM_NAME
         public void BVT_SMB2Basic_ChangeNotify_ChangeStreamName()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1590,6 +1612,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY with CompletionFilter FILE_NOTIFY_CHANGE_STREAM_SIZE is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_STREAM_SIZE
         public void BVT_SMB2Basic_ChangeNotify_ChangeStreamSize()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1669,6 +1692,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify CHANGE_NOTIFY with CompletionFilter FILE_NOTIFY_CHANGE_STREAM_WRITE is handled correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY for FILE_NOTIFY_CHANGE_STREAM_WRITE
         public void BVT_SMB2Basic_ChangeNotify_ChangeStreamWrite()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1748,6 +1772,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify that server must send an CHANGE_NOTIFY response with STATUS_NOTIFY_CLEANUP status code for all pending CHANGE_NOTIFY requests associated with the FileId that is closed.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 / 3.3.5.10 - pending CHANGE_NOTIFY completes with STATUS_NOTIFY_CLEANUP when the Open is closed
         public void BVT_SMB2Basic_ChangeNotify_ServerReceiveSmb2Close()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1797,6 +1822,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify that server must send an CHANGE_NOTIFY response with STATUS_INVALID status code if CHANGE_NOTIFY request is for a non-directory file.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY on a non-directory Open MUST fail with STATUS_INVALID_PARAMETER
         public void BVT_SMB2Basic_ChangeNotify_NonDirectoryFile()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);
@@ -1842,6 +1868,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify the MaxTransactSize in CHANGE_NOTIFY request in SMB 2.0.2.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - OutputBufferLength greater than Connection.MaxTransactSize MUST fail with STATUS_INVALID_PARAMETER (SMB 2.0.2)
         public void BVT_SMB2Basic_ChangeNotify_MaxTransactSizeCheck_Smb2002()
         {
             TestConfig.CheckDialect(DialectRevision.Smb2002);
@@ -1900,6 +1927,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify the MaxTransactSize in CHANGE_NOTIFY request in SMB 2.1.0.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - OutputBufferLength greater than Connection.MaxTransactSize MUST fail with STATUS_INVALID_PARAMETER (SMB 2.1)
         public void BVT_SMB2Basic_ChangeNotify_MaxTransactSizeCheck_Smb21()
         {
             TestConfig.CheckDialect(DialectRevision.Smb21);
@@ -1958,6 +1986,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify the MaxTransactSize in CHANGE_NOTIFY request in SMB 3.0.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - OutputBufferLength greater than Connection.MaxTransactSize MUST fail with STATUS_INVALID_PARAMETER (SMB 3.0)
         public void BVT_SMB2Basic_ChangeNotify_MaxTransactSizeCheck_Smb30()
         {
             TestConfig.CheckDialect(DialectRevision.Smb30);
@@ -2016,6 +2045,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb302)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify the MaxTransactSize in CHANGE_NOTIFY request in SMB 3.0.2.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - OutputBufferLength greater than Connection.MaxTransactSize MUST fail with STATUS_INVALID_PARAMETER (SMB 3.0.2)
         public void BVT_SMB2Basic_ChangeNotify_MaxTransactSizeCheck_Smb302()
         {
             TestConfig.CheckDialect(DialectRevision.Smb302);
@@ -2074,6 +2104,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify the MaxTransactSize in CHANGE_NOTIFY request in SMB 3.1.1.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - OutputBufferLength greater than Connection.MaxTransactSize MUST fail with STATUS_INVALID_PARAMETER (SMB 3.1.1)
         public void BVT_SMB2Basic_ChangeNotify_MaxTransactSizeCheck_Smb311()
         {
             TestConfig.CheckDialect(DialectRevision.Smb311);
@@ -2132,6 +2163,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.ChangeNotify)]
         [Description("This test case is designed to verify that server must send an CHANGE_NOTIFY response with STATUS_ACCESS_DENIED status code if CHANGE_NOTIFY request is for a directory which GrantedAccess does not include FILE_LIST_DIRECTORY.")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - CHANGE_NOTIFY on a directory Open lacking FILE_LIST_DIRECTORY access MUST fail with STATUS_ACCESS_DENIED
         public void BVT_SMB2Basic_ChangeNotify_NoFileListDirectoryInGrantedAccess()
         {
             string testDirectory = CreateTestDirectory(TestConfig.SutComputerName, TestConfig.BasicFileShare);

@@ -65,6 +65,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.FsctlSetGetIntegrityInformation)]
         [Description("This test case is designed to test whether server can handle IOCTL FSCTL_GET_INTEGRITY_INFORMATION and FSCTL_SET_INTEGRITY_INFORMATION.")]
+        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTLs (FSCTL_SET/GET_INTEGRITY_INFORMATION) passed to the object store per [MS-FSCC] 2.3
         public void BVT_SetGetIntegrityInfo()
         {
             #region Check Applicability

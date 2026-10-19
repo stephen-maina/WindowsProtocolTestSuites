@@ -77,6 +77,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.OpLock
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.OplockOnShareWithoutForceLevel2OrSOFS)]
         [Description("This test case is designed to test whether sever can handle OplockBreak correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 (oplock acquisition on CREATE), 3.3.4.6 (server MUST send OPLOCK_BREAK notification on conflicting open), 3.3.5.22.1 (oplock break acknowledgment).
         public void BVT_OpLockBreak()
         {            
             #region Add Event Handler
@@ -145,6 +146,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.OpLock
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.OplockOnShareWithoutForceLevel2OrSOFS)]
         [Description("This test case is designed to test whether sever can handle OplockBreak correctly for lease level.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 (oplock acquisition on CREATE), 3.3.4.6 (oplock break notification), 3.3.5.22.1 (oplock break acknowledgment).
         public void BVT_OpLockBreak_Lease()
         {
             #region Add Event Handler

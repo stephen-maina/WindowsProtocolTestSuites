@@ -100,6 +100,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.MultipleChannel)]
         [Description("This test case is designed to test the basic functionality of Multiple Channel, assuming that both client and server have two NICs.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.2 - SESSION_SETUP with SMB2_SESSION_FLAG_BINDING; NIC redundant on both client and server
         public void BVT_MultipleChannel_NicRedundantOnBoth()
         {
             string contentWrite;
@@ -162,6 +163,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.MultipleChannel)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file via multi-channel with 2 Nics on client.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.2 - session binding with redundant NIC on client only
         public void MultipleChannel_NicRedundantOnClient()
         {
             string contentWrite;
@@ -221,6 +223,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.MultipleChannel)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file via multi-channel with 2 Nics on server.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.2 - session binding with redundant NIC on server only
         public void MultipleChannel_NicRedundantOnServer()
         {
             string contentWrite;
@@ -285,6 +288,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.MultipleChannel)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Operate file via multi-channel with SMB21 dialect, expect failure with error code STATUS_REQUEST_NOT_ACCEPTED.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.2 - binding requires SMB 3.x dialect and Capabilities MULTI_CHANNEL; SMB 2.1 server MUST fail binding
         public void MultipleChannel_Negative_SMB21()
         {
             Negative_AlternativeChannel_NicRedundantOnServer(new DialectRevision[] { DialectRevision.Smb2002, DialectRevision.Smb21 }, DialectRevision.Smb21);
@@ -302,6 +306,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.MultipleChannel)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Operate file via multi-channel with SMB2002 dialect, expect failure with error code STATUS_REQUEST_NOT_ACCEPTED.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.2 - binding requires SMB 3.x dialect; SMB 2.0.2 server MUST fail binding
         public void MultipleChannel_Negative_SMB2002()
         {
             Negative_AlternativeChannel_NicRedundantOnServer(new DialectRevision[] { DialectRevision.Smb2002 }, DialectRevision.Smb2002);
@@ -312,6 +317,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.MultipleChannel)]
         [TestCategory(TestCategories.Positive)]
         [Description("Operate file via multi-channel on same Nic.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.2 - multiple channels over the same NIC pair
         public void MultipleChannel_MultiChannelOnSameNic()
         {
             #region Normal
@@ -371,6 +377,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.MultipleChannel)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This case is to test whether server calculates PreauthIntegrityHashValue correctly if it returns failure for the first session setup in the alternative channel.")]
+        // SPEC: [MS-SMB2] 3.3.5.5.3 - failed binding SESSION_SETUP must not corrupt session; retry succeeds
         public void MultipleChannel_SecondChannelSessionSetupFailAtFirstTime()
         {
             #region Check Applicability

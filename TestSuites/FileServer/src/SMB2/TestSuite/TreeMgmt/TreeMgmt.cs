@@ -56,6 +56,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.TreeMgmt
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Tree)]
         [Description("This test case is designed to test whether server can handle TREE_CONNECT and TREE_DISCONNECT requests correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.7 / 3.3.5.8 - TREE_CONNECT succeeds with a valid TreeId (-1 is reserved); TREE_DISCONNECT removes the TreeConnect.
         public void BVT_TreeMgmt_TreeConnectAndDisconnect()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Start a client by sending the following requests: NEGOTIATE; SESSION_SETUP");
@@ -82,6 +83,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.TreeMgmt
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Tree)]
         [Description("This test case is designed to test whether server can disconnect the connection when Connection.Dialect is 3.1.1 and the TreeConnect request is not signed or not encrypted.")]
+        // SPEC: [MS-SMB2] 3.3.5.7 - Dialect 3.1.1 non-anonymous/non-guest session with unsigned, unencrypted TREE_CONNECT: server MUST disconnect the connection.
         public void BVT_TreeMgmt_SMB311_Disconnect_NoSignedNoEncryptedTreeConnect()
         {
             #region Check Applicability
@@ -150,6 +152,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.TreeMgmt
         [TestCategory(TestCategories.Tree)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test server can handle a TreeConnect request with flag SMB2_SHAREFLAG_CLUSTER_RECONNECT successfully.")]
+        // SPEC: [MS-SMB2] 2.2.9 / 3.3.5.7 - SMB2_TREE_CONNECT_FLAG_CLUSTER_RECONNECT in TREE_CONNECT Flags (dialect 3.1.1) is accepted.
         public void TreeMgmt_SMB311_CLUSTER_RECONNECT()
         {
             #region Check Applicability
@@ -179,6 +182,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.TreeMgmt
         [TestCategory(TestCategories.Tree)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test server can handle a TreeConnect request with flag SMB2_SHAREFLAG_EXTENSION_PRESENT successfully.")]
+        // SPEC: [MS-SMB2] 3.3.5.7 - Dialect 3.1.1 with SMB2_TREE_CONNECT_FLAG_EXTENSION_PRESENT: server MUST process the tree connect contexts (2.2.9.1).
         public void TreeMgmt_SMB311_TREE_CONNECT_EXTENSION_PRESENT()
         {
             #region Check Applicability

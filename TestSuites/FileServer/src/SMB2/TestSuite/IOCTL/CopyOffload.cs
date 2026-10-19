@@ -64,6 +64,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.FsctlOffloadReadWrite)]
         [Description("This test case is designed to test whether server can handle offload copy correctly when copy content between two files.")]
+        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTL_OFFLOAD_READ/WRITE (ODX) forwarded to the object store ([MS-FSCC] 2.3.x); STATUS_NOT_SUPPORTED if not allowed
         public void BVT_CopyOffload()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep,
@@ -148,6 +149,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.FsctlOffloadReadWrite)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle offload copy correctly when copy content in the same file.")]
+        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTL_OFFLOAD_READ/WRITE (ODX) within the same file
         public void CopyOffload_CopyContentWithinSameFile()
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep,

@@ -94,3 +94,33 @@ channel sequence). Those rows read "fixed upstream", not "never implemented".
 * `capture.etl` holds SMB traffic (SMB2 headers, encrypted transform headers). It is an NDIS packet capture; read it with
   `pktmon etl2txt capture.etl --hex`. RDMA data bypasses NDIS and is not captured.
 * `Parse-Smb2Pcap.ps1 -HexCommand <n>` dumps the first 512 bytes of each packet of that SMB2 command.
+## 6. Specification coverage audit (spec requirements with no test)
+
+Every SMB2 test method now carries a `// SPEC: [MS-SMB2] <section> - <requirement>` comment (about 270 methods). Comments
+were derived from each test's scenario; sections marked unverified below were not re-read on MS Learn and should be
+spot-checked. Gaps were found by grepping `SMB2\TestSuite`, `FSA\TestSuite` and `SMB2Model` (generated files excluded).
+
+**Documented in the Test Design Spec but no method in code (13):** `BVT_Leasing_LeaseState_DowngradeNotAllowed`,
+`..._PartialOverlapRequest_NotDowngrade`, `..._UpgradeOnSupersetRequest`, `BVT_Leasing_CreateDuringLeaseBreak_SameLeaseKey_NotBlocked`
+(each with a V2 variant), `BVT_Leasing_WriteCache_BreakOnIncompatibleShareMode`, `..._BreakOnReadDataAccess`,
+`..._BreakOnWriteDataAccess`, `..._NoBreakOnReadControl` (+V2). Spec: 3.3.5.9.8, 3.3.5.9.11, 3.3.4.7.
+
+**Spec requirements with no test (all MUST unless noted):**
+
+| Area | Gap |
+|---|---|
+| NEGOTIATE 3.3.5.4 | Duplicate NEGOTIATE (disconnect); DialectCount 0; no common dialect (`STATUS_NOT_SUPPORTED`); duplicate ENCRYPTION/COMPRESSION/RDMA_TRANSFORM/SIGNING/PREAUTH contexts; short PREAUTH/ENCRYPTION DataLength; unknown contexts ignored; response SecurityMode/ClientGuid echo |
+| SESSION_SETUP 3.3.5.5 | Unknown non-zero SessionId (`STATUS_USER_SESSION_DELETED`); binding negatives; unsigned setup when signing required; SessionFlags result |
+| Encryption/signing 3.3.5.2.1.1, 3.3.5.2.4 | Malformed transform header, bad algorithm, unknown SessionId, tampered signature; unencrypted request on encrypted share; unsigned request when signing required |
+| Compression 3.3.5.2.1.2 | Short header, oversize OriginalCompressedSegmentSize, corrupt payload, compression not negotiated |
+| TREE_CONNECT/DISCONNECT/CLOSE | Nonexistent share (`STATUS_BAD_NETWORK_NAME`); request on disconnected TreeId (`STATUS_NETWORK_NAME_DELETED`); CLOSE POSTQUERY_ATTRIB; closed FileId (`STATUS_FILE_CLOSED`) |
+| CREATE contexts 2.2.13.2.x | MxAc, QFid, AlSi, ExtA, TWrp not exercised; DesiredAccess 0 (SHOULD) |
+| IOCTL 3.3.5.15 | Non-FSCTL flag (`STATUS_NOT_SUPPORTED`); unknown FSCTL; wrong FileId for DFS/QUERY_NETWORK_INTERFACE_INFO/VALIDATE_NEGOTIATE_INFO; copychunk and resume key; pipe FSCTLs; MaxTransactSize limits (SHOULD); resiliency on non-durable open |
+| ECHO/CANCEL/FLUSH/READ/WRITE/LOCK | Standalone ECHO; cancel of pending LOCK/IOCTL; interim async responses; WRITE_THROUGH/UNBUFFERED; RDMA channel flags; read/write limits; unlock of unlocked range (`STATUS_RANGE_NOT_LOCKED`) |
+| QUERY_DIRECTORY/QUERY_INFO | `SMB2_INDEX_SPECIFIED`; `SMB2_0_INFO_SECURITY` |
+| Compound | Failure propagation in a related chain; invalid FileId in related request; padding/alignment; async compound |
+| OpLock | Level 2 / exclusive, break-to-none, invalid ack, ForceLevel2 |
+
+Not counted as gaps: optional features the server may lack, Windows-only behaviour, printer-share CREATE (not testable on a
+disk share). The earlier explore-agent list of 25 candidates was replaced by this verified list. One existing assert message in
+`CompressionTest.cs` (~line 488) cites section 3.3.5.2.13; the correct reference is 3.3.5.2.1.2 / 3.3.7.1.

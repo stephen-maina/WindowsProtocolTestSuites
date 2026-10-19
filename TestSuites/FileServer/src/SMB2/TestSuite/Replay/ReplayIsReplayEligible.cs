@@ -297,6 +297,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.PersistentHandle)]
         [Description("Verify that after a successful replay of SMB2 WRITE on a persistent handle " +
             "over SMB 3.x, Open.IsReplayEligible is set to FALSE (MS-SMB2 section 3.3.5.13).")]
+        // SPEC: [MS-SMB2] 3.3.5.13 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on WRITE; a later replayed request on the open must not be treated as replay
         public void Replay_PersistentHandle_Write_ReplayEligibleCleared()
         {
             uint treeId;
@@ -341,6 +342,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.PersistentHandle)]
         [Description("Verify that replay of SMB2 READ on a persistent handle over SMB 3.x " +
             "clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.12).")]
+        // SPEC: [MS-SMB2] 3.3.5.12 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on READ
         public void Replay_PersistentHandle_Read_ReplayEligibleCleared()
         {
             uint treeId;
@@ -381,6 +383,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.PersistentHandle)]
         [Description("Verify that replay of SMB2 FLUSH on a persistent handle over SMB 3.x " +
             "clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.11).")]
+        // SPEC: [MS-SMB2] 3.3.5.11 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on FLUSH
         public void Replay_PersistentHandle_Flush_ReplayEligibleCleared()
         {
             uint treeId;
@@ -416,6 +419,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.PersistentHandle)]
         [Description("Verify that replay of SMB2 IOCTL on a persistent handle over SMB 3.x " +
             "clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.15).")]
+        // SPEC: [MS-SMB2] 3.3.5.15 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on IOCTL
         public void Replay_PersistentHandle_IoCtl_ReplayEligibleCleared()
         {
             uint treeId;
@@ -468,6 +472,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.PersistentHandle)]
         [Description("Verify that replay of SMB2 SET_INFO on a persistent handle over SMB 3.x " +
             "clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.21).")]
+        // SPEC: [MS-SMB2] 3.3.5.21 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on SET_INFO
         public void Replay_PersistentHandle_SetInfo_ReplayEligibleCleared()
         {
             uint treeId;
@@ -540,6 +545,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [Description("Verify that SMB2 LOCK on a persistent handle over SMB 3.x " +
             "clears Open.IsReplayEligible and the lock sequence idempotency " +
             "mechanism works correctly (MS-SMB2 section 3.3.5.14).")]
+        // SPEC: [MS-SMB2] 3.3.5.14 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on LOCK
         public void Replay_PersistentHandle_Lock_ReplayEligibleCleared()
         {
             uint treeId;
@@ -594,6 +600,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [Description("Verify that SMB2 QUERY_DIRECTORY on a persistent handle over SMB 3.x " +
             "clears Open.IsReplayEligible and subsequent queries work correctly " +
             "(MS-SMB2 section 3.3.5.18).")]
+        // SPEC: [MS-SMB2] 3.3.5.18 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on QUERY_DIRECTORY
         public void Replay_PersistentHandle_QueryDirectory_ReplayEligibleCleared()
         {
             uint treeId;
@@ -651,6 +658,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.PersistentHandle)]
         [Description("Verify that replay of SMB2 QUERY_INFO on a persistent handle over SMB 3.x " +
             "clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.20).")]
+        // SPEC: [MS-SMB2] 3.3.5.20 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on QUERY_INFO
         public void Replay_PersistentHandle_QueryInfo_ReplayEligibleCleared()
         {
             uint treeId;
@@ -718,6 +726,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [Description("Verify that SMB2 CHANGE_NOTIFY on a persistent handle over SMB 3.x " +
             "clears Open.IsReplayEligible and subsequent watches work correctly " +
             "(MS-SMB2 section 3.3.5.19).")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on CHANGE_NOTIFY
         public void Replay_PersistentHandle_ChangeNotify_ReplayEligibleCleared()
         {
             uint treeId;
@@ -784,6 +793,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.Replay)]
         [Description("Verify that after a successful replay of SMB2 WRITE on a non-persistent " +
             "DurableHandleV2 over SMB 3.x, Open.IsReplayEligible is set to FALSE (MS-SMB2 section 3.3.5.13).")]
+        // SPEC: [MS-SMB2] 3.3.5.13 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on WRITE
         public void Replay_NonPersistentHandle_Write_ReplayEligibleCleared()
         {
             uint treeId;
@@ -824,6 +834,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.Replay)]
         [Description("Verify that replay of SMB2 READ on a non-persistent DurableHandleV2 " +
             "over SMB 3.x clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.12).")]
+        // SPEC: [MS-SMB2] 3.3.5.12 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on READ
         public void Replay_NonPersistentHandle_Read_ReplayEligibleCleared()
         {
             uint treeId;
@@ -863,6 +874,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.Replay)]
         [Description("Verify that replay of SMB2 FLUSH on a non-persistent DurableHandleV2 " +
             "over SMB 3.x clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.11).")]
+        // SPEC: [MS-SMB2] 3.3.5.11 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on FLUSH
         public void Replay_NonPersistentHandle_Flush_ReplayEligibleCleared()
         {
             uint treeId;
@@ -897,6 +909,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.Replay)]
         [Description("Verify that replay of SMB2 IOCTL on a non-persistent DurableHandleV2 " +
             "over SMB 3.x clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.15).")]
+        // SPEC: [MS-SMB2] 3.3.5.15 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on IOCTL
         public void Replay_NonPersistentHandle_IoCtl_ReplayEligibleCleared()
         {
             uint treeId;
@@ -948,6 +961,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.Replay)]
         [Description("Verify that replay of SMB2 SET_INFO on a non-persistent DurableHandleV2 " +
             "over SMB 3.x clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.21).")]
+        // SPEC: [MS-SMB2] 3.3.5.21 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on SET_INFO
         public void Replay_NonPersistentHandle_SetInfo_ReplayEligibleCleared()
         {
             uint treeId;
@@ -1019,6 +1033,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [Description("Verify that SMB2 LOCK on a non-persistent DurableHandleV2 " +
             "over SMB 3.x clears Open.IsReplayEligible and lock sequence idempotency " +
             "works correctly (MS-SMB2 section 3.3.5.14).")]
+        // SPEC: [MS-SMB2] 3.3.5.14 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on LOCK
         public void Replay_NonPersistentHandle_Lock_ReplayEligibleCleared()
         {
             uint treeId;
@@ -1067,6 +1082,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [Description("Verify that SMB2 QUERY_DIRECTORY on a non-persistent DurableHandleV2 " +
             "over SMB 3.x clears Open.IsReplayEligible and subsequent queries work correctly " +
             "(MS-SMB2 section 3.3.5.18).")]
+        // SPEC: [MS-SMB2] 3.3.5.18 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on QUERY_DIRECTORY
         public void Replay_NonPersistentHandle_QueryDirectory_ReplayEligibleCleared()
         {
             uint treeId;
@@ -1118,6 +1134,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [TestCategory(TestCategories.Replay)]
         [Description("Verify that replay of SMB2 QUERY_INFO on a non-persistent DurableHandleV2 " +
             "over SMB 3.x clears Open.IsReplayEligible (MS-SMB2 section 3.3.5.20).")]
+        // SPEC: [MS-SMB2] 3.3.5.20 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on QUERY_INFO
         public void Replay_NonPersistentHandle_QueryInfo_ReplayEligibleCleared()
         {
             uint treeId;
@@ -1184,6 +1201,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Replay
         [Description("Verify that SMB2 CHANGE_NOTIFY on a non-persistent DurableHandleV2 " +
             "over SMB 3.x clears Open.IsReplayEligible and subsequent watches work correctly " +
             "(MS-SMB2 section 3.3.5.19).")]
+        // SPEC: [MS-SMB2] 3.3.5.19 - SMB 3.x server MUST set Open.IsReplayEligible to FALSE on CHANGE_NOTIFY
         public void Replay_NonPersistentHandle_ChangeNotify_ReplayEligibleCleared()
         {
             uint treeId;

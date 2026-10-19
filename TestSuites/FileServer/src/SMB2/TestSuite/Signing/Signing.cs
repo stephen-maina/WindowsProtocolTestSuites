@@ -59,6 +59,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Signing)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE and SESSION_SETUP requests with NEGOTIATE_SIGNING_REQUIRED set.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 (ShouldSign), 3.3.5.5.3 / 3.3.5.2.4 - signing required in NEGOTIATE/SESSION_SETUP: session MUST be signed and signed requests accepted.
         public void BVT_Signing()
         {
             #region Check Applicability
@@ -185,6 +186,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether outgoing and incoming messages " +
             "are correctly signed and verified using aes-gmac signing algorithm.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.4 / 3.1.4.1 / 2.2.3.1.7 - AES-GMAC signing (SMB 3.1.1 SIGNING_CAPABILITIES): server MUST verify request signatures and sign responses.
         public void Signing_VerifyAesGmacSigning()
         {
             #region Check Applicability
@@ -245,6 +247,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Signing)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description(WrongSessionKeyRejectedDescription)]
+        // SPEC: [MS-SMB2] 3.3.5.2.4 (+3.1.4.1 HMAC-SHA256) - bad signature on signed request MUST yield STATUS_ACCESS_DENIED (dialect 2.0.2).
         public void Signing_WrongSessionKey_Rejected_Smb2002_HmacSha256()
         {
             RunSigningWrongSessionKeyRejected(DialectRevision.Smb2002, SigningAlgorithm.HMAC_SHA256);
@@ -255,6 +258,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Signing)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description(WrongSessionKeyRejectedDescription)]
+        // SPEC: [MS-SMB2] 3.3.5.2.4 (+3.1.4.1 HMAC-SHA256) - bad signature on signed request MUST yield STATUS_ACCESS_DENIED (dialect 2.1).
         public void Signing_WrongSessionKey_Rejected_Smb21_HmacSha256()
         {
             RunSigningWrongSessionKeyRejected(DialectRevision.Smb21, SigningAlgorithm.HMAC_SHA256);
@@ -265,6 +269,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Signing)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description(WrongSessionKeyRejectedDescription)]
+        // SPEC: [MS-SMB2] 3.3.5.2.4 (+3.1.4.1 AES-CMAC) - bad signature on signed request MUST yield STATUS_ACCESS_DENIED (dialect 3.0).
         public void Signing_WrongSessionKey_Rejected_Smb30_AesCmac()
         {
             RunSigningWrongSessionKeyRejected(DialectRevision.Smb30, SigningAlgorithm.AES_CMAC);
@@ -275,6 +280,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Signing)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description(WrongSessionKeyRejectedDescription)]
+        // SPEC: [MS-SMB2] 3.3.5.2.4 (+3.1.4.1 AES-CMAC) - bad signature on signed request MUST yield STATUS_ACCESS_DENIED (dialect 3.0.2).
         public void Signing_WrongSessionKey_Rejected_Smb302_AesCmac()
         {
             RunSigningWrongSessionKeyRejected(DialectRevision.Smb302, SigningAlgorithm.AES_CMAC);
@@ -285,6 +291,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Signing)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description(WrongSessionKeyRejectedDescription)]
+        // SPEC: [MS-SMB2] 3.3.5.2.4 (+3.1.4.1 HMAC-SHA256 via SIGNING_CAPABILITIES) - bad signature on signed request MUST yield STATUS_ACCESS_DENIED (dialect 3.1.1).
         public void Signing_WrongSessionKey_Rejected_Smb311_HmacSha256()
         {
             RunSigningWrongSessionKeyRejected(DialectRevision.Smb311, SigningAlgorithm.HMAC_SHA256);
@@ -295,6 +302,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Signing)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description(WrongSessionKeyRejectedDescription)]
+        // SPEC: [MS-SMB2] 3.3.5.2.4 (+3.1.4.1 AES-CMAC via SIGNING_CAPABILITIES) - bad signature on signed request MUST yield STATUS_ACCESS_DENIED (dialect 3.1.1).
         public void Signing_WrongSessionKey_Rejected_Smb311_AesCmac()
         {
             RunSigningWrongSessionKeyRejected(DialectRevision.Smb311, SigningAlgorithm.AES_CMAC);
@@ -305,6 +313,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Signing)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description(WrongSessionKeyRejectedDescription)]
+        // SPEC: [MS-SMB2] 3.3.5.2.4 (+3.1.4.1 AES-GMAC via SIGNING_CAPABILITIES) - bad signature on signed request MUST yield STATUS_ACCESS_DENIED (dialect 3.1.1).
         public void Signing_WrongSessionKey_Rejected_Smb311_AesGmac()
         {
             RunSigningWrongSessionKeyRejected(DialectRevision.Smb311, SigningAlgorithm.AES_GMAC);

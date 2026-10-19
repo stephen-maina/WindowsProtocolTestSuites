@@ -98,6 +98,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can decompress WRITE request and compress READ response correctly using LZNT1.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 (decompress WRITE, LZNT1) and 3.3.4.1.5 / 3.1.4.4 (SHOULD compress READ reply).
         public void BVT_SMB2Compression_LZNT1()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZNT1;
@@ -109,6 +110,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can decompress WRITE request and compress READ response correctly using LZ77.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 (decompress WRITE, LZ77) and 3.3.4.1.5 / 3.1.4.4 (SHOULD compress READ reply).
         public void BVT_SMB2Compression_LZ77()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZ77;
@@ -120,6 +122,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can decompress WRITE request and compress READ response correctly using LZ77 Huffman.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 (decompress WRITE, LZ77+Huffman) and 3.3.4.1.5 / 3.1.4.4 (SHOULD compress READ reply).
         public void BVT_SMB2Compression_LZ77Huffman()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZ77Huffman;
@@ -131,6 +134,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can decompress WRITE request and compress READ response correctly using LZNT1 when encryption is enabled.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 step 8 (nested compressed message inside TRANSFORM_HEADER), 3.3.5.2.1.2, 3.3.4.1.5 - LZNT1 with encryption.
         public void BVT_SMB2Compression_LZNT1_Encrypted()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZNT1;
@@ -142,6 +146,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can decompress WRITE request and compress READ response correctly using LZ77 when encryption is enabled.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 step 8 (nested compressed message inside TRANSFORM_HEADER), 3.3.5.2.1.2, 3.3.4.1.5 - LZ77 with encryption.
         public void BVT_SMB2Compression_LZ77_Encrypted()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZ77;
@@ -153,6 +158,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Compression)]
         [Description("This test case is designed to test whether server can decompress WRITE request and compress READ response correctly using LZ77 Huffman when encryption is enabled.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 step 8 (nested compressed message inside TRANSFORM_HEADER), 3.3.5.2.1.2, 3.3.4.1.5 - LZ77+Huffman with encryption.
         public void BVT_SMB2Compression_LZ77Huffman_Encrypted()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZ77Huffman;
@@ -165,6 +171,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle compressed WRITE request correctly using supported compression algorithms.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 - server MUST decompress a compressed WRITE request (COMPRESSION_TRANSFORM_HEADER, 2.2.42).
         public void SMB2Compression_CompressedWriteRequest()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -177,6 +184,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can compress read request correctly if SMB2_READFLAG_REQUEST_COMPRESSED is specified in request and response is compressible.")]
+        // SPEC: [MS-SMB2] 3.3.4.1.5 / 3.1.4.4 - READ with SMB2_READFLAG_REQUEST_COMPRESSED: server SHOULD compress a compressible reply.
         public void SMB2Compression_CompressibleReadResponse()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -189,6 +197,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server will not compress read request if SMB2_READFLAG_REQUEST_COMPRESSED is specified in request and response is incompressible.")]
+        // SPEC: [MS-SMB2] 3.3.4.1.5 / 3.1.4.4 - incompressible reply: server leaves the READ response uncompressed (compression is only a SHOULD).
         public void SMB2Compression_IncompressibleReadResponse()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -203,6 +212,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can decompress large file WRITE request and compress READ response correctly using LZNT1.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 / 3.3.4.1.5 - large-file LZNT1; decompressed size MUST equal OriginalCompressedSegmentSize.
         public void SMB2Compression_LZNT1_LargeFile()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZNT1;
@@ -214,6 +224,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can decompress large file WRITE request and compress READ response correctly using LZ77.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 / 3.3.4.1.5 - large-file LZ77; decompressed size MUST equal OriginalCompressedSegmentSize.
         public void SMB2Compression_LZ77_LargeFile()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZ77;
@@ -225,6 +236,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can decompress large file WRITE request and compress READ response correctly using LZ77 Huffman.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 / 3.3.4.1.5 - large-file LZ77+Huffman; decompressed size MUST equal OriginalCompressedSegmentSize.
         public void SMB2Compression_LZ77Huffman_LargeFile()
         {
             var compressionAlgorithm = CompressionAlgorithm.LZ77Huffman;
@@ -236,6 +248,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can handle compressed large file WRITE request correctly using supported compression algorithms.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 - large compressed WRITE request MUST be decompressed.
         public void SMB2Compression_CompressedWriteRequest_LargeFile()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -248,6 +261,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.Positive)]
         [Description("This test case is designed to test whether server can compress large file read request correctly if SMB2_READFLAG_REQUEST_COMPRESSED is specified in request and response is compressible.")]
+        // SPEC: [MS-SMB2] 3.3.4.1.5 / 3.1.4.4 - large READ with SMB2_READFLAG_REQUEST_COMPRESSED: server SHOULD compress a compressible reply.
         public void SMB2Compression_CompressibleReadResponse_LargeFile()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -262,6 +276,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.OutOfBoundary)]
         [Description("This test case is designed to test whether server will disconnect the connection if it received a compressed message with invalid length.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 1.4 / 3.1 - compressed message with invalid size/length MUST cause the server to disconnect (3.3.7.1).
         public void SMB2Compression_InvalidCompressedPacketLength()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -289,6 +304,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.InvalidIdentifier)]
         [Description("This test case is designed to test whether server will disconnect the connection if the ProtocolId in the decompressed message is invalid.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 3.3 - decompressed ProtocolId not 0x424D53FE: server MUST disconnect (3.3.7.1).
         public void SMB2Compression_InvalidDecompressedProtocolId()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();
@@ -318,6 +334,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compression)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("This test case is designed to test whether server will disconnect the connection if the CompressionAlgorithm in the compressed message is invalid.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.2 step 1.2 - CompressionAlgorithm not in Connection.CompressionIds: server MUST disconnect (3.3.7.1).
         public void SMB2Compression_InvalidCompressionAlgorithm()
         {
             CheckCompressionTestCaseApplicabilityForGlobalEncryptData();

@@ -95,6 +95,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.IoCtlRequest)]
         [Description("Test that quering network interface returns NETWORK_INTERFACE_INFO structure")]
+        // SPEC: [MS-SMB2] 3.3.5.15.5 / 2.2.32.5 - FSCTL_QUERY_NETWORK_INTERFACE_INFO returns NETWORK_INTERFACE_INFO list; FileId MUST be 0xFFFFFFFFFFFFFFFF (3.3.5.15)
         public void BVT_NetworkInterfaceInfo_QuerySuccessful()
         {
             uint treeId;
@@ -137,6 +138,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.IoCtlRequest)]
         [Description("Test that quering network interface returns error code when it fails")]
+        // SPEC: [MS-SMB2] 3.3.5.15.5 - server MUST return an error status (e.g. STATUS_BUFFER_TOO_SMALL / STATUS_INVALID_PARAMETER) when the request is invalid
         public void NetworkInterfaceInfo_Query_ReturnsErrorStatus()
         {
             uint treeId;
@@ -183,6 +185,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.IoCtlRequest)]
         [Description("Test that network interface info has IPv4 and IPv6")]
+        // SPEC: [MS-SMB2] 3.3.5.15.5 - network interface list reports IPv4 and IPv6 SockAddr_Storage entries
         public void NetworkInterfaceInfo_Query_ReturnsIPv4IPv6()
         {
             uint treeId;
@@ -246,6 +249,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.IoCtlRequest)]
         [TestCategory(TestCategories.MultipleChannel)]
         [Description("Test that current session is binded to new connection when different server IP is connected by client.")]
+        // SPEC: [MS-SMB2] 3.3.5.15.5, 3.3.5.5.2 - interface query on a bound channel applies to the current session
         public void NetworkInterfaceInfo_ChangeConnection_BindCurrentSession()
         {
             uint treeId;            

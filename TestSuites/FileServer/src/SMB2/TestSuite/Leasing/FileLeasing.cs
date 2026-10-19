@@ -67,6 +67,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
         [TestCategory(TestCategories.Smb21)]
         [TestCategory(TestCategories.LeaseV1)]
         [Description("This test case is designed to test whether server can handle LeaseV1 context correctly on a file.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.8 - server MUST return SMB2_CREATE_RESPONSE_LEASE with Lease.LeaseKey and granted Lease.LeaseState.
         public void BVT_Leasing_FileLeasingV1()
         {
             #region Check Applicability
@@ -89,6 +90,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.LeaseV2)]
         [Description("This test case is designed to test whether server can handle LeaseV2 context correctly on a file.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - server MUST return SMB2_CREATE_RESPONSE_LEASE_V2 with Lease.LeaseKey and granted Lease.LeaseState.
         public void BVT_Leasing_FileLeasingV2()
         {
             #region Check Applicability
@@ -111,6 +113,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
         [TestCategory(TestCategories.LeaseV1)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle LeaseV1 context with the same lease key")]
+        // SPEC: [MS-SMB2] 3.3.5.9.8 - same LeaseKey from same ClientGuid maps to the same Lease; server MUST NOT promote on non-superset request or while Lease.Breaking.
         public void Leasing_FileLeasingV1_SameLeaseKey()
         {
             #region Check Applicability
@@ -133,6 +136,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
         [TestCategory(TestCategories.LeaseV2)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle LeaseV2 context with the same lease key")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - same LeaseKey from same ClientGuid maps to the same Lease; server MUST NOT promote on non-superset request or while Lease.Breaking.
         public void Leasing_FileLeasingV2_SameLeaseKey()
         {
             #region Check Applicability
@@ -155,6 +159,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.LeaseV2)]
         [Description("This test case verifies that server initializes Lease.Epoch to the Epoch value from the request, then increments it during Oplock Acquisition phase.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - Lease.Epoch is initialized from the request Epoch and incremented during Oplock Acquisition.
         public void BVT_Leasing_FileLeasingV2_EpochInitialization()
         {
             #region Check Applicability

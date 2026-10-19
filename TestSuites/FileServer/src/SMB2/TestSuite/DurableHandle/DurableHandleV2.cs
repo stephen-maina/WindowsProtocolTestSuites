@@ -78,6 +78,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV2)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test reconnect with DurableHandleV2 but without persistent flag.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.10 / 3.3.5.9.12 - DH2Q without PERSISTENT flag grants durable open; DH2C reconnect succeeds.
         public void DurableHandleV2_Reconnect_WithoutPersistence()
         {
             /// 1. Client requests a durable handle V2 without persistent flag
@@ -191,6 +192,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.PersistentHandleNonClusterRequired)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test reconnect with DurableHandleV2 when no persistent handle is granted by the server and the share does not have CA capability.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.10 - DH2Q with PERSISTENT flag on a non-CA share: persistent handle is not granted (Open.IsPersistent FALSE; response lacks the flag).
         public void DurableHandleV2_NoPersistenceGrantedOnNonCAShare()
         {
             /// 1. Client requests a durable handle V2 to a Non-CA share
@@ -256,6 +258,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV2)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Test reconnect with DurableHandleV2 and different durable owner.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - Session.SecurityContext user differs from Open.DurableOwner: server MUST fail with STATUS_ACCESS_DENIED.
         public void DurableHandleV2_Reconnect_WithDifferentDurableOwner()
         {
             /// 1. Client requests a durable handle V2 with LeaseV1 context
@@ -374,6 +377,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2BatchOplock)]
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("Test reconnect with DurableHandleV2 and an additional SMB2_CREATE_DURABLE_HANDLE_REQUEST create context.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C with an additional SMB2_CREATE_DURABLE_HANDLE_REQUEST context: server MUST fail with STATUS_INVALID_PARAMETER.
         public void DurableHandleV2_Reconnect_IncludeDurableHandleRequest()
         {
             /// 1. Client requests a durable handle V2 with BatchOplock.
@@ -395,6 +399,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2BatchOplock)]
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("Test reconnect with DurableHandleV2 and an additional SMB2_CREATE_DURABLE_HANDLE_RECONNECT create context.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C with an additional SMB2_CREATE_DURABLE_HANDLE_RECONNECT context: server MUST fail with STATUS_INVALID_PARAMETER.
         public void DurableHandleV2_Reconnect_IncludeDurableHandleReconnect()
         {
             /// 1. Client requests a durable handle V2 with BatchOplock.
@@ -416,6 +421,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2BatchOplock)]
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("Test reconnect with DurableHandleV2 and an additional SMB2_CREATE_DURABLE_HANDLE_REQUEST_V2 create context.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C with an additional SMB2_CREATE_DURABLE_HANDLE_REQUEST_V2 context: server MUST fail with STATUS_INVALID_PARAMETER.
         public void DurableHandleV2_Reconnect_IncludeDurableHandleRequestV2()
         {
             /// 1. Client requests a durable handle V2 with BatchOplock.
@@ -437,6 +443,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.DurableHandleV2BatchOplock)]
         [Description("Test reconnect with DurableHandleV2 and BatchOplock.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.10 / 3.3.5.9.12 - DH2Q with batch oplock grants durable open; DH2C reconnect restores the oplock.
         public void BVT_DurableHandleV2_Reconnect_WithBatchOplock()
         {
             /// 1. Client requests a durable handle V2 with BatchOplock
@@ -536,6 +543,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.DurableHandleV2LeaseV1)]
         [Description("Test reconnect with DurableHandleV2 and LeaseV1 context.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C reconnect with matching Lease V1 key succeeds.
         public void BVT_DurableHandleV2_Reconnect_WithLeaseV1()
         {
             /// 1. Client requests a durable handle V2 with LeaseV1 context
@@ -550,6 +558,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV1)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Test reconnect with DurableHandleV2 and LeaseV1 context, but the file name is different.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C reconnect with a different FileName than Open.FileName: server MUST fail with STATUS_INVALID_PARAMETER.
         public void DurableHandleV2_Reconnect_WithLeaseV1_WithDifferentFileName()
         {
             /// 1. Client requests a durable handle V2 with LeaseV1 context
@@ -569,6 +578,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV2)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test no durable handle is granted if requesting with DurableHandleV2 and LeaseV2 context, but SMB2_LEASE_HANDLE_CACHING bit is not set in LeaseState.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.10 - DH2Q with a lease lacking SMB2_LEASE_HANDLE_CACHING: Open.IsDurable is not set, no durable v2 response context.
         public void DurableHandleV2_WithLeaseV2_WithoutHandleCaching()
         {
             /// 1. Client requests a durable handle with LeaseV2 context, SMB2_LEASE_HANDLE_CACHING bit is not set in LeaseState.
@@ -647,6 +657,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.PersistentHandle)]
         [Description("Test reconnect with persistent handle.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.10 / 3.3.5.9.12 - DH2Q with PERSISTENT on a CA share grants a persistent open; DH2C reconnect succeeds.
         public void BVT_PersistentHandle_Reconnect()
         {
             /// 1. Client requests a persistent handle
@@ -749,6 +760,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.PersistentHandle)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test reconnect of a persistent handle that is resumed through the CreateGuid lookup path when the FileId.Persistent lookup fails.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - FileId.Persistent lookup fails: server resumes persistent Open via CreateGuid lookup on CA share.
         public void PersistentHandle_Reconnect_ViaCreateGuid()
         {
             if (TestConfig.Platform >= Platform.WindowsServer2022 || TestConfig.Platform == Platform.NonWindows)
@@ -764,6 +776,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.PersistentHandle)]
         [TestCategory(TestCategories.InvalidIdentifier)]
         [Description("Test that reconnect fails when both the FileId.Persistent lookup and the CreateGuid lookup fail.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - Both FileId.Persistent and CreateGuid lookups fail: server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void PersistentHandle_Reconnect_ViaCreateGuid_CreateGuidNotFound()
         {
             if (TestConfig.Platform >= Platform.WindowsServer2022 || TestConfig.Platform == Platform.NonWindows)
@@ -779,6 +792,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.PersistentHandle)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test that reconnect through the CreateGuid lookup path fails when SMB2_DHANDLE_FLAG_PERSISTENT is not set.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - CreateGuid lookup path requires SMB2_DHANDLE_FLAG_PERSISTENT in the reconnect request, else the request fails.
         public void PersistentHandle_Reconnect_ViaCreateGuid_WithoutPersistentFlag()
         {
             if (TestConfig.Platform >= Platform.WindowsServer2022 || TestConfig.Platform == Platform.NonWindows)
@@ -794,6 +808,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.PersistentHandle)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Test that reconnect through the CreateGuid lookup path fails when Open.Session is not NULL.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - CreateGuid lookup path: Open.Session not NULL, server MUST fail the request.
         public void PersistentHandle_Reconnect_ViaCreateGuid_SessionNotNull()
         {
             if (TestConfig.Platform >= Platform.WindowsServer2022 || TestConfig.Platform == Platform.NonWindows)
@@ -809,6 +824,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.PersistentHandle)]
         [TestCategory(TestCategories.FileAccessCheck)]
         [Description("Test that reconnect through the CreateGuid lookup path fails when the durable owner is different.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - CreateGuid lookup path: DurableOwner mismatch, server MUST fail with STATUS_ACCESS_DENIED.
         public void PersistentHandle_Reconnect_ViaCreateGuid_WithDifferentDurableOwner()
         {
 
@@ -826,6 +842,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV1)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test that reconnect through the CreateGuid lookup path fails when the Lease V1 key does not match the lease key recreated during resume.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - CreateGuid lookup path: Lease V1 key mismatch, server MUST fail the request.
         public void PersistentHandle_Reconnect_ViaCreateGuid_WithDifferentLeaseKeyV1()
         {
             if (TestConfig.Platform >= Platform.WindowsServer2022 || TestConfig.Platform == Platform.NonWindows)
@@ -842,6 +859,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV2)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test that reconnect through the CreateGuid lookup path fails when the Lease V2 key does not match the lease key recreated during resume.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - CreateGuid lookup path: Lease V2 key mismatch, server MUST fail the request.
         public void PersistentHandle_Reconnect_ViaCreateGuid_WithDifferentLeaseKeyV2()
         {
             if (TestConfig.Platform >= Platform.WindowsServer2022 || TestConfig.Platform == Platform.NonWindows)
@@ -858,6 +876,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV1)]
         [TestCategory(TestCategories.Positive)]
         [Description("Test that the lease-presence validations do not apply when a persistent handle with a Lease V1 is resumed through the CreateGuid lookup path without a lease context in the reconnect request.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - CreateGuid lookup path: lease-presence validations do not apply when the reconnect omits a lease context.
         public void PersistentHandle_Reconnect_ViaCreateGuid_WithoutReconnectLeaseContext()
         {
             if (TestConfig.Platform >= Platform.WindowsServer2022 || TestConfig.Platform == Platform.NonWindows)
@@ -873,6 +892,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Compatibility)]
         [TestCategory(TestCategories.PersistentHandle)]
         [Description("Verify that whether opening a file will fail if a previous client already had the persistent handle to this file.")]
+        // SPEC: [MS-SMB2] 3.3.5.9 - A new Create on a file with an existing persistent Open from another client is subject to open-sharing/oplock conflict processing.
         public void PersistentHandle_ReOpenFromDiffClient()
         {
             /// 1. A client requests a persistent handle and succeeds
@@ -989,6 +1009,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV2)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Test reconnect with DurableHandleV2, LeaseV1 and LeaseV2 context, but with different LeaseKey.")]
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C with Lease V1 and V2 contexts whose lease keys do not match Open.Lease.LeaseKey: server MUST fail the request.
         public void DurableHandleV2_WithLeaseV1AndV2_WithDifferentLeaseKey()
         {
             DurableHandleV2_Reconnect_ObjectNotFound();

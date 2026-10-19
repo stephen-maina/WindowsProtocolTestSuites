@@ -70,6 +70,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.Encryption)]
         [Description("This test case is designed to test whether server can handle per share encryption correctly.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 / 3.3.5.7 - per-share encryption (Share.EncryptData): server MUST decrypt requests and encrypt responses; TREE_CONNECT sets SMB2_SHAREFLAG_ENCRYPT_DATA.
         public void BVT_Encryption_PerShareEncryptionEnabled()
         {
             NegotiateWithoutContext();
@@ -81,6 +82,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.Encryption)]
         [Description("This test case is designed to test whether server can handle encryption request under global encryption enabled.")]
+        // SPEC: [MS-SMB2] 3.3.5.2.1.1 / 3.3.5.5.3 (Session.EncryptData) - session-level (global) encryption: server MUST decrypt requests and encrypt responses (AES-128-CCM for dialect < 3.1.1).
         public void BVT_Encryption_GlobalEncryptionEnabled()
         {
             NegotiateWithoutContext();
@@ -92,6 +94,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Encryption)]
         [Description("This case is to ensure server could handle encrypted requests correctly with dialect 3.11, SMB2_ENCRYPTION_CAPABILITIES context.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3, 3.3.5.2.1.1 - Connection.CipherId chosen from client's ENCRYPTION_CAPABILITIES; server MUST use it to decrypt/encrypt.
         public void BVT_Encryption_SMB311()
         {
             NegotiateWithEncryptionCapabilitiesContext(EncryptionAlgorithm.ENCRYPTION_AES128_GCM, sendCipherArray: true);
@@ -103,6 +106,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Encryption)]
         [Description("This case is to ensure server could handle encrypted requests correctly with dialect 3.11, SMB2_ENCRYPTION_CAPABILITIES context and AES-128-CCM as encryption algorithm.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3, 3.3.5.2.1.1 step 6 - server MUST use AES-128-CCM (Connection.CipherId) to decrypt/encrypt.
         public void BVT_Encryption_SMB311_CCM()
         {
             NegotiateWithEncryptionCapabilitiesContext(EncryptionAlgorithm.ENCRYPTION_AES128_CCM);
@@ -114,6 +118,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Encryption)]
         [Description("This case is to ensure server could handle encrypted requests correctly with dialect 3.11, SMB2_ENCRYPTION_CAPABILITIES context and AES-256-CCM as encryption algorithm.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3, 3.3.5.2.1.1 step 6 - server MUST use AES-256-CCM (Connection.CipherId) to decrypt/encrypt.
         public void BVT_Encryption_SMB311_AES_256_CCM()
         {
             TestConfig.CheckPlatform(Platform.WindowsServer2022);
@@ -126,6 +131,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Encryption)]
         [Description("This case is to ensure server could handle encrypted requests correctly with dialect 3.11, SMB2_ENCRYPTION_CAPABILITIES context and AES-128-GCM as encryption algorithm.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3, 3.3.5.2.1.1 step 6 - server MUST use AES-128-GCM (Connection.CipherId) to decrypt/encrypt.
         public void BVT_Encryption_SMB311_GCM()
         {
             NegotiateWithEncryptionCapabilitiesContext(EncryptionAlgorithm.ENCRYPTION_AES128_GCM);
@@ -137,6 +143,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Encryption)]
         [Description("This case is to ensure server could handle encrypted requests correctly with dialect 3.11, SMB2_ENCRYPTION_CAPABILITIES context and AES-256-GCM as encryption algorithm.")]
+        // SPEC: [MS-SMB2] 3.3.5.4 step 8.3, 3.3.5.2.1.1 step 6 - server MUST use AES-256-GCM (Connection.CipherId) to decrypt/encrypt.
         public void BVT_Encryption_SMB311_AES_256_GCM()
         {
             TestConfig.CheckPlatform(Platform.WindowsServer2022);

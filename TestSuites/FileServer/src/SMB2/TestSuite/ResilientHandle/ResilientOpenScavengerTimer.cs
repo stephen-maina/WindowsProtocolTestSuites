@@ -51,6 +51,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.ResilientHan
         [TestCategory(TestCategories.FsctlLmrRequestResiliency)]
         [TestCategory(TestCategories.Positive)]
         [Description("Verify that the Open will be closed after Resilient Open Scavenger Timer expired.")]
+        // SPEC: [MS-SMB2] 3.3.2.x / 3.3.5.15.9 - Resilient Open Scavenger Timer: after Open.ResilientTimeout expires with no reconnect, the Open MUST be closed.
         public void ResilientOpenScavengerTimer_ReconnectAfterTimeout()
         {
             /// 1. Wait for MaxResiliencyTimeoutInSecond seconds to expire the Resilient Timer and make sure that the Timer is not started.
@@ -120,6 +121,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.ResilientHan
         [TestCategory(TestCategories.FsctlLmrRequestResiliency)]
         [TestCategory(TestCategories.Positive)]
         [Description("Verify that the Open will be preserved before Resilient Open Scavenger Timer expired.")]
+        // SPEC: [MS-SMB2] 3.3.2.x / 3.3.5.15.9 - Resilient Open Scavenger Timer: before Open.ResilientTimeout expires the Open MUST be preserved for reconnect.
         public void ResilientOpenScavengerTimer_ReconnectBeforeTimeout()
         {
             /// 1. Open Resilient Handle with specific timeout.
