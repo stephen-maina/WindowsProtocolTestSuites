@@ -134,3 +134,6 @@ _bmad/
 
 # Cursor IDE
 .cursor/
+
+# Local scratch project for shared diagnostics portability checks
+TestSuites/FileServer/src/Common/Diagnostics.Portability.Tests/
