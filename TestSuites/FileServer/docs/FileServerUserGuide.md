@@ -3541,6 +3541,16 @@ You can also review test results in the following ways:
 >[!NOTE]
 >The StandardOutput data can also be displayed separately in HTML format.
 
+#### Creating the SMB2 shares on a Linux SUT (ksmbd or Samba)
+
+`Setup\Scripts\Create-SMB2Env-Linux.sh` is the Linux counterpart of `Create-SMB2Env.ps1`. Copy it to the SUT and run it as root:
+
+```
+sudo ./Create-SMB2Env-Linux.sh --user administrator [--server auto|ksmbd|samba] [--root /srv/smb] [--min-protocol SMB2_02] [--password <pw>]
+```
+
+It creates FileShare, SMBBasic (with the symbolic links), SameWithSMBBasic, DifferentFromSMBBasic, ShareForceLevel2, SMBEncrypted, SMBCompressed and SMBReFSShare, writes them to a managed block in `ksmbd.conf` / `smb.conf` (safe to re-run), and reloads the server. Limits: ksmbd cannot require encryption per share (only the global `smb3 encryption`), and neither ksmbd nor Samba implements SMB2 compression, so SMBEncrypted/SMBCompressed will not report SHAREFLAG_ENCRYPT_DATA/SHAREFLAG_COMPRESS_DATA there. Set `BasicFileShare` to `SMBBasic` in the ptfconfig.
+
 #### Per-test SUT logs and diagnostics (optional)
 
 To diagnose a failure you often need the SUT's side of the exchange. Set these properties in **CommonTestSuite.deployment.ptfconfig** (or in the Protocol Test Manager configuration):
