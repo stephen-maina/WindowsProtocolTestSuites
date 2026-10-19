@@ -2388,7 +2388,7 @@ This is used to test SMB2 common user scenarios.
 |---|---|
 | **Test ID**              | Signing_VerifySignatureWhenEncrypted                                                                   |
 | **Description**          | This test case is designed to test whether server set the Signature field to zero in Encrypted message.      |
-| **Prerequisites**        |                                                                                                              |
+| **Prerequisites**        | `IsPerShareEncryptionSupported` = true; otherwise the test is inconclusive (per-share encryption is optional, [MS-SMB2] 3.3.5.7). |
 | **Test Execution Steps** | 1.  Client sends NEGOTIATE request with SMB2\_GLOBAL\_CAP\_ENCRYPTION                                        |
 |                          | 2.  Server sends NEGOTIATE response with SMB2\_GLOBAL\_CAP\_ENCRYPTION                                       |
 |                          | 3.  Client sends SESSION\_SETUP request                                                                      |
