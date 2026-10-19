@@ -57,6 +57,7 @@ Located in [`.github/skills/`](../.github/skills/), each subdirectory is a skill
 | [`file-server`](../.github/skills/file-server/SKILL.md) | FileServer, SMB, SMB2, SMB3, CIFS, MS-SMB2, MS-FSCC, MS-FSA, MS-DFSC, MS-FSRVP, MS-RSVD, MS-SQOS, file sharing | **Critical domain classification rules** (FSA vs SMB2 vs DFSC etc.), reusable adapter/base class inventory, test templates, test execution patterns. Covers 10 sub-domains via `references/`. |
 | [`smbd`](../.github/skills/smbd/SKILL.md) | MS-SMBD, SMB Direct, RDMA, RoCE, ksmbd, TestSuites/MS-SMBD | Running the SMBD suite, Windows-control-run method, trace/log debugging (trx, rdma.pcap decoding), failure classification (spec / SUT / test), MS Learn MCP spec lookup, known ksmbd findings, optional SUT debug scripts (`TestSuites/MS-SMBD/src/Batch/SutDebug/Invoke-SutSsh.ps1`, `Invoke-SutWinRM.ps1`). |
 | [`generate-protocol-diff`](../.github/skills/generate-protocol-diff/SKILL.md) | Protocol diff, spec comparison, protocol version changes | Guidance for diffing protocol specification versions to identify changes requiring new or updated test cases. |
+| [`test-debugging`](../.github/skills/test-debugging/SKILL.md) | Failing test, triage, per-test logs/traces, SUT SSH logs, spec vs Windows behaviour | Where per-test diagnostics, pcaps and SUT dmesg live and how to enable them, SSH to the SUT, pcap decoding, MS Learn spec evidence, and classifying failures as SUT defect / product-specific test / test bug / environment / unimplemented test. |
 
 #### How to Use a Skill
 
