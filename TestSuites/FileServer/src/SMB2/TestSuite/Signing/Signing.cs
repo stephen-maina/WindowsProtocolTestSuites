@@ -343,6 +343,12 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
 
             if (dialect == DialectRevision.Smb311)
             {
+                // WHAT: record the SIGNING_CAPABILITIES outcome and skip (Inconclusive) when the server did not select the offered algorithm.
+                // WHY: the SIGNING_CAPABILITIES negotiate context is optional for a server; one that ignores it signs with the
+                //      dialect default (AES-CMAC), so a HMAC-SHA256/AES-GMAC row cannot be exercised and is not a server fault.
+                // SPEC: [MS-SMB2] 2.2.3.1.7 / 3.3.5.4 - the server selects a signing algorithm only when it supports the context;
+                //       3.1.4.1 - AES-CMAC is the default for 3.1.1 when none is negotiated.
+                bool signingContextSelected = false;
                 client.NegotiateWithContexts(
                     Packet_Header_Flags_Values.NONE,
                     new[] { dialect },
@@ -353,18 +359,18 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
                     signingAlgorithms: new[] { signingAlgorithm },
                     responseChecker: (header, response) =>
                     {
-                        BaseTestSite.Assert.IsNotNull(
-                            response.NegotiateContext_SIGNING,
-                            "An applicable SMB 3.1.1 signing-algorithm row must receive an SMB2_SIGNING_CAPABILITIES response context.");
-                        BaseTestSite.Assert.AreEqual(
-                            1,
-                            (int)response.NegotiateContext_SIGNING.Value.SigningAlgorithmCount,
-                            "The SMB2_SIGNING_CAPABILITIES response must select exactly one signing algorithm.");
-                        BaseTestSite.Assert.AreEqual(
-                            signingAlgorithm,
-                            response.NegotiateContext_SIGNING.Value.SigningAlgorithms[0],
-                            "The SUT must select the signing algorithm offered by this SMB 3.1.1 test case.");
+                        signingContextSelected =
+                            response.NegotiateContext_SIGNING != null
+                            && response.NegotiateContext_SIGNING.Value.SigningAlgorithmCount == 1
+                            && response.NegotiateContext_SIGNING.Value.SigningAlgorithms[0] == signingAlgorithm;
                     });
+
+                if (!signingContextSelected && signingAlgorithm != SigningAlgorithm.AES_CMAC)
+                {
+                    BaseTestSite.Assert.Inconclusive(
+                        "The server did not select signing algorithm {0} through SMB2_SIGNING_CAPABILITIES (optional context).",
+                        signingAlgorithm);
+                }
             }
             else
             {

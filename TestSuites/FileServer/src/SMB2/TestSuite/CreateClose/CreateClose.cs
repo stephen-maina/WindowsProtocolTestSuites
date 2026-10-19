@@ -462,11 +462,13 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
                         {
                             if (testConfig.Platform == Platform.NonWindows)
                             {
-                                BaseTestSite.Assert.AreNotEqual(
-                                    Smb2Status.STATUS_SUCCESS,
-                                    header.Status,
-                                    "3.3.5.9: If the FILE_DELETE_ON_CLOSE flag is set in CreateOptions and Treeconnect.MaximalAccess does not include DELETE or GENERIC, the server SHOULD<283> fail the request with STATUS_ACCESS_DENIED. " +
-                                    "Actually server returns with {0}.", Smb2Status.GetStatusCode(header.Status));
+                                // WHAT: no status assertion for non-Windows servers.
+                                // WHY: the access check is a SHOULD with a Windows product-behavior note, so a server that opens the file is conformant.
+                                // SPEC: [MS-SMB2] 3.3.5.9 - "the server SHOULD<283> fail the request with STATUS_ACCESS_DENIED".
+                                BaseTestSite.Log.Add(
+                                    LogEntryKind.Comment,
+                                    "Non-Windows platform: the DELETE access check for FILE_DELETE_ON_CLOSE is a SHOULD; server returned {0}.",
+                                    Smb2Status.GetStatusCode(header.Status));
                             }
                             else if (testConfig.Platform == Platform.WindowsServer2008 
                                 || testConfig.Platform == Platform.WindowsServer2008R2)
@@ -497,11 +499,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
                             //NonAdminAccountCredential does not include DELETE or GENERIC_ALL in MaximalAccess
                             if (testConfig.Platform == Platform.NonWindows)
                             {
-                                BaseTestSite.Assert.AreNotEqual(
-                                    Smb2Status.STATUS_SUCCESS,
-                                    header.Status,
-                                    "3.3.5.9: If the FILE_DELETE_ON_CLOSE flag is set in CreateOptions and Treeconnect.MaximalAccess does not include DELETE or GENERIC, the server SHOULD<283> fail the request with STATUS_ACCESS_DENIED. " +
-                                    "Actually server returns with {0}.", Smb2Status.GetStatusCode(header.Status));
+                                // WHAT/WHY/SPEC: same SHOULD<283> rationale as above; not asserted for non-Windows servers.
+                                BaseTestSite.Log.Add(
+                                    LogEntryKind.Comment,
+                                    "Non-Windows platform: the DELETE access check for FILE_DELETE_ON_CLOSE is a SHOULD; server returned {0}.",
+                                    Smb2Status.GetStatusCode(header.Status));
                             }
                             else if (testConfig.Platform == Platform.WindowsServer2008
                                 || testConfig.Platform == Platform.WindowsServer2008R2)

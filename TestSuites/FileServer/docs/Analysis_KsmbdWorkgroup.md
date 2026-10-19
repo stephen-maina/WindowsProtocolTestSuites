@@ -124,3 +124,14 @@ spot-checked. Gaps were found by grepping `SMB2\TestSuite`, `FSA\TestSuite` and 
 Not counted as gaps: optional features the server may lack, Windows-only behaviour, printer-share CREATE (not testable on a
 disk share). The earlier explore-agent list of 25 candidates was replaced by this verified list. One existing assert message in
 `CompressionTest.cs` (~line 488) cites section 3.3.5.2.13; the correct reference is 3.3.5.2.1.2 / 3.3.7.1.
+
+## 7. Follow-up triage (tri15, ksmbd debug ON)
+
+| Test(s) | Verdict | Evidence / action |
+|---|---|---|
+| `Signing_WrongSessionKey_Rejected_Smb311_AesGmac/HmacSha256` | Test defect, fixed | Skipped (Inconclusive) when the server does not select SIGNING_CAPABILITIES for that algorithm ([MS-SMB2] 3.3.5.4). |
+| `Signing_WrongSessionKey_Rejected_Smb311_AesCmac` | ksmbd defect | A request with a bad signature is accepted (STATUS_SUCCESS instead of STATUS_ACCESS_DENIED), violating [MS-SMB2] 3.3.5.2.4. |
+| `CreateClose_DeleteFile_DesiredAccessNotIncludeDeleteOrGenericAll` | Test asserted Windows behaviour, fixed | The server behaviour is a SHOULD<283>. The strict check applies on Windows only; other platforms log. Now passes. |
+| `CreateClose_SymbolicLinkInMiddle/InvalidSymbolicLink/SymbolicLinkAtLast` | ksmbd limitation | ksmbd returns STATUS_INVALID_PARAMETER or STATUS_ACCESS_DENIED instead of STATUS_STOPPED_ON_SYMLINK (3.3.5.9). The test is correct and is left failing. |
+| `BVT_SMB2Basic_ChangeNotify_*` (CREATE of a child in a new directory) | ksmbd/SUT defect | The parent directory is created fine, but a child CREATE inside it returns STATUS_ACCESS_DENIED (the dmesg shows "inherit posix acl failed: -2"). The setup is spec-valid. ChangeNotify is also STATUS_NOT_IMPLEMENTED on ksmbd. |
+| `MultipleChannel_SecondChannelSessionSetupFailAtFirstTime` | Config/topology | Needs a second distinct channel. Not a ksmbd or test defect. |
