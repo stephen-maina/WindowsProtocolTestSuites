@@ -60,18 +60,28 @@ channel sequence). Those rows read "fixed upstream", not "never implemented".
 | `TreeMgmt_SMB311_COMPRESS_DATA` | `SMBCompressed` share without compression | 2.2.10 | Needs a gate (open) |
 | `SessionMgmt_ReconnectWithDifferentDialect` | Re-binding with a different dialect succeeds | 3.3.5.5.3 | ksmbd defect |
 
-## 4. Still to triage (no verdict yet)
+## 4. Triage of the previously open items (run `tri9`, ksmbd debug dmesg + pcap)
 
-`DurableHandleV2_*` returning `STATUS_INVALID_PARAMETER` (`WithLeaseV1AndV2_WithDifferentLeaseKey`,
-`Reconnect_WithLeaseV1`, `Reconnect_WithBatchOplock`, `Reconnect_WithoutPersistence`),
-`DurableHandleV1_Reconnect_AfterServerDisconnect`, `CreateClose_*DoubleDotDir` (possible Windows-specific expectation),
-`CreateClose_DeleteFile_DesiredAccessNotIncludeDeleteOrGenericAll`, `BVT_SMB2Basic_Query_Quota_Info`.
-Several verdicts above (FSCTL-based tests, symlink, session re-bind) come from the status code in the run summary and
-have not yet been confirmed with pcap and dmesg.
+| Test(s) | Evidence | Spec | Verdict |
+|---|---|---|---|
+| `DurableHandleV2_Reconnect_*` (`WithoutPersistence`, `WithBatchOplock`, `WithLeaseV1`, `WithLeaseV1AndV2_WithDifferentLeaseKey`) | Pcap: DH2C context is well formed (Next=0x40, DataOffset=0x18, DataLength=0x24, CreateGuid matches the DH2Q). dmesg: `error parsing durable handle context`, no lookup message. Upstream v7.0 `parse_durable_handle_context` rejects the context when `DataOffset + DataLength < sizeof(struct create_durable_handle_reconnect_v2)`, and that struct includes `Pad[4]` (64 bytes) while the context is 60 bytes. | 2.2.13.2.12, 3.3.5.9.12 | **ksmbd defect**: every DH2C reconnect returns `STATUS_INVALID_PARAMETER`. Newer ksmbd compares against `sizeof(dcontext)`. Tests are correct and kept. |
+| `DurableHandleV1_Reconnect_WithDifferentDurableOwner` | `STATUS_LOGON_FAILURE` on session setup for the second user | 3.3.5.9.7 | Config: create a second local account on the SUT |
+| `DurableHandleV1_Reconnect_AfterServerDisconnect` | Negotiate after create is answered instead of disconnecting | 3.3.5.4 | ksmbd limitation |
+| `CreateClose_CreateAndCloseFileWithDoubleDotDir` | `x\..\y` is accepted; the spec describes `STATUS_INVALID_PARAMETER` as Windows-based server behavior | 3.3.5.9, [MS-FSCC] 2.1.5.1 | **Test defect, fixed**: assertion applies only when `Platform` is not `NonWindows`. Passes on ksmbd. |
+| `CreateClose_DeleteFile_DesiredAccessNotIncludeDeleteOrGenericAll` | Server returns success; the spec says SHOULD fail with `STATUS_ACCESS_DENIED` | 3.3.5.9 (SHOULD) | ksmbd limitation (optional behavior) |
+| `CreateClose_SymbolicLinkAtLast`, `CreateClose_InvalidSymbolicLink` | `STATUS_ACCESS_DENIED` / `STATUS_INVALID_PARAMETER` instead of `STATUS_STOPPED_ON_SYMLINK` | 3.3.5.9 | ksmbd limitation (Linux symlinks are not NTFS reparse points) |
+| `BVT_SMB2Basic_Query_FileNormalizedNameInformation_DataFile` | `STATUS_INVALID_INFO_CLASS` | [MS-FSCC] 2.4.28 | ksmbd limitation (optional class) |
+| `SessionMgmt_ReconnectWithDifferentDialect` | Re-bind with a different dialect returns SUCCESS | 3.3.5.5.3 | ksmbd defect |
+| `BVT_SMB2Basic_Query_Quota_Info` | Test opens an LDAP connection (`Connect Error`) | n/a | Domain-only; not runnable in WORKGROUP |
+
+FSCTL tests and `TreeMgmt_SMB311_COMPRESS_DATA` remain verdicts from the status code only.
 
 ## 5. Notes
 
 * The SUT alias 192.168.20.114 is not persistent across reboot.
 * Tuxera runs are blocked on an expired licence.
-* Per-test global diagnostics are verified for SMB2. DFSC, RSVD, SQOS, ServerFailover, Auth, FSRVP and FSA are not yet
-  verified; FSAModel and SMB2Model use the generated `PtfTestClassBase` and are not wired.
+* Per-test diagnostics are wired and verified for all ten collections: SMB2, DFSC, RSVD, SQOS, Auth, ServerFailover and
+  FSRVP through `CommonTestBase`; FSA, FSAModel and SMB2Model through `FileServerPtfTestClassBase`.
+* `capture.etl` holds SMB traffic (SMB2 headers, encrypted transform headers). It is an NDIS packet capture; read it with
+  `pktmon etl2txt capture.etl --hex`. RDMA data bypasses NDIS and is not captured.
+* `Parse-Smb2Pcap.ps1 -HexCommand <n>` dumps the first 512 bytes of each packet of that SMB2 command.

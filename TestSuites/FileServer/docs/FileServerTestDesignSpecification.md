@@ -4409,7 +4409,7 @@ The feature has 34 model-based test cases and several traditional test cases.
 ||SESSION_SETUP|
 ||TREE_CONNECT|
 ||CREATE (CreateOption: FILE_NON_DIRECTORY_FILE &#124;  FILE_DELETE_ON_CLOSE; CreateDisposition: FILE_CREATE, file name contains double dot directory name)|
-||Expect server failed with STATUS_INVALID_PARAMETER according to server's implementation.|
+||Expect server failed with STATUS_INVALID_PARAMETER according to server's implementation. This is asserted only when Platform is not NonWindows ([MS-SMB2] 3.3.5.9 describes it as Windows-based server behavior); on NonWindows any well-formed response is accepted.|
 ||TREE_DISCONNECT|
 ||LOGOFF|
 

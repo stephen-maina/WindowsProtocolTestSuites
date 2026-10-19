@@ -1,7 +1,8 @@
-param([string]$Pcap, [string]$FromUtc, [string]$ToUtc, [int]$Port = 445)
+param([string]$Pcap, [string]$FromUtc, [string]$ToUtc, [int]$Port = 445, [int]$HexCommand = -1)
 Add-Type -TypeDefinition @'
 using System; using System.Collections.Generic; using System.IO;
 public static class P {
+  public static int HexCmd = -1;
   public static List<string> Run(string path, DateTime from, DateTime to, int port) {
     var o = new List<string>(); var b = File.ReadAllBytes(path); int i = 0; int tsres = 6;
     while (i + 12 <= b.Length) {
@@ -24,7 +25,8 @@ public static class P {
                 ulong mid = BitConverter.ToUInt64(b, s + 24); ulong sid = BitConverter.ToUInt64(b, s + 40);
                 bool signed = (fl & 8) != 0; bool zero = true; for (int k = 0; k < 16; k++) if (b[s + 48 + k] != 0) zero = false;
                 o.Add(dt.ToString("HH:mm:ss.ffffff") + " " + dir + " cmd=" + cmd + " status=0x" + st.ToString("X8") + " flags=0x" + fl.ToString("X") + (signed ? " SIGNED" : "") + (signed && zero ? "(zero-sig)" : "") + " msgid=" + mid + " sess=" + sid);
-              } else if (b[s] == 0xFD && b[s+1]=='S') o.Add(dt.ToString("HH:mm:ss.ffffff") + " " + dir + " TRANSFORM(encrypted) len=" + (end - pl));
+                               if (cmd == HexCmd) { int n = Math.Min(end - s, 512); o.Add("    HEX " + BitConverter.ToString(b, s, n).Replace("-", "")); }
+                             } else if (b[s] == 0xFD && b[s+1]=='S') o.Add(dt.ToString("HH:mm:ss.ffffff") + " " + dir + " TRANSFORM(encrypted) len=" + (end - pl));
             }
           }
         }
@@ -36,4 +38,5 @@ public static class P {
 }
 '@
 $f = [DateTime]::Parse($FromUtc).ToUniversalTime(); $t = [DateTime]::Parse($ToUtc).ToUniversalTime()
+[P]::HexCmd = $HexCommand
 [P]::Run($Pcap, $f, $t, $Port)

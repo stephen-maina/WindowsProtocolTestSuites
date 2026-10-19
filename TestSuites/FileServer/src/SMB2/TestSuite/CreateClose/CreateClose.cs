@@ -535,6 +535,17 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.CreateClose
                     break;
                 case FileNameType.NotExistedValidFileNameWithDoubleDotDirectoryName:
                     {
+                        // WHAT: STATUS_INVALID_PARAMETER for "x\..\y" is asserted only for Windows servers.
+                        // WHY: [MS-SMB2] 3.3.5.9 describes this as Windows-based server behavior; other servers may normalize or reject the path.
+                        // SPEC: [MS-SMB2] 3.3.5.9, [MS-FSCC] 2.1.5.1.
+                        if (testConfig.Platform == Platform.NonWindows)
+                        {
+                            BaseTestSite.Log.Add(
+                                LogEntryKind.Comment,
+                                "Non-Windows platform: Dot Directory Name handling is implementation specific; server returned {0}.",
+                                Smb2Status.GetStatusCode(header.Status));
+                            break;
+                        }
                         BaseTestSite.Assert.AreEqual(
                                 Smb2Status.STATUS_INVALID_PARAMETER,
                                 header.Status,
