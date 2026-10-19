@@ -21,7 +21,7 @@ per-test diagnostics (`capture.etl`, `ptf-log.ndjson`, `sut-linux-dmesg.log` in 
 | `TreeConnect` `STATUS_ACCESS_DENIED` (BVT_Encryption_*), `TreeMgmt_SMB311_COMPRESS_DATA` | Shares `SMBEncrypted` / `SMBCompressed` do not exist on the SUT | Create shares or blank the properties |
 | `Replay_PersistentHandle_*` | Needs cluster DNS name `GeneralFS.contoso.com` | Cluster-only |
 | MultipleChannel* | Second client/SUT NIC IPs not configured | Configure `ClientNic2IPAddress` etc. |
-| `BVT_Negotiate_SMB2002`, `Signing_*_Smb2002_*` get `STATUS_INSUFFICIENT_RESOURCES` | ksmbd default minimum protocol is SMB 2.1 | Set `server min protocol = SMB2_02` in ksmbd.conf to exercise 2.0.2 |
+| `BVT_Negotiate_SMB2002`, `Signing_*_Smb2002_*` get `STATUS_INSUFFICIENT_RESOURCES` | ksmbd cannot select 2.0.2 as the sole dialect (see run 7 table); lowering the minimum protocol does not help | ksmbd defect |
 
 ## Probable ksmbd defects (test is spec-correct, kept as is)
 
@@ -35,7 +35,21 @@ per-test diagnostics (`capture.etl`, `ptf-log.ndjson`, `sut-linux-dmesg.log` in 
 | `ValidateNegotiateInfo_Negative_InvalidDialects_*` | Connection not terminated | [MS-SMB2] 3.3.5.15 |
 | Durable/Leasing/Replay tests (11 still failing after flags aligned) | `SMB2_CREATE_DURABLE_HANDLE_RESPONSE` never returned | Durable V1 not granted by ksmbd; tests need a feature flag gate (open item) |
 
+## Verified with driver pcap + ksmbd debug dmesg (run 7)
+
+| Test(s) | Evidence | Verdict |
+|---|---|---|
+| `BVT_Negotiate_SMB2002` | Request lists only 0x0202. ksmbd debug: `client requested dialect 0x202`, `conn->dialect 0xffff`, `Server dialect :0xffff not supported`, `Failed to process 0 [-22]` -> `STATUS_INSUFFICIENT_RESOURCES`. Still happens with `server min protocol = SMB2_02`. | ksmbd defect: cannot select 2.0.2 when it is the only dialect offered. The earlier "set min protocol" action was wrong; it does not fix this. |
+| `BVT_Encryption_*` (6) | The pcap shows an encrypted request whose inner header has `SMB2_FLAGS_SIGNED` set with a zero signature (`SendSignedRequest=true`; the SDK encrypts and does not sign). ksmbd logs `bad smb2 signature` and returns `STATUS_ACCESS_DENIED`. | Test/SDK defect (spec confirmation of the signed-flag rule still to be recorded). Windows ignores the flag. |
+| `BVT_Encryption_PerShareEncryptionEnabled`, `Signing_VerifySignatureWhenEncrypted` | ksmbd only has global `smb3 encryption`; no `SHAREFLAG_ENCRYPT_DATA` per share. | ksmbd limitation; gate the tests on a feature flag. |
+| 27 tests (MultipleChannel*, NetworkInterfaceInfo*, AppInstanceId*) | Initially `The requested address is not valid in its context` because `ClientNic1/2IPAddress` were 192.168.1.111/2.111, not driver addresses. With a NIC on another subnet from `SutIPAddress` they time out. With only 192.168.20.111 set, `Assume` skips them (needs two client IPs reachable to the SUT). | Config. Needs two driver IPs on the SUT's subnet (or per-NIC SUT addresses, which the suite does not model). |
+| `BVT_Replay_ReplayCreate` | `SutAlternativeIPAddress` was 192.168.2.11 (timeout). With 192.168.10.12 it connects and then fails on `Smb2CreateDurableHandleResponseV2` missing. | Config, then ksmbd limitation (durable V2 not granted). |
+| `AppInstanceVersion_*`, `Negative_AppInstanceVersion_*` | Re-open with same AppInstanceId returns `STATUS_SHARING_VIOLATION` (0xC0000043); the previous open is never closed. | ksmbd gap: `SMB2_CREATE_APP_INSTANCE_ID` not implemented ([MS-SMB2] 3.3.5.9.13). |
+| `MS_SMB2_Clarification`, `MS_FSA_Clarification` (4) | `Cannot resolve node01.contoso.com` | Cluster-only config. |
+| `ResilientHandle*` (5) | `FSCTL_LMR_REQUEST_RESILIENCY` returns `STATUS_NOT_SUPPORTED` | ksmbd gap. |
+| ChangeNotify (7 more) | CREATE returns `STATUS_ACCESS_DENIED`/`OBJECT_NAME_NOT_FOUND` during setup (streams / ACL setup) | Not yet triaged to root cause. |
+
 ## Next steps
 
-* Create the encrypted/compressed shares and the NIC settings, then re-run the Config rows.
-* Review remaining failing groups individually against the pcap and per-test dmesg before changing any test.
+* Fix the SIGNED flag on encrypted requests and gate per-share encryption, then re-run `Encryption`.
+* Triage the remaining groups (ChangeNotify setup, `0xC000000D`/`0xC000009A` negotiate-context group, `Signing_WrongSessionKey`, symlink, ValidateNegotiateInfo) against pcap and dmesg before changing any test.
