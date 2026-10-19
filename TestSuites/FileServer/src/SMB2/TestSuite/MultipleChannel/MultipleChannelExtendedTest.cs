@@ -204,7 +204,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
                         header.Status,
                         "TreeConnect should succeed.");
 
-                    if (enableEncryptionPerShare)
+                    // SMB2_SHAREFLAG_ENCRYPT_DATA is only checked when the SUT supports per-share encryption ([MS-SMB2] 3.3.5.7, optional feature).
+                    if (enableEncryptionPerShare && TestConfig.IsPerShareEncryptionSupported)
                     {
                         BaseTestSite.Assert.AreEqual(
                             ShareFlags_Values.SHAREFLAG_ENCRYPT_DATA,

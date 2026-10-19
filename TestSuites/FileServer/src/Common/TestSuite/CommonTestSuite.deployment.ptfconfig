@@ -199,6 +199,15 @@
         </Description>
       </Property>
 
+      <Property name="IsPerShareEncryptionSupported" value="true">
+        <Choice>true,false</Choice>
+        <Description>
+          Set true if SUT can force encryption on an individual share (Share.EncryptData, [MS-SMB2] 3.3.5.7), otherwise set it to false.
+          Servers that only offer a global encryption switch (for example ksmbd) should set false; the per-share tests are then
+          inconclusive and the other encryption tests connect to the basic share instead of the encrypted share.
+        </Description>
+      </Property>
+
       <Property name="IsRDMATransformSupported" value="false">
         <Choice>true,false</Choice>
         <Description>

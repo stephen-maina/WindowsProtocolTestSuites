@@ -218,6 +218,21 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         /// </summary>
         private void PostNegotiateOperations(EnableEncryptionType enableEncryptionType, bool connectEncryptedShare)
         {
+            // WHAT: per-share encryption (Share.EncryptData) is exercised only when the SUT supports it.
+            // WHY: it is an optional server feature; some servers (for example ksmbd) only offer a global switch, so they never set
+            //      SMB2_SHAREFLAG_ENCRYPT_DATA for an individual share and a share-flag assertion would test the product, not the protocol.
+            // SPEC: [MS-SMB2] 3.3.5.7 (Share.EncryptData -> SMB2_SHAREFLAG_ENCRYPT_DATA), 3.3.5.2.1 (encrypted requests).
+            // Session-level encryption of the traffic is still validated against the basic share.
+            if (!TestConfig.IsPerShareEncryptionSupported)
+            {
+                if (enableEncryptionType == EnableEncryptionType.EnableEncryptionPerShare)
+                {
+                    BaseTestSite.Assert.Inconclusive("The SUT does not support per-share encryption (IsPerShareEncryptionSupported=false).");
+                }
+
+                connectEncryptedShare = false;
+            }
+
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Client sends SESSION_SETUP request and expects response.");
             client.SessionSetup(
                 TestConfig.DefaultSecurityPackage,

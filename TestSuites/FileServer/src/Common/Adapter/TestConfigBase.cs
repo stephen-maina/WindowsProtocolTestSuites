@@ -138,6 +138,16 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
             }
         }
 
+        public bool IsPerShareEncryptionSupported
+        {
+            get
+            {
+                // Optional property: absent means the SUT supports per-share encryption (the Windows behaviour).
+                string value = GetProperty("IsPerShareEncryptionSupported", false);
+                return string.IsNullOrEmpty(value) || Boolean.Parse(value);
+            }
+        }
+
         public bool IsMultiChannelCapable
         {
             get

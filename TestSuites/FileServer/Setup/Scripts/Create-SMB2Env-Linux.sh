@@ -6,7 +6,9 @@
 # running ksmbd (kernel SMB server) or Samba. Idempotent; run as root on the SUT.
 #
 #   sudo ./Create-SMB2Env-Linux.sh --user administrator [--server auto|ksmbd|samba] [--root /srv/smb]
-#                                  [--min-protocol SMB2_02] [--password <pw>]
+#                                  [--min-protocol SMB2_02] [--enable-durable] [--password <pw>]
+#
+#   --enable-durable  (ksmbd) sets "smb2 leases = yes" and "durable handles = yes" in [global]; both default to no.
 #
 # Shares created (same names as the Windows script):
 #   FileShare, SMBBasic (+ symlinks), SameWithSMBBasic, DifferentFromSMBBasic, ShareForceLevel2,
@@ -24,6 +26,7 @@ ROOT=/srv/smb
 USER_NAME=administrator
 PASSWORD=
 MIN_PROTOCOL=
+ENABLE_DURABLE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -32,7 +35,8 @@ while [ $# -gt 0 ]; do
         --user) USER_NAME=$2; shift 2;;
         --password) PASSWORD=$2; shift 2;;
         --min-protocol) MIN_PROTOCOL=$2; shift 2;;
-        -h|--help) sed -n '2,22p' "$0"; exit 0;;
+        --enable-durable) ENABLE_DURABLE=1; shift;;
+        -h|--help) sed -n '2,24p' "$0"; exit 0;;
         *) echo "Unknown argument: $1" >&2; exit 2;;
     esac
 done
@@ -105,15 +109,29 @@ printf '\n%s\n' "$BLOCK" >> "$TMP"
 cat "$TMP" > "$CONF"
 rm -f "$TMP"
 
-if [ -n "$MIN_PROTOCOL" ]; then
-    if grep -qE '^\s*server min protocol\s*=' "$CONF"; then
-        sed -i -E "s|^\s*server min protocol\s*=.*|    server min protocol = $MIN_PROTOCOL|" "$CONF"
+set_global() {
+    # $1 key, $2 value: replace the key if present, otherwise add it under [global]
+    if grep -qE "^\s*$1\s*=" "$CONF"; then
+        sed -i -E "s|^\s*$1\s*=.*|    $1 = $2|" "$CONF"
     elif grep -qE '^\[global\]' "$CONF"; then
-        sed -i -E "0,/^\[global\]/s||[global]\n    server min protocol = $MIN_PROTOCOL|" "$CONF"
+        sed -i -E "0,/^\[global\]/s||[global]\n    $1 = $2|" "$CONF"
     else
-        printf '[global]\n    server min protocol = %s\n' "$MIN_PROTOCOL" | cat - "$CONF" > "$CONF.new" && mv "$CONF.new" "$CONF"
+        printf '[global]\n    %s = %s\n' "$1" "$2" | cat - "$CONF" > "$CONF.new" && mv "$CONF.new" "$CONF"
     fi
-    echo "server min protocol = $MIN_PROTOCOL"
+    echo "$1 = $2"
+}
+
+[ -z "$MIN_PROTOCOL" ] || set_global "server min protocol" "$MIN_PROTOCOL"
+
+# ksmbd ships with leases and durable handles disabled, so the durable/replay/lease/AppInstanceId tests fail
+# unless they are switched on. Samba enables them by default.
+if [ "$ENABLE_DURABLE" = 1 ]; then
+    if [ "$SERVER" = ksmbd ]; then
+        set_global "smb2 leases" yes
+        set_global "durable handles" yes
+    else
+        echo "--enable-durable is only needed for ksmbd; Samba already supports leases and durable handles."
+    fi
 fi
 
 if [ -n "$PASSWORD" ]; then

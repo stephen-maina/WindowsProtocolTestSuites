@@ -75,6 +75,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2.Common
             // For compound packet, the encryption is done for the entire message.
             if (!notEncrypt)
             {
+                // [MS-SMB2] 2.2.1.1/2.2.1.2: the Signature field is only meaningful when SMB2_FLAGS_SIGNED is set and the
+                // message is not encrypted; an encrypted message is protected by the TRANSFORM_HEADER signature instead,
+                // so do not claim the inner header is signed when it is not.
+                if (IsEncryptionApplied(cryptoInfo, originalPacket))
+                {
+                    ClearSignedFlag(originalPacket);
+                }
+
                 if (originalPacket is Smb2CompressiblePacket)
                 {
                     compressedPacket = Smb2Compression.Compress(originalPacket as Smb2CompressiblePacket, compressioninfo, role);
@@ -233,6 +241,41 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2.Common
                 // [MS-SMB2] 3.1.4.1 
                 // 2. If Connection.Dialect belongs to the SMB 3.x dialect family, the sender MUST compute a 16-byte hash using AES-128-CMAC over the entire message
                 return AesCmac128.ComputeHash(cryptoInfo.SigningKey, original.ToBytes());
+            }
+        }
+
+        private static bool IsEncryptionApplied(Smb2CryptoInfo cryptoInfo, Smb2Packet packet)
+        {
+            Packet_Header header;
+            if (packet is Smb2SinglePacket)
+            {
+                header = (packet as Smb2SinglePacket).Header;
+            }
+            else if (packet is Smb2CompoundPacket)
+            {
+                header = (packet as Smb2CompoundPacket).Packets[0].Header;
+            }
+            else
+            {
+                return false;
+            }
+
+            return cryptoInfo.EnableSessionEncryption
+                   || (cryptoInfo.EnableTreeEncryption.Contains(header.TreeId) && header.Command != Smb2Command.TREE_CONNECT);
+        }
+
+        private static void ClearSignedFlag(Smb2Packet packet)
+        {
+            if (packet is Smb2SinglePacket)
+            {
+                (packet as Smb2SinglePacket).Header.Flags &= ~Packet_Header_Flags_Values.FLAGS_SIGNED;
+            }
+            else if (packet is Smb2CompoundPacket)
+            {
+                foreach (Smb2SinglePacket single in (packet as Smb2CompoundPacket).Packets)
+                {
+                    single.Header.Flags &= ~Packet_Header_Flags_Values.FLAGS_SIGNED;
+                }
             }
         }
 

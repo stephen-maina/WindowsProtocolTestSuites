@@ -103,6 +103,14 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             #region Check Applicability
             TestConfig.CheckDialect(DialectRevision.Smb30);
             TestConfig.CheckCapabilities(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_ENCRYPTION);
+
+            // WHAT: needs a share that forces encryption on its own (Share.EncryptData).
+            // WHY: per-share encryption is optional; servers with only a global switch (for example ksmbd) cannot offer it.
+            // SPEC: [MS-SMB2] 3.3.5.7 (SMB2_SHAREFLAG_ENCRYPT_DATA), 3.3.4.1.1 (zero Signature in encrypted responses).
+            if (!TestConfig.IsPerShareEncryptionSupported)
+            {
+                BaseTestSite.Assert.Inconclusive("The SUT does not support per-share encryption (IsPerShareEncryptionSupported=false).");
+            }
             #endregion
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Client sends NEGOTIATE with the capability GLOBAL_CAP_ENCRYPTION.");
