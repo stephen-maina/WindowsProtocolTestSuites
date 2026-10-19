@@ -267,6 +267,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.TreeMgmt
             #region Check Applicability
             TestConfig.CheckDialect(DialectRevision.Smb311);
             TestConfig.CheckPlatform(Platform.WindowsServer2022);
+            // WHAT: skip when the SUT does not support SMB2 compression.
+            // WHY: compression is optional; a share cannot report SHAREFLAG_COMPRESS_DATA without it.
+            // SPEC: [MS-SMB2] 2.2.10 (SMB2_SHAREFLAG_COMPRESS_DATA), 2.2.3.1.3.
+            TestConfig.CheckCompressionAlgorithm();
             if (string.IsNullOrEmpty(testConfig.CompressedFileShare))
                 Assert.Inconclusive("This test requires a share with compression enabled");
             #endregion

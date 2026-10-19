@@ -78,6 +78,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
 
             uncSharePath = Smb2Utility.GetUncPath(TestConfig.SutComputerName, TestConfig.BasicFileShare);
             checkBreakNotificationTask = null;
+
+            // WHAT: skip when the server does not advertise GLOBAL_CAP_DIRECTORY_LEASING.
+            // WHY: directory leasing is optional; without the capability the server is not required to grant directory leases.
+            // SPEC: [MS-SMB2] 2.2.4 (GLOBAL_CAP_DIRECTORY_LEASING), 3.3.5.9.8.
+            TestConfig.CheckCapabilities(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_DIRECTORY_LEASING);
         }
 
         protected override void TestCleanup()

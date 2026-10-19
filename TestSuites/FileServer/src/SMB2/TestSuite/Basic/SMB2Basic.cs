@@ -2648,8 +2648,9 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
 
         private void QueryQuotaInfo(SidBufferFormat type)
         {
-            // valid domain name matching, for example: contoso.com, local.contoso.com
-            if (!Regex.IsMatch(TestConfig.DomainName, @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$", RegexOptions.IgnoreCase))
+            // valid domain name matching, for example: contoso.com, local.contoso.com; an IP address is not a domain name
+            if (System.Net.IPAddress.TryParse(TestConfig.DomainName, out _) ||
+                !Regex.IsMatch(TestConfig.DomainName, @"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$", RegexOptions.IgnoreCase))
             {
                 BaseTestSite.Assert.Inconclusive("Authentication test cases are not applicable in non-domain environment");
             }
@@ -2749,8 +2750,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
 
             if (status != Smb2Status.STATUS_SUCCESS)
             {
-                if (status == Smb2Status.STATUS_NOT_SUPPORTED)
+                if (status == Smb2Status.STATUS_NOT_SUPPORTED || status == Smb2Status.STATUS_INVALID_INFO_CLASS)
                 {
+                    // WHAT: treat STATUS_INVALID_INFO_CLASS like STATUS_NOT_SUPPORTED.
+                    // WHY: FileNormalizedNameInformation is supported only by some file systems; others reject the class.
+                    // SPEC: [MS-SMB2] 3.3.5.20.1, [MS-FSCC] 2.4.28.
                     BaseTestSite.Assert.Inconclusive("Query FileNormalizedNameInformation is not supported by server.");
                 }
                 else

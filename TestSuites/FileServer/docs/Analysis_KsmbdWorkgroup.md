@@ -23,6 +23,10 @@ ksmbd debug is enabled only briefly via `/sys/class/ksmbd-control/debug` and lef
 | `BVT_Leasing_FileLeasingV1/V2` | Test called `client2.Write` before starting the break-notification task. The lease is RH, the write breaks it to NONE and [MS-SMB2] 3.3.4.7 requires ACK_REQUIRED for any lease other than exactly R, so the write blocks until acked: deadlock. | 3.3.4.7, 3.3.5.9.8 | Start `CheckBreakNotification` before the write. |
 | `Leasing_FileLeasingV1/V2_SameLeaseKey` | `Negotiate` generated a new ClientGuid per client, so the two leases were legitimately different and a break was sent. | 3.3.5.9.8 (lookup by ClientGuid + LeaseKey) | `client1`/`client2` share one ClientGuid. |
 | `TreeMgmt_SMB311_TREE_CONNECT_EXTENSION_PRESENT` | Windows-only `GetUserSid.ps1`; hangs the run on Linux. | 2.2.9.2 | Inconclusive on non-Windows. |
+| `DirectoryLeasing_*` (`DirectoryLeasingExtendedTest`) | No applicability gate; ran with `IsDirectoryLeasingSupported=false`. | 2.2.4 GLOBAL_CAP_DIRECTORY_LEASING | `TestCleanup`-adjacent init now calls `CheckCapabilities`; Inconclusive when unsupported (verified in `tri13`). |
+| `BVT_SMB2Basic_Query_FileNormalizedNameInformation_*` | `STATUS_INVALID_INFO_CLASS` treated as failure. | 3.3.5.20.1 | Inconclusive like `STATUS_NOT_SUPPORTED`. |
+| `BVT_SMB2Basic_Query_Quota_Info` | IP-address `DomainName` passed the domain regex, then hit LDAP. | n/a (environment) | IP address is treated as non-domain: Inconclusive. |
+| `TreeMgmt_SMB311_COMPRESS_DATA` | Ran without compression support. | 2.2.10 | `CheckCompressionAlgorithm()` gate: Inconclusive. |
 | `Signing_VerifySignatureWhenEncrypted`, AppInstanceId / MultipleChannel `SHAREFLAG_ENCRYPT_DATA` asserts | Per-share encryption is optional. | 2.2.10 | Gated by `IsPerShareEncryptionSupported` (default true). |
 
 ## 2. Configuration / environment (not defects)
