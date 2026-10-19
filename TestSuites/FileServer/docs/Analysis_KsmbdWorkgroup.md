@@ -65,7 +65,8 @@ channel sequence). Those rows read "fixed upstream", not "never implemented".
 | Test(s) | Evidence | Spec | Verdict |
 |---|---|---|---|
 | `DurableHandleV2_Reconnect_*` (`WithoutPersistence`, `WithBatchOplock`, `WithLeaseV1`, `WithLeaseV1AndV2_WithDifferentLeaseKey`) | Pcap: DH2C context is well formed (Next=0x40, DataOffset=0x18, DataLength=0x24, CreateGuid matches the DH2Q). dmesg: `error parsing durable handle context`, no lookup message. Upstream v7.0 `parse_durable_handle_context` rejects the context when `DataOffset + DataLength < sizeof(struct create_durable_handle_reconnect_v2)`, and that struct includes `Pad[4]` (64 bytes) while the context is 60 bytes. | 2.2.13.2.12, 3.3.5.9.12 | **ksmbd defect**: every DH2C reconnect returns `STATUS_INVALID_PARAMETER`. Newer ksmbd compares against `sizeof(dcontext)`. Tests are correct and kept. |
-| `DurableHandleV1_Reconnect_WithDifferentDurableOwner` | `STATUS_LOGON_FAILURE` on session setup for the second user | 3.3.5.9.7 | Config: create a second local account on the SUT |
+| `DurableHandleV1_Reconnect_WithDifferentDurableOwner` | With `nonadmin` created (`Create-SMB2Env-Linux.sh --second-user nonadmin`) the logon works. dmesg: `Durable handle reconnect failed: owner mismatch`, response `STATUS_OBJECT_NAME_NOT_FOUND` (0xC0000034) | 3.3.5.9.7 requires `STATUS_ACCESS_DENIED` | Config fixed; **ksmbd defect** |
+| `DurableHandleV2_Reconnect_WithDifferentDurableOwner` | Same account; returns 0xC000000D, the DH2C parse defect above | 3.3.5.9.12 | ksmbd defect |
 | `DurableHandleV1_Reconnect_AfterServerDisconnect` | Negotiate after create is answered instead of disconnecting | 3.3.5.4 | ksmbd limitation |
 | `CreateClose_CreateAndCloseFileWithDoubleDotDir` | `x\..\y` is accepted; the spec describes `STATUS_INVALID_PARAMETER` as Windows-based server behavior | 3.3.5.9, [MS-FSCC] 2.1.5.1 | **Test defect, fixed**: assertion applies only when `Platform` is not `NonWindows`. Passes on ksmbd. |
 | `CreateClose_DeleteFile_DesiredAccessNotIncludeDeleteOrGenericAll` | Server returns success; the spec says SHOULD fail with `STATUS_ACCESS_DENIED` | 3.3.5.9 (SHOULD) | ksmbd limitation (optional behavior) |
@@ -74,7 +75,11 @@ channel sequence). Those rows read "fixed upstream", not "never implemented".
 | `SessionMgmt_ReconnectWithDifferentDialect` | Re-bind with a different dialect returns SUCCESS | 3.3.5.5.3 | ksmbd defect |
 | `BVT_SMB2Basic_Query_Quota_Info` | Test opens an LDAP connection (`Connect Error`) | n/a | Domain-only; not runnable in WORKGROUP |
 
-FSCTL tests and `TreeMgmt_SMB311_COMPRESS_DATA` remain verdicts from the status code only.
+| `BVT_EnumerateSnapShots` | dmesg: `not implemented yet ioctl command 0x144064` (FSCTL_SRV_ENUMERATE_SNAPSHOTS) -> `STATUS_NOT_SUPPORTED` | [MS-SMB2] 3.3.5.15.1 | ksmbd limitation (optional) |
+| `BVT_SetGetIntegrityInfo` | dmesg: `not implemented yet ioctl command 0x9027c` (FSCTL_GET_INTEGRITY_INFORMATION) | [MS-FSCC] 2.3.29 | ksmbd limitation (ReFS feature) |
+| `BVT_SetZeroData`, `BVT_DuplicateExtentsToFile` | Fail before any SMB traffic: `Cannot resolve node01.contoso.com` | n/a | Config: cluster-only FSA clarification tests |
+
+`TreeMgmt_SMB311_COMPRESS_DATA` remains a verdict from the status code only.
 
 ## 5. Notes
 

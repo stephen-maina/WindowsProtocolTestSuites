@@ -8,6 +8,9 @@
 #   sudo ./Create-SMB2Env-Linux.sh --user administrator [--server auto|ksmbd|samba] [--root /srv/smb]
 #                                  [--min-protocol SMB2_02] [--enable-durable] [--password <pw>]
 #
+#   --second-user <name>  creates a second, non-admin local account (matches Common.NonAdminUserName, e.g. nonadmin),
+#                     gives it --password and lets it access every share. Needed by the *DifferentDurableOwner and
+#                     TreeMgmt tests that connect as a different user.
 #   --enable-durable  (ksmbd) sets "smb2 leases = yes" and "durable handles = yes" in [global]; both default to no.
 #
 # Shares created (same names as the Windows script):
@@ -27,6 +30,7 @@ USER_NAME=administrator
 PASSWORD=
 MIN_PROTOCOL=
 ENABLE_DURABLE=0
+SECOND_USER=
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -36,6 +40,7 @@ while [ $# -gt 0 ]; do
         --password) PASSWORD=$2; shift 2;;
         --min-protocol) MIN_PROTOCOL=$2; shift 2;;
         --enable-durable) ENABLE_DURABLE=1; shift;;
+        --second-user) SECOND_USER=$2; shift 2;;
         -h|--help) sed -n '2,24p' "$0"; exit 0;;
         *) echo "Unknown argument: $1" >&2; exit 2;;
     esac
@@ -43,6 +48,12 @@ done
 
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (sudo)." >&2; exit 1; }
 id "$USER_NAME" >/dev/null 2>&1 || { echo "Local user '$USER_NAME' does not exist." >&2; exit 1; }
+
+VALID_USERS=$USER_NAME
+if [ -n "$SECOND_USER" ]; then
+    id "$SECOND_USER" >/dev/null 2>&1 || useradd -M -s /usr/sbin/nologin "$SECOND_USER"
+    VALID_USERS="$USER_NAME,$SECOND_USER"
+fi
 
 if [ "$SERVER" = auto ]; then
     if [ -d /etc/ksmbd ] && command -v ksmbd.control >/dev/null 2>&1; then SERVER=ksmbd
@@ -76,7 +87,7 @@ ln -sfn "$ROOT/FileShare" "$ROOT/SMBBasic/sub/symboliclink2"
 
 share_block() {
     # $1 name, $2 path, $3 extra lines
-    printf '[%s]\n    path = %s\n    read only = no\n    valid users = %s\n%s' "$1" "$2" "$USER_NAME" "$3"
+    printf '[%s]\n    path = %s\n    read only = no\n    valid users = %s\n%s' "$1" "$2" "$VALID_USERS" "$3"
 }
 
 BLOCK="$BEGIN
@@ -139,6 +150,14 @@ if [ -n "$PASSWORD" ]; then
         printf '%s\n%s\n' "$PASSWORD" "$PASSWORD" | smbpasswd -a -s "$USER_NAME"
     else
         ksmbd.adduser -u -p "$PASSWORD" "$USER_NAME" 2>/dev/null || ksmbd.adduser -a -p "$PASSWORD" "$USER_NAME"
+    fi
+fi
+
+if [ -n "$SECOND_USER" ] && [ -n "$PASSWORD" ]; then
+    if [ "$SERVER" = samba ]; then
+        printf '%s\n%s\n' "$PASSWORD" "$PASSWORD" | smbpasswd -a -s "$SECOND_USER"
+    else
+        ksmbd.adduser -u -p "$PASSWORD" "$SECOND_USER" 2>/dev/null || ksmbd.adduser -a -p "$PASSWORD" "$SECOND_USER"
     fi
 fi
 
