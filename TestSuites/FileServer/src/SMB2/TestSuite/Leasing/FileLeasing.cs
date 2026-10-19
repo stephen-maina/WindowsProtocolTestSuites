@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter;
@@ -292,8 +292,13 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "The second client sends WRITE request.");
             expectedNewLeaseState = LeaseStateValues.SMB2_LEASE_NONE;
             byte[] data = { 0 };
-            client2.Write(client2TreeId, client2FileId, data);
+
+            // WHAT: listen for (and acknowledge) the break before the WRITE is sent.
+            // WHY: the lease is RH, so the break to NONE has ACK_REQUIRED and the server may hold the WRITE until the first client acknowledges.
+            // Windows happens to complete the WRITE first; waiting for the WRITE response before listening deadlocks on other servers.
+            // SPEC: [MS-SMB2] 3.3.4.7 (ACK_REQUIRED unless the lease is exactly R), 3.3.5.22.2.
             var checkSecondBreakNotificationTask = Task.Run(() => CheckBreakNotification(client1TreeId));
+            client2.Write(client2TreeId, client2FileId, data);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "The first client sends LEASE_BREAK_ACKNOWLEDGEMENT request to break lease state to NONE after receiving LEASE_BREAK_NOTIFICATION response from server.");
             checkSecondBreakNotificationTask.Wait(TestConfig.WaitTimeoutInMilliseconds);
@@ -323,7 +328,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
             BaseTestSite.Log.Add(LogEntryKind.TestStep,
                 "Start the first client to create a file by sending the following requests: 1. NEGOTIATE; 2. SESSION_SETUP; 3. TREE_CONNECT; 4. CREATE (with context: {0})",
                 leaseContext is Smb2CreateRequestLease ? "LeaseV1" : "LeaseV2");
-            client1.Negotiate(TestConfig.RequestDialects, TestConfig.IsSMB1NegotiateEnabled);
+            // WHAT: both clients present the same ClientGuid.
+            // WHY: a lease is identified by (ClientGuid, LeaseKey); with different ClientGuids the second open is a different lease and a break is correct.
+            // SPEC: [MS-SMB2] 3.3.5.9.8 (lease lookup in the Lease Table of Connection.ClientGuid).
+            Guid sharedClientGuid = Guid.NewGuid();
+            client1.Negotiate(TestConfig.RequestDialects, TestConfig.IsSMB1NegotiateEnabled, clientGuid: sharedClientGuid);
             client1.SessionSetup(TestConfig.DefaultSecurityPackage, TestConfig.SutComputerName, TestConfig.AccountCredential, false);
             uint client1TreeId;
             client1.TreeConnect(sharePath, out client1TreeId);
@@ -356,7 +365,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
 
             #region Start a second client to request lease by using the same lease key with the first client
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Start a second client to create the same file with the first client by sending the following requests: 1. NEGOTIATE; 2. SESSION_SETUP; 3. TREE_CONNECT; 4. CREATE");
-            client2.Negotiate(TestConfig.RequestDialects, TestConfig.IsSMB1NegotiateEnabled);
+            client2.Negotiate(TestConfig.RequestDialects, TestConfig.IsSMB1NegotiateEnabled, clientGuid: sharedClientGuid);
             client2.SessionSetup(TestConfig.DefaultSecurityPackage, TestConfig.SutComputerName, TestConfig.AccountCredential, false);
             uint client2TreeId;
             client2.TreeConnect(sharePath, out client2TreeId);

@@ -1,55 +1,77 @@
 # FileServer SMB2 suite against ksmbd (WORKGROUP) - findings
 
-Run: Windows driver (ConnectX-4 Lx) to ksmbd 7.0.0-38 on Linux, `Platform=NonWindows`, NTLM, share `SMBDTest`.
-Filter: `TestCategory!=DomainRequired & !=HvrsFsa & !=HvrsSmb`, excluding the hang described below.
-Result (runs 4 and 5, identical): 44 passed, 109 failed, 131 not executed (Inconclusive / skipped by applicability).
-Evidence per test is produced by `Batch\SutDebug\Run-FileServerWithSutLogs.ps1` (pktmon capture, SUT dmesg slice
-per test, `summary.csv`, `results.trx`) and, when `SutLog.Enabled`/`Diagnostics.Enabled` are true, by the shared
-per-test diagnostics (`capture.etl`, `ptf-log.ndjson`, `sut-linux-dmesg.log` in each test folder).
+Run: Windows driver (ConnectX-4 Lx) to in-tree ksmbd (kernel 7.0.0-38, Ubuntu), `Platform=NonWindows`, NTLM, share `SMBDTest`.
+Filter: `TestCategory!=DomainRequired & !=HvrsFsa & !=HvrsSmb`.
 
-## Test defects fixed
+| Run | Passed | Failed | Not executed |
+|---|---|---|---|
+| 6 (before fixes) | 44 | 109 | - |
+| 8 (after fixes below) | 85 | 102 | 99 (Inconclusive / skipped by applicability) |
 
-| Test | Problem | Change |
-|---|---|---|
-| `TreeMgmt_SMB311_TREE_CONNECT_EXTENSION_PRESENT` | Calls the Windows-only `GetUserSid.ps1` adapter script and needs a clustered infrastructure share. On a Linux SUT the script never returns and the whole run hangs. | Reports Inconclusive when the SUT is not a Windows platform (WHAT/WHY/SPEC comment in the test; Test Design Spec updated). |
+The 99 not-executed tests are mostly `SUT does not support compression` (42), `applicable in server` / cluster (31), tests
+marked under-development (12), `Assume` on unsupported features (3) and the per-share encryption gate (2).
 
-## Configuration / environment (not defects)
+Evidence per test comes from `Batch\SutDebug\Run-FileServerWithSutLogs.ps1` (driver pcap, SUT dmesg slice per test,
+`summary.csv`) and `Batch\SutDebug\Parse-Smb2Pcap.ps1` (SMB2 header decode of the pcap window of a test).
+ksmbd debug is enabled only briefly via `/sys/class/ksmbd-control/debug` and left OFF.
+
+## 1. Test / SDK defects fixed
+
+| Test | Problem | Spec | Change |
+|---|---|---|---|
+| `Encryption_*`, `Compound_Encrypt_*` (SDK) | Encrypted requests carried `SMB2_FLAGS_SIGNED` with a zero signature; ksmbd verified the signature after decrypting and returned `STATUS_ACCESS_DENIED`. | [MS-SMB2] 3.3.5.2.4 (a decrypted message is not signature-verified; SIGNED + not encrypted MUST be verified) | `Smb2Crypto.cs` clears SIGNED on encrypted packets. All `Compound_Encrypt_*` pass. |
+| `BVT_Leasing_FileLeasingV1/V2` | Test called `client2.Write` before starting the break-notification task. The lease is RH, the write breaks it to NONE and [MS-SMB2] 3.3.4.7 requires ACK_REQUIRED for any lease other than exactly R, so the write blocks until acked: deadlock. | 3.3.4.7, 3.3.5.9.8 | Start `CheckBreakNotification` before the write. |
+| `Leasing_FileLeasingV1/V2_SameLeaseKey` | `Negotiate` generated a new ClientGuid per client, so the two leases were legitimately different and a break was sent. | 3.3.5.9.8 (lookup by ClientGuid + LeaseKey) | `client1`/`client2` share one ClientGuid. |
+| `TreeMgmt_SMB311_TREE_CONNECT_EXTENSION_PRESENT` | Windows-only `GetUserSid.ps1`; hangs the run on Linux. | 2.2.9.2 | Inconclusive on non-Windows. |
+| `Signing_VerifySignatureWhenEncrypted`, AppInstanceId / MultipleChannel `SHAREFLAG_ENCRYPT_DATA` asserts | Per-share encryption is optional. | 2.2.10 | Gated by `IsPerShareEncryptionSupported` (default true). |
+
+## 2. Configuration / environment (not defects)
 
 | Symptom | Cause | Action |
 |---|---|---|
-| 13 negotiate checks missing `GLOBAL_CAP_LEASING` | ksmbd advertises only LARGE_MTU and MULTI_CHANNEL; config claimed leasing | `IsLeasingSupported`, `IsDirectoryLeasingSupported`, `IsPersistentHandlesSupported` = false for ksmbd |
-| `TreeConnect` `STATUS_ACCESS_DENIED` (BVT_Encryption_*), `TreeMgmt_SMB311_COMPRESS_DATA` | Shares `SMBEncrypted` / `SMBCompressed` do not exist on the SUT | Create shares or blank the properties |
-| `Replay_PersistentHandle_*` | Needs cluster DNS name `GeneralFS.contoso.com` | Cluster-only |
-| MultipleChannel* | Second client/SUT NIC IPs not configured | Configure `ClientNic2IPAddress` etc. |
-| `BVT_Negotiate_SMB2002`, `Signing_*_Smb2002_*` get `STATUS_INSUFFICIENT_RESOURCES` | ksmbd cannot select 2.0.2 as the sole dialect (see run 7 table); lowering the minimum protocol does not help | ksmbd defect |
+| Durable / lease / persistent tests fail | ksmbd has `durable handles` and `smb2 leases` off by default | `Create-SMB2Env-Linux.sh --enable-durable` |
+| Directory leasing tests fail or are skipped | ksmbd advertises `GLOBAL_CAP_DIRECTORY_LEASING` but never grants a directory lease (see section 3) | `IsDirectoryLeasingSupported=false` |
+| MultipleChannel* time out / skip | Needs two client IPs on the SUT's subnet | Same-subnet topology, see User Guide 7.4 |
+| `MultipleChannel_*` (about 10) still fail | ksmbd reports only the primary address per NIC in `FSCTL_QUERY_NETWORK_INTERFACE_INFO`, so the second SUT address is not discovered | Topology-limited |
+| `Replay_PersistentHandle_*`, Clarification (4) | `GeneralFS.contoso.com`, `node01.contoso.com` are cluster names | Cluster-only |
+| `DurableHandle*_DifferentDurableOwner` | Needs a second local account (`STATUS_LOGON_FAILURE`) | Create the second user on the SUT |
+| `SMBCompressed` | ksmbd has no SMB2 compression | Compression tests are Inconclusive |
 
-## Probable ksmbd defects (test is spec-correct, kept as is)
+## 3. ksmbd defects / limitations (installed 7.0.0-38; tests are spec-correct and kept)
 
-| Test | Observation | Specification |
-|---|---|---|
-| `BVT_SMB2Basic_QueryAndSet_FileInfo` | ChangeTime in the CREATE response (`08:51:50.115282`) differs from QUERY_INFO on the same open (`08:51:50.116886`) with no modification in between | [MS-SMB2] 3.3.5.9 / 3.3.5.20.1: both report Open.File.LastChangeTime |
-| `Signing_WrongSessionKey_Rejected_*` | Server accepts a request signed with a wrong key (SUCCESS) | [MS-SMB2] 3.3.5.2.4: MUST fail with `STATUS_ACCESS_DENIED` (Smb311 rows additionally need the 3.1.1 signing-capabilities context) |
-| `BVT_SMB2Basic_ChangeNotify_ChangeEa` (+8 siblings) | CHANGE_NOTIFY returns `STATUS_NOT_IMPLEMENTED` for EA changes | [MS-SMB2] 3.3.5.19 |
-| `BVT_SMB2Basic_Query_FileNormalizedNameInformation_*` | `STATUS_INVALID_INFO_CLASS` | [MS-FSCC] 2.4.28 (optional class; consider gating on a feature flag) |
-| `CreateClose_SymbolicLinkInMiddle`, `_InvalidSymbolicLink` | Returns `STATUS_OBJECT_PATH_NOT_FOUND` instead of `STATUS_STOPPED_ON_SYMLINK` | [MS-SMB2] 3.3.5.9 |
-| `ValidateNegotiateInfo_Negative_InvalidDialects_*` | Connection not terminated | [MS-SMB2] 3.3.5.15 |
-| Durable/Leasing/Replay tests (11 still failing after flags aligned) | `SMB2_CREATE_DURABLE_HANDLE_RESPONSE` never returned | Durable V1 not granted by ksmbd; tests need a feature flag gate (open item) |
+Strings of the installed `ksmbd.ko` show it lacks features present in newer upstream ksmbd (app-instance lookup, notify,
+channel sequence). Those rows read "fixed upstream", not "never implemented".
 
-## Verified with driver pcap + ksmbd debug dmesg (run 7)
+| Test(s) | Evidence | Spec | Verdict |
+|---|---|---|---|
+| `BVT_Negotiate_SMB2002`, `BVT_Negotiate_Compatible_2002`, `Signing_*Smb2002*`, `DirectoryLeasing_Negative_SMB2002` | `client requested dialect 0x202`, `conn->dialect 0xffff`, returns `STATUS_INSUFFICIENT_RESOURCES`; `server min protocol = SMB2_02` does not help | 3.3.5.4 | ksmbd cannot select 2.0.2 as the only dialect |
+| `Negotiate_SMB311_*Context*` (5) | Returns `0xC000009A` instead of `STATUS_INVALID_PARAMETER` | 3.3.5.4 | Installed version; fixed upstream |
+| `ValidateNegotiateInfo_Negative_*` (6) | Connection not terminated after a failed validate | 3.3.5.15 | ksmbd defect |
+| `AppInstanceId*`, `AppInstanceVersion*` | Re-open returns `STATUS_SHARING_VIOLATION`; module has no app-instance lookup | 3.3.5.9.13 | Installed version; fixed upstream |
+| `Replay_*`, `BVT_Replay_*` | No `ChannelSequence` / replay handling | 3.3.5.2.10 | Installed version |
+| ChangeNotify (about 16) | All return `STATUS_NOT_IMPLEMENTED`, including negative cases | 3.3.5.19 | Installed version; fixed upstream |
+| `Signing_WrongSessionKey_Rejected_*` | Pcap: ECHO with corrupted signature returns SUCCESS | 3.3.5.2.4 | ksmbd defect. Smb311 rows also lack the SIGNING_CAPABILITIES context |
+| `DirectoryLeasing_*` | `lease req for(dir)` logged, never granted, no lease context in response | 3.3.5.9.11 | ksmbd defect |
+| `BVT_ResilientHandle_*`, `ResilientOpenScavengerTimer_*`, `BVT_Resiliency` | `FSCTL_LMR_REQUEST_RESILIENCY` returns `STATUS_NOT_SUPPORTED` | 3.3.5.15.9 | ksmbd limitation |
+| `BVT_SMB2Basic_QueryAndSet_FileInfo` | ChangeTime differs between CREATE and QUERY_INFO with no change | 3.3.5.9, 3.3.5.20.1 | ksmbd defect |
+| `FileNormalizedName*` | `STATUS_INVALID_INFO_CLASS` | [MS-FSCC] 2.4.28 | Optional class; candidate for a feature gate |
+| `CreateClose_*Symbolic*` | `OBJECT_PATH_NOT_FOUND` instead of `STATUS_STOPPED_ON_SYMLINK` | 3.3.5.9 | ksmbd limitation |
+| `BVT_EnumerateSnapShots`, `BVT_SetGetIntegrityInfo`, `BVT_SetZeroData`, `BVT_DuplicateExtentsToFile` | FSCTL not supported on the Linux file system | [MS-FSCC] 2.3 | Optional FSCTLs; Windows file-system features |
+| `TreeMgmt_SMB311_COMPRESS_DATA` | `SMBCompressed` share without compression | 2.2.10 | Needs a gate (open) |
+| `SessionMgmt_ReconnectWithDifferentDialect` | Re-binding with a different dialect succeeds | 3.3.5.5.3 | ksmbd defect |
 
-| Test(s) | Evidence | Verdict |
-|---|---|---|
-| `BVT_Negotiate_SMB2002` | Request lists only 0x0202. ksmbd debug: `client requested dialect 0x202`, `conn->dialect 0xffff`, `Server dialect :0xffff not supported`, `Failed to process 0 [-22]` -> `STATUS_INSUFFICIENT_RESOURCES`. Still happens with `server min protocol = SMB2_02`. | ksmbd defect: cannot select 2.0.2 when it is the only dialect offered. The earlier "set min protocol" action was wrong; it does not fix this. |
-| `BVT_Encryption_*` (6) | The pcap shows an encrypted request whose inner header has `SMB2_FLAGS_SIGNED` set with a zero signature (`SendSignedRequest=true`; the SDK encrypts and does not sign). ksmbd logs `bad smb2 signature` and returns `STATUS_ACCESS_DENIED`. | Test/SDK defect (spec confirmation of the signed-flag rule still to be recorded). Windows ignores the flag. |
-| `BVT_Encryption_PerShareEncryptionEnabled`, `Signing_VerifySignatureWhenEncrypted` | ksmbd only has global `smb3 encryption`; no `SHAREFLAG_ENCRYPT_DATA` per share. | ksmbd limitation; gate the tests on a feature flag. |
-| 27 tests (MultipleChannel*, NetworkInterfaceInfo*, AppInstanceId*) | Initially `The requested address is not valid in its context` because `ClientNic1/2IPAddress` were 192.168.1.111/2.111, not driver addresses. With a NIC on another subnet from `SutIPAddress` they time out. With only 192.168.20.111 set, `Assume` skips them (needs two client IPs reachable to the SUT). | Config. Needs two driver IPs on the SUT's subnet (or per-NIC SUT addresses, which the suite does not model). |
-| `BVT_Replay_ReplayCreate` | `SutAlternativeIPAddress` was 192.168.2.11 (timeout). With 192.168.10.12 it connects and then fails on `Smb2CreateDurableHandleResponseV2` missing. | Config, then ksmbd limitation (durable V2 not granted). |
-| `AppInstanceVersion_*`, `Negative_AppInstanceVersion_*` | Re-open with same AppInstanceId returns `STATUS_SHARING_VIOLATION` (0xC0000043); the previous open is never closed. | ksmbd gap: `SMB2_CREATE_APP_INSTANCE_ID` not implemented ([MS-SMB2] 3.3.5.9.13). |
-| `MS_SMB2_Clarification`, `MS_FSA_Clarification` (4) | `Cannot resolve node01.contoso.com` | Cluster-only config. |
-| `ResilientHandle*` (5) | `FSCTL_LMR_REQUEST_RESILIENCY` returns `STATUS_NOT_SUPPORTED` | ksmbd gap. |
-| ChangeNotify (7 more) | CREATE returns `STATUS_ACCESS_DENIED`/`OBJECT_NAME_NOT_FOUND` during setup (streams / ACL setup) | Not yet triaged to root cause. |
+## 4. Still to triage (no verdict yet)
 
-## Next steps
+`DurableHandleV2_*` returning `STATUS_INVALID_PARAMETER` (`WithLeaseV1AndV2_WithDifferentLeaseKey`,
+`Reconnect_WithLeaseV1`, `Reconnect_WithBatchOplock`, `Reconnect_WithoutPersistence`),
+`DurableHandleV1_Reconnect_AfterServerDisconnect`, `CreateClose_*DoubleDotDir` (possible Windows-specific expectation),
+`CreateClose_DeleteFile_DesiredAccessNotIncludeDeleteOrGenericAll`, `BVT_SMB2Basic_Query_Quota_Info`.
+Several verdicts above (FSCTL-based tests, symlink, session re-bind) come from the status code in the run summary and
+have not yet been confirmed with pcap and dmesg.
 
-* Fix the SIGNED flag on encrypted requests and gate per-share encryption, then re-run `Encryption`.
-* Triage the remaining groups (ChangeNotify setup, `0xC000000D`/`0xC000009A` negotiate-context group, `Signing_WrongSessionKey`, symlink, ValidateNegotiateInfo) against pcap and dmesg before changing any test.
+## 5. Notes
+
+* The SUT alias 192.168.20.114 is not persistent across reboot.
+* Tuxera runs are blocked on an expired licence.
+* Per-test global diagnostics are verified for SMB2. DFSC, RSVD, SQOS, ServerFailover, Auth, FSRVP and FSA are not yet
+  verified; FSAModel and SMB2Model use the generated `PtfTestClassBase` and are not wired.

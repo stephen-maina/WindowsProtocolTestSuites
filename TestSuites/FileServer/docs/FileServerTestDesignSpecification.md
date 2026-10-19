@@ -1639,7 +1639,7 @@ This is used to test SMB2 common user scenarios.
 |---|---|
 |**Test ID**|BVT_Leasing_FileLeasingV1|
 |**Description**|This test case is designed to test whether server can handle LeaseV1 context correctly on a file.|
-|**Prerequisites**||
+|**Prerequisites**|The break notification listener is started before the Write request, because a break to NONE requires ACK_REQUIRED ([MS-SMB2] 3.3.4.7) and the Write is held until the break is acknowledged.|
 |**Test Execution Steps**|Via NIC1|
 ||Client sends NEGOTIATE request|
 ||Server sends NEGOTIATE response|
@@ -1745,7 +1745,7 @@ This is used to test SMB2 common user scenarios.
 |---|---|
 |**Test ID**|BVT_Leasing_FileLeasingV1_SameLeaseKey|
 |**Description**|This test case is designed to test whether server can handle LeaseV1 context with the same lease key.|
-|**Prerequisites**||
+|**Prerequisites**|Both clients negotiate with the same ClientGuid, because leases are looked up by (ClientGuid, LeaseKey) ([MS-SMB2] 3.3.5.9.8). The same applies to the V2 variant.|
 |**Test Execution Steps**|Via NIC1|
 ||Client sends NEGOTIATE request|
 ||Server sends NEGOTIATE response|
