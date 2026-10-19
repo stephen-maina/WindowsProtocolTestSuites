@@ -18,6 +18,7 @@
 		<ProjectReference Include="..\..\..\..\..\ProtoSDK\MS-SWN\Swn.csproj" />
 		<ProjectReference Include="..\..\..\..\..\ProtoSDK\SspiLib\SspiLib.csproj" />
 		<ProjectReference Include="..\..\Common\Adapter\CommonAdapter.csproj" />
+		<ProjectReference Include="..\..\Common\TestSuite\CommonTestSuite.csproj" />
 		<ProjectReference Include="..\Adapter\MS-SMB2Model_ServerAdapter.csproj" />
 	</ItemGroup>
 	<ItemGroup>

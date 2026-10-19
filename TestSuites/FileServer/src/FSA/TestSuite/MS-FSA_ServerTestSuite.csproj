@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\..\..\..\ProtoSDK\MS-FSCC\Fscc.csproj" />
     <ProjectReference Include="..\..\..\..\..\ProtoSDK\MS-SMB2\Smb2.csproj" />
     <ProjectReference Include="..\..\Common\Adapter\CommonAdapter.csproj" />
+    <ProjectReference Include="..\..\Common\TestSuite\CommonTestSuite.csproj" />
     <ProjectReference Include="..\Adapter\MS-FSA_ServerAdapter.csproj" />
   </ItemGroup>
   <ItemGroup>

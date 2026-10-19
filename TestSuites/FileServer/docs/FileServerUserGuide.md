@@ -3564,7 +3564,7 @@ To diagnose a failure you often need the SUT's side of the exchange. Set these p
 | `Diagnostics.ArtifactRoot` | `C:\WPTS-Diagnostics` | Root folder for the artifacts. |
 | `DriverPlatform` | `WindowsServer2025` | Platform of the machine running the tests; selects the capture provider. |
 
-This is the same shared component that MS-SMBD uses (`TestSuites\Common\Diagnostics.Ptf`). For a whole-run packet capture with per-test SUT dmesg slices, `Batch\SutDebug\Run-FileServerWithSutLogs.ps1` can also be used.
+This is the same shared component that MS-SMBD uses (`TestSuites\Common\Diagnostics.Ptf`). It applies to every FileServer test collection: SMB2, DFSC, RSVD, SQOS, Auth, FSRVP, ServerFailover, FSA, FSAModel and SMB2Model. `capture.etl` in each test folder is an NDIS packet capture that includes the SMB payload (TCP port 445); convert it to text with `pktmon etl2txt capture.etl --hex`. It does not see RDMA (SMB Direct) data, which bypasses NDIS. For a whole-run packet capture with per-test SUT dmesg slices, `Batch\SutDebug\Run-FileServerWithSutLogs.ps1` can also be used.
 
 ## <a name="8"/> 8 Creating a Custom Test Environment
 
