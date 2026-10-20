@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft. All rights reserved.
+# Licensed under the MIT license. See LICENSE file in the project root for full license information.
 <#
 .SYNOPSIS
     Runs a FileServer test assembly against a Linux SUT (for example ksmbd) and collects the evidence needed to

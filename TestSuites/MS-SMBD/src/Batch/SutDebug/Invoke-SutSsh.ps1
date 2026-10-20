@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft. All rights reserved.
+# Licensed under the MIT license. See LICENSE file in the project root for full license information.
 <#
 .SYNOPSIS
     Runs one command on the Linux SUT (ksmbd) over SSH, using the credentials in the suite's deployment ptfconfig.

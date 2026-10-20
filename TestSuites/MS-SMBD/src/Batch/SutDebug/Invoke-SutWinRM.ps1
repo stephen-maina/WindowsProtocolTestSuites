@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft. All rights reserved.
+# Licensed under the MIT license. See LICENSE file in the project root for full license information.
 <#
 .SYNOPSIS
     Runs a command on the Windows SUT over WinRM, using the credentials in the deployment ptfconfig.
