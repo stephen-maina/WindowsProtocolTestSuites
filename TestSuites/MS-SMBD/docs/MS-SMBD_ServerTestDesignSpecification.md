@@ -2555,9 +2555,9 @@ In this test suite, there is no requirement captured. So “Requirements covered
 
 ## <a name="_Toc427489519"/>Gap-closing Test Cases
 
-The following 51 test cases were added to close the gaps listed in [Analysis_TestGaps.md](Analysis_TestGaps.md).
+The following historical inventory records 51 test cases added for gap-closing coverage; it is not a current coverage assessment.
 Each carries `SpecSection`/`SpecCompliance` properties and a WHAT/WHY/SPEC comment in the source. Expected results come from
-the specification; product-specific gates are listed in the analysis report.
+the specification; implementation-specific applicability gates must be checked in the current test source.
 
 | Class (file) | Scenario | Spec |
 |---|---|---|

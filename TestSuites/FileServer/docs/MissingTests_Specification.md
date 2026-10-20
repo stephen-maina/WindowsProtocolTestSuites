@@ -4,7 +4,8 @@
 test suite does not implement. These are **test suite gaps**, not SUT (ksmbd) defects. Nothing here is to be added to or
 worked around in ksmbd. Each entry is implementable against any compliant server (Windows or non-Windows).
 
-**Source.** Section 6 of `Analysis_KsmbdWorkgroup.md` (coverage audit). Section numbers are [MS-SMB2] unless stated;
+**Source.** Historical coverage-audit inventory; the implementation-specific source analysis has been withdrawn.
+This is not a current coverage assessment. Section numbers are [MS-SMB2] unless stated;
 sections not re-read on MS Learn are marked *(verify)*.
 
 **Conventions for implementation.**
