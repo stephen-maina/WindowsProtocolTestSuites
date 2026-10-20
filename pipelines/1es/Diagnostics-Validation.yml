@@ -1,0 +1,93 @@
+trigger: none
+
+parameters:
+- name: validationRef
+  displayName: Diagnostics source ref (for example refs/pull/123/merge)
+  type: string
+  default: refs/heads/main
+- name: validationCommit
+  displayName: Required full commit of the diagnostics source
+  type: string
+  default: ''
+
+variables:
+- name: advancedsecurity.codeql.language
+  value: csharp
+
+resources:
+  repositories:
+  - repository: diagnosticsSource
+    type: git
+    name: WindowsProtocolTestSuites/WindowsProtocolTestSuites
+    ref: ${{ parameters.validationRef }}
+  - repository: 1ESPipelineTemplates
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+extends:
+  template: v1/1ES.Official.PipelineTemplate.yml@1ESPipelineTemplates
+  parameters:
+    settings:
+      networkIsolationPolicy: Permissive,CFSClean,CFSClean2
+    pool:
+      name: Azure-Pipelines-1ESPT-ExDShared
+      image: windows-2022
+      os: windows
+    stages:
+    - stage: DiagnosticsValidation
+      jobs:
+      - job: Diagnostics
+        displayName: Compile and execute standalone diagnostics tests
+        timeoutInMinutes: 60
+        workspace:
+          clean: all
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            artifactName: DiagnosticsTestResults
+            targetPath: $(Common.TestResultsDirectory)
+            condition: succeededOrFailed()
+        steps:
+        - checkout: self
+          path: s/pipeline
+        - checkout: diagnosticsSource
+          path: s/diagnostics
+        - task: PowerShell@2
+          displayName: Test exact-commit validation guards
+          inputs:
+            targetType: inline
+            pwsh: true
+            script: |
+              Import-Module Pester -RequiredVersion 5.7.1 -ErrorAction Stop
+              $result = Invoke-Pester -Path "$env:PIPELINE_WORKSPACE\s\pipeline\pipelines\tests\Test-Diagnostics.Tests.ps1" -PassThru -Output Detailed
+              if ($result.FailedCount -gt 0 -or $result.PassedCount -eq 0) {
+                  throw 'Diagnostics CI orchestration regression tests failed.'
+              }
+        - task: UseDotNet@2
+          displayName: Use .NET SDK 8
+          inputs:
+            version: 8.x
+        - task: NuGetAuthenticate@1
+        - task: PowerShell@2
+          displayName: Verify source commit and execute diagnostics tests
+          inputs:
+            targetType: inline
+            pwsh: true
+            script: |
+              & "$env:PIPELINE_WORKSPACE\s\pipeline\CommonScripts\Test-Diagnostics.ps1" `
+                  -RepositoryPath "$env:PIPELINE_WORKSPACE\s\diagnostics" `
+                  -ExpectedCommit $env:EXPECTED_COMMIT `
+                  -ResultsDirectory $env:COMMON_TESTRESULTSDIRECTORY
+          env:
+            EXPECTED_COMMIT: ${{ parameters.validationCommit }}
+        - task: PublishTestResults@2
+          displayName: Publish diagnostics native test results
+          condition: succeededOrFailed()
+          inputs:
+            testResultsFormat: VSTest
+            searchFolder: $(Common.TestResultsDirectory)
+            testResultsFiles: diagnostics.trx
+            testRunTitle: Standalone diagnostics
+            failTaskOnFailedTests: true
+            failTaskOnMissingResultsFile: true
