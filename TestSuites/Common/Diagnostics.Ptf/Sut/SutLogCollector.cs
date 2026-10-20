@@ -268,7 +268,7 @@ public sealed class SutLogCollector
     private bool Execute(ProcessStartInfo psi, string? stdin, out string output)
     {
         output = string.Empty;
-        using Process process = Process.Start(psi);
+        using Process? process = Process.Start(psi);
         if (process == null)
         {
             LastError = "process did not start";
