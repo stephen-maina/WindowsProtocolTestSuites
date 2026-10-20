@@ -1,84 +1,79 @@
 ---
 name: test-debugging
-description: Debug failures in any Windows Protocol Test Suite (FileServer SMB2/FSA/models, MS-SMBD, others) - locate or enable per-test logs, packet traces and SUT logs over SSH, then classify each failure as a SUT implementation defect, a test that asserts product-specific (Windows) behaviour instead of the specification, a genuine test bug, or an environment/config issue, using the MS Learn MCP for spec evidence. Use when a test fails, when triaging a full run, or when checking a test against [MS-SMB2] and related specs.
+description: Evidence-based triage of Windows Protocol Test Suite failures. Use test/adapter source, driver logs, captures, available SUT logs and exact published specification sections to distinguish protocol defects, product-specific expectations, test bugs and environment limitations without importing unmerged diagnostics.
 license: MIT
 metadata:
   author: Microsoft
-  version: "1.0"
+  version: "1.2"
 ---
 
 # Test-failure debugging skill
 
-Goal: for every failure, produce a verdict backed by evidence from three sources: the **driver** (test log, pcap), the **SUT** (kernel/event logs) and the **specification** (MS Learn). Never classify from the failure message alone.
+## 1. Establish the tested boundary
 
-## 1. Where the evidence is
+- Load the relevant protocol skill; classify FileServer scenarios by concepts before searching.
+- Record repository, full source commit, build/test command, filter, configuration identity (without
+  credentials), SUT/driver versions and topology. Historical results are not current validation.
+- Read the actual test, helper/adapter, SDK encoder and suite User Guide. Confirm which request was sent,
+  which assertion failed and whether the required prerequisites were present.
+- Inspect current configuration and available tooling before enabling diagnostics. Do not assume shared
+  collectors, property names, SUT scripts or artifact paths from another branch exist in this checkout.
 
-| Source | Location | Produced by |
-|---|---|---|
-| Per-test shared diagnostics (manifest, `ptf-log.ndjson`, capture) | `<Diagnostics.ArtifactRoot>\session-<ts>\tests\<Test>__<id>\` (default `C:\WPTS-Diagnostics`) | `TestSuites/Common/Diagnostics*` (shared); wired into FileServer via `FileServer/src/Common/TestSuite/FileServerDiagnosticsSuite.cs`, and SMBD via `MS-SMBD/src/Diagnostics` |
-| Per-test SUT log | same folder: `sut-linux-dmesg.log` (Linux) or `sut-windows.log` (Windows) | `Common/Diagnostics.Ptf/Sut/SutLogCollector.cs`; needs `SutLog.Enabled=true` and `Diagnostics.Enabled=true` |
-| Whole-run evidence on a Linux SUT | `<OutDir>\summary.csv`, `tests\<name>.log` (dmesg slice per test), `smb445.pcapng`, `sut-dmesg.log`, `results.trx` | `TestSuites/FileServer/src/Batch/SutDebug/Run-FileServerWithSutLogs.ps1` |
-| Pcap decoding | console | `FileServer/src/Batch/SutDebug/Parse-Smb2Pcap.ps1` |
+## 2. Collect available evidence safely
 
-### Enabling it (deployment ptfconfig, e.g. `CommonTestSuite.deployment.ptfconfig`)
-- `Diagnostics.Enabled=true`, `Diagnostics.ArtifactRoot`, `Diagnostics.Capture.Provider` (`Automatic`), `Diagnostics.Capture.Targets` (blank = default client NIC), `Diagnostics.Capture.TrafficScope`, `Diagnostics.Retention` (`KeepAll`).
-- `SutLog.Enabled=true` (uses `SutComputerName`, `AdminUserName`, `PasswordForAllUsers`).
-- Edit the copy in `bin\Debug\net8.0` for quick trials. A rebuild overwrites it from source: keep a backup and re-apply.
-- Read the property descriptions in the ptfconfig and the User Guide; do not guess key names.
-- If diagnostics are off or the SUT is unreachable the artifact files are simply absent: say so and continue with driver evidence.
+- Read the TRX `ErrorInfo/Message` and stack trace, console output and PTF logs for the failing case.
+  Stream large reports rather than loading an entire run into memory.
+- Correlate packet evidence and available SUT logs by test identity and timestamps; account for clock
+  offsets. Inspect both the request and response before attributing a rejection or timeout.
+- Parse actual packet encapsulation, header lengths, offsets and lengths with bounds checks. Do not
+  assume fixed absolute offsets, a particular IP version, or that a control message has a data payload.
+- Collect SUT logs only through authorized existing access. If access is denied, diagnostics are disabled,
+  or captures are absent, state exactly what is missing and continue with the evidence available.
+  Do not change firewall/network security controls or clear existing SUT logs to obtain a diagnosis.
+- Keep secrets and raw sensitive captures out of commits. Preserve authorized evidence durably with
+  source/run provenance and explicit access restrictions where needed.
 
-### Running tests with full evidence (Linux SUT)
-```powershell
-cd TestSuites\FileServer\src\Batch\SutDebug
-.\Run-FileServerWithSutLogs.ps1 -TestDll ..\..\SMB2\TestSuite\bin\Debug\net8.0\MS-SMB2_ServerTestSuite.dll `
-    -Filter "Name=<TestName>" -OutDir C:\FileServerRuns\<n>
-```
-- Filter is vstest syntax (`Name=A|Name=B`, `Name~Substring`, `TestCategory=Bvt`). A full SMB2 run takes about 20 minutes: run it async, not via hidden `Start-Process`.
-- With ksmbd debug OFF the per-test dmesg slice is empty: turn debug ON first (section 2) for any test you triage.
-- Pcap: `.\Parse-Smb2Pcap.ps1 -Pcap <ABSOLUTE path> -FromUtc <iso Z> -ToUtc <iso Z> [-HexCommand <smb2 command number>]`. Use absolute paths (.NET file calls ignore the PowerShell cwd). Driver and SUT clocks may differ in time zone; the runner prints both: convert before slicing.
-- Helpers that turn a bad status into a timeout/assert text hide the code: read the status in the message.
+## 3. Compare source with the specification
 
-## 2. SUT access over SSH (when available)
-- Helper: `TestSuites/MS-SMBD/src/Batch/SutDebug/Invoke-SutSsh.ps1 -Command "<cmd>" [-Sudo]`. It reads `SutComputerName`, `SutUserName`, `SutPassword` from the **MS-SMBD** deployment ptfconfig (the FileServer runner reuses it), so that file must hold the SUT credentials. Never put secrets in scripts or commits.
-- Multi-line commands: base64-encode the script and run `sh -c 'echo <b64> | base64 -d | sh'` (strip CR first). Never name a PowerShell function `R` or `H` (aliases).
-- Check reachability first (`Test-Connection`, port 22). If unreachable, do not stall: state what could not be collected.
-- Linux/ksmbd: `uname -r`; `dmesg -T | grep -i ksmbd`; debug toggle `echo smb > /sys/class/ksmbd-control/debug` (also `vfs oplock auth conn rdma ipc`; writing again toggles off; brackets around a name in `cat` mean ON). Workflow: enable, `dmesg -C`, run ONE test, read dmesg, disable.
-- Create a Linux test environment with `TestSuites/FileServer/Setup/Scripts/Create-SMB2Env-Linux.sh` (shares, users, `--second-user`, durable/leases; see the User Guide). ksmbd user names are case-sensitive (`administrator`).
-- Windows SUT: `Get-WinEvent Microsoft-Windows-SMBServer/Operational`, `Get-SmbServerConfiguration`; WinRM helper `MS-SMBD/src/Batch/SutDebug/Invoke-SutWinRM.ps1`.
+Use Microsoft Learn search, then fetch the exact section. Follow the protocol landing page's published
+PDF/DOCX link if section text is unavailable; record revision/date, errata, section and requirement level.
+If evidence cannot be retrieved, report that limitation rather than inventing normative text.
 
-## 3. Method (in order)
-1. **Control first.** If a Windows Server SUT result exists, a test failing there is not a SUT defect. Compare outcomes across SUTs.
-2. **Real failure.** Take the test log / trx `ErrorInfo` message and stack. Identify the failing request, expected status and actual status.
-3. **Wire evidence.** Decode that test's request/response in the pcap (command, status, flags, create contexts; `-HexCommand` for raw bytes). Confirm the client sent what the test claims: a malformed request is a test/SDK bug.
-4. **SUT evidence.** dmesg for the same window: look for the rejection reason (`error parsing ...`, `not implemented yet ioctl`, `owner mismatch`).
-5. **Spec evidence** via MS Learn (section 4).
-6. **Classify** (section 5) and act.
+Separate MUST, SHOULD (including exceptions), MAY and product-behavior notes. Verify negotiated feature,
+dialect, platform and test preconditions before deciding applicability. A missing optional feature can
+make its feature-specific test inapplicable; it does not justify skipping unrelated baseline requirements.
+A Windows control run is comparison evidence, not proof that a failing Windows SUT cannot have a defect.
 
-## 4. Specification evidence via MS Learn MCP
-- `microsoft_docs_search` to find the page, then `microsoft_docs_fetch` to read the exact section. Open the section; never cite a number from memory.
-- Specs: `[MS-SMB2]` (server processing 3.3.5.x, structures 2.2.x), `[MS-FSCC]`, `[MS-FSA]`, `[MS-SMBD]`, `[MS-DFSC]`, `[MS-RSVD]`, `[MS-FSRVP]`, `[MS-SQOS]`, `[MS-SWN]`. `microsoft_code_sample_search` is for API usage only.
-- For each verdict record: document, section, verbatim requirement, level (MUST/SHOULD/MAY) and any product-behavior footnote (`<NNN>` notes in the Product Behavior appendix).
-- Optional features (compression, directory leasing, per-share encryption, resilient handles, change notify, alternate streams, normalized names, SIGNING_CAPABILITIES) are not required of every server: the test must be Inconclusive when the server lacks them.
-- Repository docs: `TestSuites/<Suite>/docs` (User Guide, Test Design Spec) and `ai-docs/`.
+## 4. Classify only what the evidence supports
 
-## 5. Classification
-| Verdict | Evidence pattern | Action |
-|---|---|---|
-| **SUT implementation defect** | Request well-formed; spec MUST (or SHOULD without optional note); SUT returns another status or drops the connection; dmesg shows a rejection or `not implemented`. | Keep the test; document in the analysis report with spec quote and dmesg line. |
-| **Test asserts product behaviour** | Expects a Windows-only status/value/default (timers, sizes), a Windows-only script, or treats SHOULD/optional as MUST; product-behavior note names Windows versions. | Assert the spec; gate the Windows-specific check on `TestConfig.Platform` or an `Is*Supported` flag; WHAT/WHY/SPEC comment; update docs. |
-| **Genuine test bug** | Wrong precondition, deadlock/ordering, wrong ClientGuid/LeaseKey, signed-flag mix, malformed request, wrong access mask, SDK encoding bug. | Fix test/SDK; comment; rerun (and on a Windows control if available). |
-| **Environment/config** | Missing share/user/NIC, cluster-only names, domain/LDAP needed in WORKGROUP, topology, licence. | Make Inconclusive when the environment lacks it, or fix config; not a defect. |
-| **Unimplemented test** | Spec requirement with no test, or a documented Test ID with no method (grep code and the Test Design Spec; ignore model-generated files). | Report with spec section; add the test or annotate. |
+| Classification | Required evidence and next action |
+|---|---|
+| SUT implementation defect | Well-formed applicable request, exact requirement and observed violating response/state. Distinguish SHOULD recommendations from MUST violations; retain supporting source/wire evidence. |
+| Product-specific test expectation | Exact product-behavior note or implementation evidence establishes a narrower expectation. Reuse existing suite platform/capability configuration; do not generalize one product's default. |
+| Test/SDK defect | Concrete precondition, encoding, ordering or assertion path contradicts the intended requirement. Fix only the evidenced path and validate affected neighboring cases. |
+| Environment/configuration limitation | Missing topology, account, share, hardware or other prerequisite is demonstrated. Correct authorized setup or record the case as unavailable according to suite conventions, not a conformance failure. |
+| Unsubstantiated attribution | Evidence does not distinguish test, transport, environment or SUT. Record the missing path/reproduction and next collection action; do not present a hypothesis as a proven defect. |
+| Coverage gap | Compare the requirement with existing tests, including relevant model-based coverage and the Test Design Specification. A text search alone does not prove absence. |
 
-Never turn a timeout or exception into a pass, and never weaken an assertion just so a SUT passes.
+Never turn a timeout/exception into a pass or weaken an assertion solely to accommodate a SUT.
+Do not add a configuration property for every implementation choice; reuse existing constants/settings
+and explain any setting that genuinely needs to vary.
+When a new setting is justified, validate its allowed values and default behavior, and document the
+property, valid values, default and effect in the relevant User Guide.
 
-## 6. Rules for changes
-- Every test-suite edit carries a comment at the site: **WHAT** it does, **WHY** (the defect), **SPEC** `[Doc] section - requirement level`.
-- Annotate tests with the spec they validate (`// SPEC: [MS-SMB2] 3.3.5.9.8 - ...` or cite it in the Assert message).
-- After each change: rebuild, run the affected tests, confirm the outcome, update the Test Design Spec / User Guide / analysis report, then commit and push. Never commit local ptfconfig edits, pcaps or run output; never rewrite history.
-- Build: `MSBuild <project>.csproj /restore` (find MSBuild via `vswhere -latest -find "MSBuild\**\Bin\MSBuild.exe"`); restore the bin ptfconfigs after a rebuild.
-- Avoid grepping the generated `SMB2Model\TestSuite` files (huge output).
+## 5. Change, validate and report
 
-## 7. Report per failure
-`Test | expected vs actual status | pcap evidence | SUT log line | spec section + quote + level | verdict | action`.
-Summarise a run as counts per verdict, SUT defects (with SUT version), tests changed, tests Inconclusive by config, and unimplemented-test findings.
+Reproduce an evidenced in-scope defect before changing it where possible. Run focused regressions and
+relevant neighbors, inspect actual failures and record exact commands, per-suite counts and limitations.
+Explain non-obvious protocol decisions in code and keep existing annotations accurate.
+Update the relevant Test Design Specification/User Guide when behavior changes.
+
+Report: `Test | expected/actual | source path | wire/log evidence | spec revision/section/level |
+classification | action | unavailable evidence`.
+Do not treat a successful discovery, metadata check or historical SUT run as executed protocol validation.
+
+## Skill regression protocol
+
+[tests/guidance-cases.json](tests/guidance-cases.json) defines bounded synthetic scenarios for these
+decisions. Execute the stated fresh-context protocol and preserve raw responses and separately frozen
+reviewer expectations. Authored cases and link checks alone do not prove agent behavior.

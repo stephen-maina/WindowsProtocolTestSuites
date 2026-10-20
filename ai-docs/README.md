@@ -55,9 +55,9 @@ Located in [`.github/skills/`](../.github/skills/), each subdirectory is a skill
 | Skill | Trigger Keywords | What it provides |
 |---|---|---|
 | [`file-server`](../.github/skills/file-server/SKILL.md) | FileServer, SMB, SMB2, SMB3, CIFS, MS-SMB2, MS-FSCC, MS-FSA, MS-DFSC, MS-FSRVP, MS-RSVD, MS-SQOS, file sharing | **Critical domain classification rules** (FSA vs SMB2 vs DFSC etc.), reusable adapter/base class inventory, test templates, test execution patterns. Covers 10 sub-domains via `references/`. |
-| [`smbd`](../.github/skills/smbd/SKILL.md) | MS-SMBD, SMB Direct, RDMA, RoCE, ksmbd, TestSuites/MS-SMBD | Running the SMBD suite, Windows-control-run method, trace/log debugging (trx, rdma.pcap decoding), failure classification (spec / SUT / test), MS Learn MCP spec lookup, known ksmbd findings, optional SUT debug scripts (`TestSuites/MS-SMBD/src/Batch/SutDebug/Invoke-SutSsh.ps1`, `Invoke-SutWinRM.ps1`). |
+| [`smbd`](../.github/skills/smbd/SKILL.md) | MS-SMBD, SMB Direct, RDMA, RoCE, iWARP, TestSuites/MS-SMBD | Existing adapter/SDK components, suite build/run entry points, published specification evidence, negotiated-feature applicability and bounded failure triage. |
 | [`generate-protocol-diff`](../.github/skills/generate-protocol-diff/SKILL.md) | Protocol diff, spec comparison, protocol version changes | Guidance for diffing protocol specification versions to identify changes requiring new or updated test cases. |
-| [`test-debugging`](../.github/skills/test-debugging/SKILL.md) | Failing test, triage, per-test logs/traces, SUT SSH logs, spec vs Windows behaviour | Where per-test diagnostics, pcaps and SUT dmesg live and how to enable them, SSH to the SUT, pcap decoding, MS Learn spec evidence, and classifying failures as SUT defect / product-specific test / test bug / environment / unimplemented test. |
+| [`test-debugging`](../.github/skills/test-debugging/SKILL.md) | Failing test, triage, logs/traces, spec vs product behavior | Source/log/wire correlation, safe collection using available tooling, requirement levels, evidence-backed classifications and synthetic skill-regression scenarios. |
 
 #### How to Use a Skill
 

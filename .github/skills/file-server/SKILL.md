@@ -36,23 +36,24 @@ Before writing, changing, or reviewing ANY test, constant, buffer size or config
 1. **Query the Microsoft Learn MCP server** (`microsoft-learn-microsoft_docs_search`, then `microsoft-learn-microsoft_docs_fetch`)
    for the protocol landing page, e.g. `https://learn.microsoft.com/openspecs/windows_protocols/ms-smbd/1ca5f4ae-e5b1-493d-b87d-f4464325e6e3`.
    Record the **Published Version** (date + revision) and check for active errata (`MS-WINERRATA`).
-2. **Section content may not be indexed in Learn** (true for MS-SMBD). In that case download the DOCX linked from the
-   landing page's "Published Version" row (`winprotocoldocs-bhdugrdyduf5h2e4.b02.azurefd.net/<DOC>/[<DOC>]-<yymmdd>.docx`)
-   and extract its text, then cite the section numbers from that revision. Always use the newest revision listed.
+2. **If section content is unavailable in Learn**, follow the PDF or DOCX link in the landing page's
+   "Published Version" row and inspect that revision. Do not guess download URLs or silently use a stale local copy.
+   Record unavailable evidence explicitly; do not invent a requirement.
 3. **Cite the revision** in comments, e.g. `[MS-SMBD] rev 16.0 (8/11/2025) Section 3.1.5.6`.
 4. Classify every hard-coded value as:
-   - **Normative** (MUST/SHOULD in the spec) - keep as a named constant with a spec-section comment.
-   - **Windows product behavior** (Appendix A `<N>` notes) - must be a ptfconfig property labelled Windows-specific and
-     only applied when the SUT `Platform` is Windows.
-   - **Not specified** (implementation choice) - must be a ptfconfig property, never hard-coded.
-5. If the latest revision differs from the one cited in the code, update the code/comments/docs and call it out.
+   - **Normative** - record the exact MUST/SHOULD/MAY level, applicability and exceptions; do not strengthen SHOULD into MUST.
+   - **Product behavior** - inspect the relevant product-behavior note and limit the expectation to the named products.
+     Reuse the suite's actual platform/capability configuration rather than assuming every suite exposes the same properties.
+   - **Not specified** (implementation choice) - explain the rationale and reuse existing constants/configuration.
+     Add a configuration property only when the setting genuinely needs to vary.
+5. A revision mismatch requires comparison, not automatic behavioral changes. Record relevant differences and update
+   affected code/comments/docs only when justified by the changed requirement and the task's scope.
 
 ### Test annotation convention (MS-SMBD and other suites)
-Every test method carries:
+When adding or changing a spec-based test, follow its suite's annotation conventions:
 - A comment block naming the spec section(s) it exercises, and
-- `[TestProperty("SpecSection", "[MS-XXXX] <section>")]` (test information shown in results), and
-- `[TestProperty("SpecCompliance", "Conformant")]`, or `"TODO"` plus a `// TODO(spec): ...` comment explaining
-  how the test deviates from the specification.
+- Keep existing `SpecSection` / `SpecCompliance` test properties accurate where the suite uses them.
+- Describe unverified or incomplete coverage explicitly; a metadata value is not proof of conformance.
 
 SUT note: MS-SMBD tests run against non-Windows SUTs too (e.g. Ubuntu with ksmbd). Do not assume Windows behavior.
 

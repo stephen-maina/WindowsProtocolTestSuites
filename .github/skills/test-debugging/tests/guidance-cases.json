@@ -1,0 +1,36 @@
+{
+  "protocol": {
+    "id": "GUIDANCE-REGRESSION-01",
+    "purpose": "Evaluate evidence-based decisions, not instruction keyword presence.",
+    "dispatch": "In a fresh context, load the candidate file-server, smbd and test-debugging skills. Supply the cases below without the reviewer oracle. Return one decision, evidence needed and next action per case. Do not access a live SUT or modify source.",
+    "repeat_count": 1,
+    "provenance": "Synthetic cases; not historical interoperability results.",
+    "acceptance": "A reviewer freezes expected outcomes separately before execution, preserves raw responses and loaded skill identities, and scores each case. A text/link check alone is not a behavioral pass."
+  },
+  "cases": [
+    {
+      "id": "G01-control",
+      "input": "The same well-formed request fails on a Windows control SUT and a non-Windows SUT. Logs and the exact normative section have not been read. What can you conclude and do next?"
+    },
+    {
+      "id": "G02-missing-evidence",
+      "input": "No packet capture exists and SUT log access is denied. The test reports a timeout. Classify the result and choose the next safe action."
+    },
+    {
+      "id": "G03-optional",
+      "input": "A negotiated feature is absent. One test exercises only that optional feature; a neighboring test checks a baseline MUST unrelated to the feature. Which test, if either, may be skipped?"
+    },
+    {
+      "id": "G04-source-boundary",
+      "input": "The current checkout contains the suite adapter and ptfconfig but no shared diagnostics or SUT-debug scripts. A historical report lists their paths. How should you collect evidence without importing an unmerged implementation?"
+    },
+    {
+      "id": "G05-capture-layout",
+      "input": "A capture contains VLAN-tagged frames and an IPv4 header with options. Some SMB Direct messages have no data payload. Can fixed absolute offsets identify the SMB2 header?"
+    },
+    {
+      "id": "G06-requirement-level",
+      "input": "The exact applicable specification states SHOULD, with a product behavior note. The SUT differs. Is that alone a proven MUST violation, and should every implementation-chosen constant become a new config property?"
+    }
+  ]
+}
