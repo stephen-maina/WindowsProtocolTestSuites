@@ -41,6 +41,17 @@ Describe 'Exact-commit diagnostics CI orchestration' {
         Assert-MockCalled dotnet -Times 0 -Exactly
     }
 
+    It 'accepts an uppercase SHA for the same lowercase Git object ID' {
+        $commit = 'abcdef0123456789abcdef0123456789abcdef01'
+        Mock git { $global:LASTEXITCODE = 0; 'abcdef0123456789abcdef0123456789abcdef01' }
+
+        & $runner -RepositoryPath $repository -ExpectedCommit $commit.ToUpperInvariant() -ResultsDirectory $results
+
+        Assert-MockCalled dotnet -Times 1 -Exactly
+        $evidence = Get-Content -LiteralPath "$results\diagnostics-ci.json" -Raw | ConvertFrom-Json
+        $evidence.testedCommit | Should -BeExactly $commit
+    }
+
     It 'rejects injection-shaped commit data without invoking a command' {
         { & $runner -RepositoryPath $repository -ExpectedCommit "$commit; Write-Output injected" -ResultsDirectory $results } |
             Should -Throw '*ExpectedCommit*'
