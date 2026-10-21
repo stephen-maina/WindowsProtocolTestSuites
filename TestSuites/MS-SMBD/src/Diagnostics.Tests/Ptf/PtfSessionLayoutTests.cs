@@ -6,7 +6,9 @@ using System.Collections.Specialized;
 using System.IO;
 using Microsoft.Protocols.TestSuites.Diagnostics.Identity;
 using Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
+using Microsoft.Protocols.TestSuites.Diagnostics.Storage;
 using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Ptf;
+using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Tests.Ptf;
@@ -68,6 +70,80 @@ public sealed class PtfSessionLayoutTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void PrepareTestsRoot_SessionReparsePoint_RejectsBeforeExternalMarkerMutation(
+        bool existingMarker)
+    {
+        using TemporaryDirectory root = TemporaryDirectory.Create();
+        using TemporaryDirectory outside = TemporaryDirectory.Create();
+        const string SessionName = "linked-session";
+        string link = Path.Combine(root.Path, SessionName);
+        string marker = Path.Combine(outside.Path, PtfSessionLayout.MarkerFileName);
+        DateTime originalStamp = Start.AddDays(-1).UtcDateTime;
+        if (existingMarker)
+        {
+            File.WriteAllText(marker, "external-marker");
+            File.SetLastWriteTimeUtc(marker, originalStamp);
+        }
+
+        if (!ReparsePointTestSupport.TryCreateDirectoryLink(link, outside.Path))
+        {
+            Assert.Inconclusive("The session containment regression requires a directory reparse point.");
+        }
+
+        try
+        {
+            var properties = new NameValueCollection
+            {
+                [PtfSessionLayout.SessionNameProperty] = SessionName,
+            };
+            ArtifactStorageException? failure = null;
+            try
+            {
+                PtfSessionLayout.PrepareTestsRoot(root.Path, properties, Start);
+            }
+            catch (ArtifactStorageException exception)
+            {
+                failure = exception;
+            }
+
+            Assert.AreEqual(existingMarker, File.Exists(marker), "No external marker may be created.");
+            if (existingMarker)
+            {
+                Assert.AreEqual("external-marker", File.ReadAllText(marker));
+                Assert.AreEqual(originalStamp, File.GetLastWriteTimeUtc(marker), "No external marker may be touched.");
+            }
+
+            Assert.IsNotNull(failure, "The session reparse point must be rejected explicitly.");
+            Assert.AreEqual(ArtifactStorageFailure.ReparsePointNotAllowed, failure.Failure);
+        }
+        finally
+        {
+            ReparsePointTestSupport.DeleteDirectoryLink(link);
+        }
+    }
+
+    [TestMethod]
+    public void PrepareTestsRoot_RepeatedSafeSession_PreservesMarkerAndRefreshesRetentionStamp()
+    {
+        using TemporaryDirectory root = TemporaryDirectory.Create();
+        var properties = new NameValueCollection
+        {
+            [PtfSessionLayout.SessionNameProperty] = "repeated-safe-session",
+        };
+        string first = PtfSessionLayout.PrepareTestsRoot(root.Path, properties, Start);
+        string marker = Path.Combine(Path.GetDirectoryName(first)!, PtfSessionLayout.MarkerFileName);
+        string content = File.ReadAllText(marker);
+
+        string second = PtfSessionLayout.PrepareTestsRoot(root.Path, properties, Start.AddMinutes(5));
+
+        Assert.AreEqual(first, second);
+        Assert.AreEqual(content, File.ReadAllText(marker));
+        Assert.AreEqual(Start.AddMinutes(5).UtcDateTime, File.GetLastWriteTimeUtc(marker));
     }
 
     [TestMethod]

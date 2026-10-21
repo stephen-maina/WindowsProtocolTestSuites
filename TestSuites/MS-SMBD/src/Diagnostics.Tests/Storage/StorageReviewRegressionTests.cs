@@ -2,11 +2,13 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Microsoft.Protocols.TestSuites.Diagnostics.Identity;
+using Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 using Microsoft.Protocols.TestSuites.Diagnostics.Storage;
 using Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -16,6 +18,43 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Tests.Storage;
 [TestClass]
 public sealed class StorageReviewRegressionTests
 {
+    [TestMethod]
+    public void PrepareTestsRoot_MarkerFileReparsePoint_RejectsBeforeExternalMutation()
+    {
+        using TemporaryDirectory root = TemporaryDirectory.Create();
+        using TemporaryDirectory outside = TemporaryDirectory.Create();
+        const string SessionName = "safe-session";
+        string sessionRoot = Path.Combine(root.Path, SessionName);
+        Directory.CreateDirectory(sessionRoot);
+        string marker = Path.Combine(sessionRoot, PtfSessionLayout.MarkerFileName);
+        string externalMarker = Path.Combine(outside.Path, "external-marker");
+        File.WriteAllText(externalMarker, "external-content");
+        DateTime originalStamp = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(externalMarker, originalStamp);
+        if (!TryCreateFileLink(marker, externalMarker))
+        {
+            Assert.Inconclusive("This host cannot create the marker file reparse point required by the containment regression.");
+        }
+
+        try
+        {
+            var properties = new NameValueCollection
+            {
+                [PtfSessionLayout.SessionNameProperty] = SessionName,
+            };
+            ArtifactStorageException failure = Assert.ThrowsExactly<ArtifactStorageException>(
+                () => PtfSessionLayout.PrepareTestsRoot(root.Path, properties, DateTimeOffset.UtcNow));
+
+            Assert.AreEqual(ArtifactStorageFailure.ReparsePointNotAllowed, failure.Failure);
+            Assert.AreEqual("external-content", File.ReadAllText(externalMarker));
+            Assert.AreEqual(originalStamp, File.GetLastWriteTimeUtc(externalMarker));
+        }
+        finally
+        {
+            File.Delete(marker);
+        }
+    }
+
     [TestMethod]
     public void Open_ExtendedNamespaceRoot_RejectsAliasBeforeFileSystemAccess_Issue64410323()
     {

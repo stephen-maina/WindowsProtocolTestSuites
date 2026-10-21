@@ -9,6 +9,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Microsoft.Protocols.TestSuites.Diagnostics.Storage;
 
 namespace Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 
@@ -70,21 +71,43 @@ public static class PtfSessionLayout
         NameValueCollection effectiveProperties,
         DateTimeOffset now)
     {
+        return PrepareTestsRoot(
+            artifactRoot,
+            effectiveProperties,
+            now,
+            AppContext.BaseDirectory);
+    }
+
+    public static string PrepareTestsRoot(
+        string artifactRoot,
+        NameValueCollection effectiveProperties,
+        DateTimeOffset now,
+        string buildOutputRoot)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(artifactRoot);
         ArgumentNullException.ThrowIfNull(effectiveProperties);
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildOutputRoot);
 
+        string sourceRoot = ArtifactStorageBoundaries.FindSourceRoot(buildOutputRoot);
+        using ArtifactStore store = ArtifactStore.Open(
+            artifactRoot,
+            sourceRoot,
+            buildOutputRoot);
         string sessionName = ResolveSessionName(
             effectiveProperties[SessionNameProperty],
             now);
-        string sessionRoot = Path.Combine(artifactRoot, sessionName);
-        Directory.CreateDirectory(sessionRoot);
+        string sessionRoot = ArtifactPath.CombineUnderRoot(store.RootPath, sessionName);
+        using ArtifactStore sessionStore = ArtifactStore.Open(
+            sessionRoot,
+            sourceRoot,
+            buildOutputRoot);
 
-        string marker = Path.Combine(sessionRoot, MarkerFileName);
+        using ArtifactCheckpoint checkpoint = sessionStore.CreateCheckpoint(MarkerFileName);
+        string marker = checkpoint.FinalPath;
         if (!File.Exists(marker))
         {
-            File.WriteAllText(
-                marker,
-                now.ToString("o", CultureInfo.InvariantCulture));
+            checkpoint.WriteText(now.ToString("o", CultureInfo.InvariantCulture));
+            checkpoint.Commit();
         }
         else
         {
@@ -96,9 +119,14 @@ public static class PtfSessionLayout
         {
             lock (PruneGate)
             {
-                if (PrunedRoots.Add(artifactRoot + "|" + sessionName))
+                if (PrunedRoots.Add(store.RootPath + "|" + sessionName))
                 {
-                    PruneOldSessions(artifactRoot, sessionName, maxSessions);
+                    PruneOldSessions(
+                        store.RootPath,
+                        sessionName,
+                        maxSessions,
+                        sourceRoot,
+                        buildOutputRoot);
                 }
             }
         }
@@ -127,12 +155,30 @@ public static class PtfSessionLayout
         string currentSessionName,
         int maxSessions)
     {
+        string buildOutputRoot = AppContext.BaseDirectory;
+        PruneOldSessions(
+            artifactRoot,
+            currentSessionName,
+            maxSessions,
+            ArtifactStorageBoundaries.FindSourceRoot(buildOutputRoot),
+            buildOutputRoot);
+    }
+
+    private static void PruneOldSessions(
+        string artifactRoot,
+        string currentSessionName,
+        int maxSessions,
+        string sourceRoot,
+        string buildOutputRoot)
+    {
         try
         {
             var sessions = new DirectoryInfo(artifactRoot)
                 .EnumerateDirectories()
                 .Where(directory =>
                     (directory.Attributes & FileAttributes.ReparsePoint) == 0 &&
+                    !OverlapsExcludedRoot(directory.FullName, sourceRoot) &&
+                    !OverlapsExcludedRoot(directory.FullName, buildOutputRoot) &&
                     File.Exists(Path.Combine(directory.FullName, MarkerFileName)))
                 .Select(directory => new
                 {
@@ -172,6 +218,13 @@ public static class PtfSessionLayout
         {
             // Best effort retention.
         }
+    }
+
+    private static bool OverlapsExcludedRoot(string candidate, string excludedRoot)
+    {
+        return Path.GetRelativePath(excludedRoot, candidate) == "." ||
+            ArtifactPath.IsContained(excludedRoot, candidate) ||
+            ArtifactPath.IsContained(candidate, excludedRoot);
     }
 
     private static string Sanitize(string name)

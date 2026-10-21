@@ -593,6 +593,109 @@ public sealed class PtfDiagnosticsLifecycleTests
                     DiagnosticsConfigurationErrorCodes.ProviderUnsupported));
     }
 
+    [DataTestMethod]
+    [DataRow(false, false)]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public void Start_SessionResolvesIntoExcludedRoot_DoesNotMutateMarker(
+        bool sessionIsBuildRoot,
+        bool markerExists)
+    {
+        using TemporaryDirectory directory = TemporaryDirectory.Create();
+        string sessionName = sessionIsBuildRoot ? "build" : "source";
+        string sessionRoot = directory.CreateSubdirectory(sessionName);
+        string buildRoot = sessionIsBuildRoot
+            ? sessionRoot
+            : Path.Combine(sessionRoot, "bin", "Release", "net8.0");
+        Directory.CreateDirectory(buildRoot);
+        string marker = Path.Combine(sessionRoot, PtfSessionLayout.MarkerFileName);
+        DateTime originalStamp = default;
+        if (markerExists)
+        {
+            File.WriteAllText(marker, "existing-source-marker");
+            File.SetLastWriteTimeUtc(marker, new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            originalStamp = File.GetLastWriteTimeUtc(marker);
+        }
+
+        NameValueCollection properties = CreateEnabledProperties(directory.Path);
+        properties[PtfSessionLayout.SessionNameProperty] = sessionName;
+        int providerCalls = 0;
+        using DiagnosticsInvocationLifecycle lifecycle =
+            PtfDiagnosticsLifecycle.Start(
+                properties,
+                new Dictionary<string, object>(),
+                new TestLogger(),
+                buildRoot,
+                SmbdDiagnosticsSuite.Definition,
+                captureProviderFactory: _ =>
+                {
+                    providerCalls++;
+                    return new DeterministicCaptureProvider();
+                });
+
+        Assert.IsFalse(lifecycle.IsEnabled);
+        Assert.AreEqual(1, lifecycle.Errors.Chronology.Count);
+        Assert.AreEqual(0, providerCalls);
+        Assert.IsFalse(Directory.Exists(Path.Combine(sessionRoot, PtfSessionLayout.TestsDirectoryName)));
+        if (markerExists)
+        {
+            Assert.AreEqual("existing-source-marker", File.ReadAllText(marker));
+            Assert.AreEqual(originalStamp, File.GetLastWriteTimeUtc(marker));
+        }
+        else
+        {
+            Assert.IsFalse(File.Exists(marker), "Rejected session must not create a source/build marker.");
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public void Start_AncestorArtifactRootWithSafeSession_PreservesSourceDuringRetention(
+        bool sourceHasOldSessionMarker,
+        bool markedDirectoryContainsSource)
+    {
+        using TemporaryDirectory directory = TemporaryDirectory.Create();
+        string markedDirectory = directory.CreateSubdirectory("source");
+        string sourceRoot = markedDirectoryContainsSource
+            ? directory.CreateSubdirectory(Path.Combine("source", "project"))
+            : markedDirectory;
+        string buildRoot = Path.Combine(sourceRoot, "bin", "Release", "net8.0");
+        Directory.CreateDirectory(buildRoot);
+        string protectedFile = Path.Combine(sourceRoot, "source.cs");
+        File.WriteAllText(protectedFile, "protected source");
+        string marker = Path.Combine(markedDirectory, PtfSessionLayout.MarkerFileName);
+        if (sourceHasOldSessionMarker)
+        {
+            File.WriteAllText(marker, "old-session-marker");
+            File.SetLastWriteTimeUtc(marker, new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        }
+
+        NameValueCollection properties = CreateEnabledProperties(directory.Path);
+        properties[PtfSessionLayout.SessionNameProperty] = "safe-current";
+        properties[PtfSessionLayout.MaxSessionsProperty] = "1";
+        using DiagnosticsInvocationLifecycle lifecycle =
+            PtfDiagnosticsLifecycle.Start(
+                properties,
+                new Dictionary<string, object>(),
+                new TestLogger(),
+                buildRoot,
+                SmbdDiagnosticsSuite.Definition,
+                captureProviderFactory: _ => new DeterministicCaptureProvider(),
+                runtimePlatformProbe: () => DiagnosticsRuntimePlatform.Windows);
+        lifecycle.MarkCleanupCompleted();
+        lifecycle.Dispose();
+
+        Assert.IsTrue(lifecycle.IsEnabled);
+        Assert.AreEqual("protected source", File.ReadAllText(protectedFile));
+        Assert.IsTrue(Directory.Exists(buildRoot));
+        Assert.AreEqual(sourceHasOldSessionMarker, File.Exists(marker));
+        Assert.IsTrue(Directory.Exists(Path.Combine(directory.Path, "safe-current", "tests")));
+    }
+
     private static NameValueCollection CreateEnabledProperties(
         string artifactRoot)
     {
