@@ -160,44 +160,6 @@ public sealed class Mlx5SnifferCaptureProvider : ICaptureProvider
                 "The sniffer output path is not safe.");
         }
 
-        ProcessCommandResult preflight = await QueryAsync(
-            adapterName,
-            cancellationToken).ConfigureAwait(false);
-        if (preflight.Status != ProcessCommandStatus.Completed)
-        {
-            return CaptureProviderStartResult.Failed(
-                Classify(preflight, CaptureProviderFailureCode.StartFailed),
-                "The sniffer preflight failed.");
-        }
-
-        if (IsRunning(preflight))
-        {
-            return CaptureProviderStartResult.Failed(
-                CaptureProviderFailureCode.CaptureBusy,
-                "A sniffer is already running on the adapter.");
-        }
-
-        ProcessCommandResult start = await commandRunner.RunAsync(
-            CreateStartInfo(
-                "-Sniffer",
-                "-Name",
-                adapterName,
-                "-start",
-                "-filename",
-                outputPath,
-                "-limit_file_size",
-                limitMebibytes.ToString(CultureInfo.InvariantCulture)),
-            commandTimeout,
-            cancellationToken).ConfigureAwait(false);
-        if (start.Status != ProcessCommandStatus.Completed ||
-            start.ExitCode != 0 ||
-            !Contains(start, RunningText))
-        {
-            return CaptureProviderStartResult.Failed(
-                Classify(start, CaptureProviderFailureCode.StartFailed),
-                "The sniffer could not be started.");
-        }
-
         CaptureProviderSessionHandle handle =
             CaptureProviderSessionHandle.Create(
                 ProviderIdentifier,
@@ -209,16 +171,90 @@ public sealed class Mlx5SnifferCaptureProvider : ICaptureProvider
             outputPath,
             request.ArtifactInvocation.DirectoryPath,
             request.MaxDuration);
-        if (!ownedSessions.TryAdd(adapterName, state))
+        if (!TryReserveSession(state))
         {
-            return CaptureProviderStartResult.FailedWithOwnedHandle(
-                handle,
+            return CaptureProviderStartResult.Failed(
                 CaptureProviderFailureCode.CaptureBusy,
                 "The adapter sniffer is already owned by this provider.");
         }
 
-        state.DurationTask = EnforceMaximumDurationAsync(state);
-        return CaptureProviderStartResult.Started(handle);
+        bool started = false;
+        try
+        {
+            ProcessCommandResult preflight = await QueryAsync(
+                adapterName,
+                cancellationToken).ConfigureAwait(false);
+            if (preflight.Status != ProcessCommandStatus.Completed)
+            {
+                return CaptureProviderStartResult.Failed(
+                    Classify(preflight, CaptureProviderFailureCode.StartFailed),
+                    "The sniffer preflight failed.");
+            }
+
+            if (IsRunning(preflight))
+            {
+                return CaptureProviderStartResult.Failed(
+                    CaptureProviderFailureCode.CaptureBusy,
+                    "A sniffer is already running on the adapter.");
+            }
+
+            ProcessCommandResult start = await commandRunner.RunAsync(
+                CreateStartInfo(
+                    "-Sniffer",
+                    "-Name",
+                    adapterName,
+                    "-start",
+                    "-filename",
+                    outputPath,
+                    "-limit_file_size",
+                    limitMebibytes.ToString(CultureInfo.InvariantCulture)),
+                commandTimeout,
+                cancellationToken).ConfigureAwait(false);
+            if (start.Status != ProcessCommandStatus.Completed ||
+                start.ExitCode != 0 ||
+                !Contains(start, RunningText))
+            {
+                return CaptureProviderStartResult.Failed(
+                    Classify(start, CaptureProviderFailureCode.StartFailed),
+                    "The sniffer could not be started.");
+            }
+
+            started = true;
+            state.DurationTask = EnforceMaximumDurationAsync(state);
+            return CaptureProviderStartResult.Started(handle);
+        }
+        finally
+        {
+            if (!started)
+            {
+                ownedSessions.TryRemove(adapterName, out _);
+            }
+        }
+    }
+
+    private bool TryReserveSession(OwnedSession state)
+    {
+        while (!ownedSessions.TryAdd(state.AdapterName, state))
+        {
+            if (!ownedSessions.TryGetValue(state.AdapterName, out OwnedSession? previous))
+            {
+                continue;
+            }
+
+            if (Volatile.Read(ref previous.StopCompleted) == 0)
+            {
+                return false;
+            }
+
+            // Old stop calls/timers see StopCompleted; handle reference checks reject
+            // stale external callers after the atomic replacement.
+            if (ownedSessions.TryUpdate(state.AdapterName, state, previous))
+            {
+                return true;
+            }
+        }
+
+        return true;
     }
 
     public async Task<CaptureProviderReadinessResult> WaitForReadinessAsync(

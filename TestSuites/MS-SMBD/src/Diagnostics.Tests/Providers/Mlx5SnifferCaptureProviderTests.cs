@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -22,6 +23,215 @@ public sealed class Mlx5SnifferCaptureProviderTests
 {
     private const string ToolPath = @"C:\Tools\Mlx5Cmd.exe";
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
+
+    [TestMethod]
+    public async Task StartStopFinalize_SequentialInvocations_ReusesAdapterWithAddressableWriters()
+    {
+        using var first = SnifferContext.Create("192.168.10.12");
+        using var second = SnifferContext.Create("192.168.10.12", "attempt-2");
+        var runner = new FakeSnifferRunner(first.OutputPath);
+        Mlx5SnifferCaptureProvider provider = CreateProvider(runner);
+        CaptureProviderStartResult old = await provider.StartAsync(first.Request, default);
+        Assert.IsTrue(old.IsStarted);
+        Assert.IsTrue((await provider.RequestStopAsync(old.Handle!, default)).WriterResolved);
+
+        CaptureProviderStartResult next = await provider.StartAsync(second.Request, default);
+        CaptureProviderStopResult stopped = await provider.RequestStopAsync(next.Handle!, default);
+        CaptureProviderFinalizationResult finalized =
+            await provider.WaitForFinalizationAsync(next.Handle!, default);
+
+        Assert.IsTrue(next.IsStarted, next.Detail);
+        Assert.AreEqual(CaptureProviderStopStatus.Stopped, stopped.Status);
+        Assert.AreEqual(CaptureProviderFinalizationStatus.Finalized, finalized.Status);
+        Assert.AreEqual(new FileInfo(second.OutputPath).Length, finalized.Artifacts.Single().ByteCount);
+        Assert.AreEqual(2, runner.Commands.Count(command => command.Contains("-start")));
+        Assert.AreEqual(2, runner.Commands.Count(command => command.EndsWith("-stop")));
+    }
+
+    [TestMethod]
+    public async Task StartAsync_DuplicateDuringPreflight_RejectsBeforeAnyAdditionalNativeCommand()
+    {
+        using var context = SnifferContext.Create("192.168.10.12");
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<ProcessCommandResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        int queries = 0;
+        var runner = new FakeSnifferRunner(context.OutputPath)
+        {
+            CommandHandler = (info, _) =>
+            {
+                if (info.ArgumentList.Contains("-query") && Interlocked.Increment(ref queries) == 1)
+                {
+                    entered.SetResult();
+                    return release.Task;
+                }
+                return null;
+            },
+        };
+        Mlx5SnifferCaptureProvider provider = CreateProvider(runner);
+        Task<CaptureProviderStartResult> first = provider.StartAsync(context.Request, default);
+        CaptureProviderStartResult? duplicate = null;
+        int commandsBeforeRelease = 0;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            duplicate = await provider.StartAsync(context.Request, default);
+            commandsBeforeRelease = runner.Commands.Count;
+        }
+        finally
+        {
+            release.TrySetResult(ProcessCommandResult.Completed(0, "Sniffer is not running."));
+            CaptureProviderStartResult started = await first.WaitAsync(TimeSpan.FromSeconds(5));
+            if (started.Handle is not null)
+            {
+                await provider.RequestStopAsync(started.Handle, default);
+            }
+            if (duplicate?.Handle is not null)
+            {
+                await provider.RequestStopAsync(duplicate.Handle, default);
+            }
+        }
+
+        Assert.IsNotNull(duplicate);
+        Assert.IsFalse(duplicate.IsStarted);
+        Assert.IsNull(duplicate.Handle);
+        Assert.AreEqual(CaptureProviderFailureCode.CaptureBusy, duplicate.FailureCode);
+        Assert.AreEqual(1, commandsBeforeRelease, "Duplicate admission must not query or start the adapter.");
+    }
+
+    [TestMethod]
+    public async Task StopAsync_StaleHandleAfterReuse_CannotControlNewWriter()
+    {
+        using var first = SnifferContext.Create("192.168.10.12");
+        using var second = SnifferContext.Create("192.168.10.12", "attempt-2");
+        var runner = new FakeSnifferRunner(first.OutputPath);
+        Mlx5SnifferCaptureProvider provider = CreateProvider(runner);
+        CaptureProviderStartResult old = await provider.StartAsync(first.Request, default);
+        await provider.RequestStopAsync(old.Handle!, default);
+        CaptureProviderStartResult next = await provider.StartAsync(second.Request, default);
+        int commandsBeforeStaleStop = runner.Commands.Count;
+
+        CaptureProviderStopResult stale = await provider.RequestStopAsync(old.Handle!, default);
+        int commandsAfterStaleStop = runner.Commands.Count;
+        CaptureProviderStopResult current = await provider.RequestStopAsync(next.Handle!, default);
+
+        Assert.AreEqual(CaptureProviderFailureCode.OwnershipMismatch, stale.FailureCode);
+        Assert.AreEqual(commandsBeforeStaleStop, commandsAfterStaleStop);
+        Assert.IsTrue(next.IsStarted);
+        Assert.AreEqual(CaptureProviderStopStatus.Stopped, current.Status);
+    }
+
+    [TestMethod]
+    public async Task StopAsync_UnresolvedWriter_BlocksReuseUntilSuccessfulRetry()
+    {
+        using var context = SnifferContext.Create("192.168.10.12");
+        int stops = 0;
+        var runner = new FakeSnifferRunner(context.OutputPath)
+        {
+            CommandHandler = (info, _) =>
+                info.ArgumentList.Contains("-stop") && Interlocked.Increment(ref stops) == 1
+                    ? Task.FromResult(ProcessCommandResult.TimedOut(true))
+                    : null,
+        };
+        Mlx5SnifferCaptureProvider provider = CreateProvider(runner);
+        CaptureProviderStartResult first = await provider.StartAsync(context.Request, default);
+        CaptureProviderStopResult unresolved = await provider.RequestStopAsync(first.Handle!, default);
+        int commandsBeforeDuplicate = runner.Commands.Count;
+        CaptureProviderStartResult duplicate = await provider.StartAsync(context.Request, default);
+        int commandsAfterDuplicate = runner.Commands.Count;
+        CaptureProviderStopResult retry = await provider.RequestStopAsync(first.Handle!, default);
+        CaptureProviderStartResult next = await provider.StartAsync(context.Request, default);
+        CaptureProviderStopResult final = await provider.RequestStopAsync(next.Handle!, default);
+
+        Assert.IsFalse(unresolved.WriterResolved);
+        Assert.AreEqual(CaptureProviderFailureCode.StopTimeout, unresolved.FailureCode);
+        Assert.AreEqual(CaptureProviderFailureCode.CaptureBusy, duplicate.FailureCode);
+        Assert.IsNull(duplicate.Handle);
+        Assert.AreEqual(commandsBeforeDuplicate, commandsAfterDuplicate);
+        Assert.IsTrue(retry.WriterResolved);
+        Assert.IsTrue(next.IsStarted);
+        Assert.IsTrue(final.WriterResolved);
+    }
+
+    [DataTestMethod]
+    [DataRow("-query")]
+    [DataRow("-start")]
+    public async Task StartAsync_NativeFailure_ReleasesReservationForRetry(string operation)
+    {
+        using var context = SnifferContext.Create("192.168.10.12");
+        int attempts = 0;
+        var runner = new FakeSnifferRunner(context.OutputPath)
+        {
+            CommandHandler = (info, _) =>
+                info.ArgumentList.Contains(operation) && Interlocked.Increment(ref attempts) == 1
+                    ? Task.FromResult(operation == "-query"
+                        ? ProcessCommandResult.StartFailed()
+                        : ProcessCommandResult.Completed(1, "", "controlled failure"))
+                    : null,
+        };
+        Mlx5SnifferCaptureProvider provider = CreateProvider(runner);
+
+        CaptureProviderStartResult failure = await provider.StartAsync(context.Request, default);
+        CaptureProviderStartResult retry = await provider.StartAsync(context.Request, default);
+        CaptureProviderStopResult stopped = await provider.RequestStopAsync(retry.Handle!, default);
+
+        Assert.IsFalse(failure.IsStarted);
+        Assert.IsNull(failure.Handle);
+        Assert.IsTrue(retry.IsStarted);
+        Assert.IsTrue(stopped.WriterResolved);
+    }
+
+    [TestMethod]
+    public async Task StartAsync_SecondInvocation_EnforcesItsOwnDurationAndIgnoresOldTimer()
+    {
+        using var first = SnifferContext.Create("192.168.10.12");
+        using var second = SnifferContext.Create("192.168.10.12", "attempt-2");
+        var oldDelay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newDelay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var durationStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var durations = new List<TimeSpan>();
+        int stops = 0;
+        var runner = new FakeSnifferRunner(first.OutputPath)
+        {
+            CommandHandler = (info, _) =>
+            {
+                if (info.ArgumentList.Contains("-stop") && Interlocked.Increment(ref stops) == 2)
+                {
+                    durationStop.TrySetResult();
+                }
+                return null;
+            },
+        };
+        var provider = new Mlx5SnifferCaptureProvider(
+            ToolPath, CommandTimeout, runner, _ => "Ethernet",
+            (duration, _) =>
+            {
+                durations.Add(duration);
+                return durations.Count == 1 ? oldDelay.Task : newDelay.Task;
+            });
+        CaptureProviderStartResult old = await provider.StartAsync(first.Request, default);
+        await provider.RequestStopAsync(old.Handle!, default);
+        CaptureProviderStartResult next = await provider.StartAsync(second.Request, default);
+        oldDelay.SetResult();
+        newDelay.SetResult();
+        bool stoppedByDuration;
+        try
+        {
+            stoppedByDuration = await Task.WhenAny(durationStop.Task, Task.Delay(1000)) == durationStop.Task;
+        }
+        finally
+        {
+            await provider.RequestStopAsync(next.Handle!, default);
+        }
+
+        Assert.IsTrue(next.IsStarted);
+        CollectionAssert.AreEqual(
+            new[] { first.Request.MaxDuration, second.Request.MaxDuration }, durations);
+        Assert.IsTrue(stoppedByDuration, "The second writer must stop without explicit cleanup.");
+        Assert.AreEqual(2, runner.Commands.Count(command => command.EndsWith("-stop")));
+        Assert.AreEqual(CaptureProviderHealthStatus.ExitedEarly,
+            (await provider.ObserveHealthAsync(next.Handle!, default)).Status);
+    }
 
     [TestMethod]
     public async Task StartStopFinalize_RunsSnifferCommandsAndRecordsPcap()
@@ -73,7 +283,7 @@ public sealed class Mlx5SnifferCaptureProviderTests
             CommandTimeout,
             runner,
             _ => null,
-            (_, _) => Task.Delay(Timeout.Infinite));
+            (_, token) => Task.Delay(Timeout.Infinite, token));
         CaptureProviderProbeResult adapterResult =
             await noAdapter.ProbeAsync(context.Request, CancellationToken.None);
 
@@ -160,7 +370,7 @@ public sealed class Mlx5SnifferCaptureProviderTests
 
     private sealed class FakeSnifferRunner : IProcessCommandRunner
     {
-        private readonly string outputPath;
+        private string outputPath;
         private bool running;
 
         internal FakeSnifferRunner(string outputPath)
@@ -172,7 +382,9 @@ public sealed class Mlx5SnifferCaptureProviderTests
 
         internal int PcapBytes { get; set; } = 64;
 
-        internal List<string> Commands { get; } = new();
+        internal ConcurrentQueue<string> Commands { get; } = new();
+
+        internal Func<ProcessStartInfo, CancellationToken, Task<ProcessCommandResult>?>? CommandHandler { get; set; }
 
         public bool ExecutableExists(string executablePath) => ExecutableAvailable;
 
@@ -182,10 +394,17 @@ public sealed class Mlx5SnifferCaptureProviderTests
             CancellationToken cancellationToken)
         {
             string command = string.Join(' ', startInfo.ArgumentList);
-            Commands.Add(command);
+            Commands.Enqueue(command);
+            Task<ProcessCommandResult>? controlled = CommandHandler?.Invoke(startInfo, cancellationToken);
+            if (controlled is not null)
+            {
+                return controlled;
+            }
+
             if (command.Contains("-start"))
             {
                 running = true;
+                outputPath = startInfo.ArgumentList[startInfo.ArgumentList.IndexOf("-filename") + 1];
                 File.WriteAllBytes(outputPath, new byte[PcapBytes]);
                 return Task.FromResult(
                     ProcessCommandResult.Completed(0, "Sniffer is running.", string.Empty));
@@ -287,7 +506,7 @@ public sealed class Mlx5SnifferCaptureProviderTests
                 artifactInvocation.DirectoryPath,
                 Mlx5SnifferCaptureProvider.OutputFileName);
 
-        internal static SnifferContext Create(string target)
+        internal static SnifferContext Create(string target, string attempt = "attempt-1")
         {
             TemporaryDirectory temporaryDirectory = TemporaryDirectory.Create();
             ArtifactStore artifactStore = ArtifactStore.Open(
@@ -297,7 +516,7 @@ public sealed class Mlx5SnifferCaptureProviderTests
             InvocationIdentity identity = InvocationIdentity.Create(
                 "run-sniffer",
                 "Mlx5SnifferCaptureProviderTests.Test",
-                "attempt-1",
+                attempt,
                 "row-1");
             ArtifactInvocation invocation = artifactStore.CreateInvocation(identity);
             var request = new CaptureProviderStartRequest(
