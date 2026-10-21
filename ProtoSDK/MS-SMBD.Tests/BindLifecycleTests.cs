@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Protocols.TestTools.StackSdk;
@@ -29,6 +32,24 @@ namespace Smbd.Endpoint.Tests
     [TestClass]
     public class BindLifecycleTests
     {
+        public TestContext TestContext { get; set; }
+
+        [TestInitialize]
+        public void RecordLoadedEndpointIdentity()
+        {
+            Assembly assembly = typeof(SmbdConnectionEndpoint).Assembly;
+            TestContext.WriteLine($"ENDPOINT_ASSEMBLY {assembly.Location} MVID={assembly.ManifestModule.ModuleVersionId} SHA256={Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(assembly.Location)))}");
+            TestContext.WriteLine($"RUNTIME {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+            using var stream = File.OpenRead(Path.ChangeExtension(assembly.Location, ".pdb"));
+            using var provider = MetadataReaderProvider.FromPortablePdbStream(stream);
+            MetadataReader reader = provider.GetMetadataReader();
+            foreach (DocumentHandle handle in reader.Documents)
+            {
+                Document document = reader.GetDocument(handle);
+                TestContext.WriteLine($"PDB_DOCUMENT {reader.GetString(document.Name)} HASH_ALGORITHM={reader.GetGuid(document.HashAlgorithm)} HASH={Convert.ToHexString(reader.GetBlobBytes(document.Hash))}");
+            }
+        }
+
         [TestMethod]
         public void FailedBindCompletionAccountsOnceAndCleansOnce()
         {
@@ -308,14 +329,280 @@ namespace Smbd.Endpoint.Tests
             Assert.IsTrue(SpinWait.SpinUntil(() => fixture.Endpoint.ReceivePostedCount == 0, 3000));
         }
 
+        [DataTestMethod]
+        [TestCategory("PrincipalFollowup")]
+        [DataRow(false)]
+        [DataRow(true)]
+        public void LateBindCleanupSerializesWithWholeNativeSendRegistration(bool failed)
+        {
+            using var fixture = new Fixture();
+            Assert.AreEqual(NtStatus.STATUS_TIMEOUT, fixture.Register().GetAwaiter().GetResult());
+            using var entered = new ManualResetEventSlim();
+            using var resume = new ManualResetEventSlim();
+            fixture.Native.RejectMemoryOperationOverlap = true;
+            fixture.Native.OnRegisterMemory = () => WaitAtBarrier(entered, resume);
+            Task<NtStatus> send = Task.Run(() => fixture.Endpoint.SendData(new byte[16]));
+            try
+            {
+                Assert.IsTrue(entered.Wait(3000));
+                fixture.Native.CompleteBind(failed ? NtStatus.STATUS_UNSUCCESSFUL : NtStatus.STATUS_SUCCESS);
+                Assert.IsTrue(fixture.Native.NotificationObserved.Wait(3000));
+                fixture.Native.DeregisterEntered.Wait(250);
+            }
+            finally
+            {
+                resume.Set();
+            }
+            Assert.IsTrue(fixture.Native.SendSubmitted.Wait(3000));
+            fixture.Native.Complete(300, NtStatus.STATUS_SUCCESS);
+            Assert.AreEqual(NtStatus.STATUS_SUCCESS, send.GetAwaiter().GetResult());
+            fixture.WaitForDrain();
+            Assert.AreEqual(0, fixture.Native.MemoryOperationOverlaps,
+                "Register/Deregister and their native waits share one OVERLAPPED and must not overlap.");
+            Assert.AreEqual(2, fixture.Native.Deregistrations);
+            Assert.AreEqual(0, fixture.Native.OwnedMemoryCount);
+            Assert.AreEqual(1, fixture.Native.Window.Disposals);
+            Assert.AreEqual(0, fixture.Count);
+        }
+
+        [TestMethod]
+        [TestCategory("PrincipalFollowup")]
+        public void ConcurrentSendsSerializeNativeRegistrationAndKeepDistinctCompletions()
+        {
+            using var fixture = new Fixture();
+            using var entered = new ManualResetEventSlim();
+            using var resume = new ManualResetEventSlim();
+            using var secondStarted = new ManualResetEventSlim();
+            int registrationsEntered = 0;
+            fixture.Native.RejectMemoryOperationOverlap = true;
+            fixture.Native.OnRegisterMemory = () =>
+            {
+                if (Interlocked.Increment(ref registrationsEntered) == 1) WaitAtBarrier(entered, resume);
+            };
+            Task<NtStatus> first = Task.Run(() => fixture.Endpoint.SendData(new byte[16]));
+            Task<NtStatus> second = null;
+            try
+            {
+                Assert.IsTrue(entered.Wait(3000));
+                second = Task.Run(() =>
+                {
+                    secondStarted.Set();
+                    return fixture.Endpoint.SendData(new byte[16]);
+                });
+                Assert.IsTrue(secondStarted.Wait(3000));
+                fixture.Native.OverlapObserved.Wait(250);
+            }
+            finally
+            {
+                resume.Set();
+            }
+            Assert.IsTrue(SpinWait.SpinUntil(() => fixture.Native.SendCalls == 2, 3000));
+            fixture.Native.Complete(301, NtStatus.STATUS_SUCCESS);
+            fixture.Native.Complete(300, NtStatus.STATUS_SUCCESS);
+            Assert.AreEqual(NtStatus.STATUS_SUCCESS, first.GetAwaiter().GetResult());
+            Assert.AreEqual(NtStatus.STATUS_SUCCESS, second.GetAwaiter().GetResult());
+            Assert.AreEqual(0, fixture.Native.MemoryOperationOverlaps);
+            Assert.AreEqual(2, fixture.Native.Registrations);
+            Assert.AreEqual(2, fixture.Native.Deregistrations);
+            Assert.AreEqual(0, fixture.Native.OwnedMemoryCount);
+            Assert.AreEqual(0, fixture.Count);
+        }
+
+        [DataTestMethod]
+        [TestCategory("PrincipalFollowup")]
+        [DataRow("Fallback", false)]
+        [DataRow("Fallback", true)]
+        [DataRow("Bind", false)]
+        [DataRow("Bind", true)]
+        [DataRow("BeforeBind", false)]
+        [DataRow("BeforeBind", true)]
+        public void ShutdownWinningPublicationReclaimsOrRetainsForExplicitRetry(string phase, bool cleanupFails)
+        {
+            using var fixture = new Fixture();
+            using var entered = new ManualResetEventSlim();
+            using var resume = new ManualResetEventSlim();
+            fixture.Native.RejectMemoryOperationOverlap = true;
+            fixture.Native.DeregisterStatus = cleanupFails ? NtStatus.STATUS_ACCESS_DENIED : NtStatus.STATUS_SUCCESS;
+            Action pause = () => WaitAtBarrier(entered, resume);
+            if (phase == "Fallback")
+            {
+                fixture.Native.WindowStatus = NtStatus.STATUS_NOT_SUPPORTED;
+                fixture.Native.OnGetRegisteredMemory = pause;
+            }
+            else if (phase == "BeforeBind")
+            {
+                fixture.Native.OnCreateMemoryWindow = pause;
+            }
+            else
+            {
+                fixture.Native.Window.OnRemoteToken = pause;
+            }
+            Task<NtStatus> registration = Task.Run(() =>
+                fixture.Endpoint.RegisterMemoryWindow(16, 0, false, out fixture.Descriptor));
+            Task<Exception> disconnect = null;
+            try
+            {
+                if (phase == "Bind")
+                {
+                    Assert.IsTrue(fixture.Native.BindSubmitted.Wait(3000));
+                    fixture.Native.CompleteBind(NtStatus.STATUS_SUCCESS);
+                }
+                Assert.IsTrue(entered.Wait(3000));
+                disconnect = Task.Run(() => CaptureDisconnect(fixture.Endpoint));
+                Assert.IsTrue(fixture.Native.Disconnected.Wait(3000));
+            }
+            finally
+            {
+                resume.Set();
+            }
+            NtStatus registrationStatus = registration.GetAwaiter().GetResult();
+            Exception disconnectFailure = disconnect.GetAwaiter().GetResult();
+            Assert.AreEqual(cleanupFails ? NtStatus.STATUS_ACCESS_DENIED : NtStatus.STATUS_CONNECTION_DISCONNECTED,
+                registrationStatus, "Shutdown must win atomically over descriptor publication and expose reclaim failure.");
+            Assert.AreEqual(0u, fixture.Descriptor.Token);
+            Assert.AreEqual(0, fixture.PublishedWindows);
+            Assert.AreEqual(0, fixture.Count);
+            Assert.AreEqual(phase == "Fallback" ? 0 : 1, fixture.Native.Window.Disposals);
+            Assert.AreEqual(0, fixture.Native.MemoryOperationOverlaps);
+            if (cleanupFails)
+            {
+                Assert.IsInstanceOfType<InvalidOperationException>(disconnectFailure);
+                Assert.AreEqual(1, fixture.Native.OwnedMemoryCount);
+                fixture.Native.DeregisterStatus = NtStatus.STATUS_SUCCESS;
+                fixture.Endpoint.Disconnect();
+                Assert.AreEqual(3, fixture.Native.Deregistrations);
+            }
+            else
+            {
+                Assert.IsNull(disconnectFailure);
+                Assert.AreEqual(1, fixture.Native.Deregistrations);
+            }
+            Assert.AreEqual(0, fixture.Native.OwnedMemoryCount);
+            Assert.IsTrue(fixture.HasLog(message => message.Contains("shutdown") ||
+                message.Contains("disconnected")), "The denied publication must be explicit in diagnostics.");
+        }
+
+        [DataTestMethod]
+        [TestCategory("PrincipalFollowup")]
+        [DataRow(false)]
+        [DataRow(true)]
+        public void PublicationWinningShutdownKeepsExplicitDescriptorOwnership(bool fallback)
+        {
+            using var fixture = new Fixture();
+            using var published = new ManualResetEventSlim();
+            using var resume = new ManualResetEventSlim();
+            fixture.Native.RejectMemoryOperationOverlap = true;
+            if (fallback) fixture.Native.WindowStatus = NtStatus.STATUS_NOT_SUPPORTED;
+            fixture.OnPublicationLog = () => WaitAtBarrier(published, resume);
+            Task<NtStatus> registration = Task.Run(() =>
+                fixture.Endpoint.RegisterMemoryWindow(16, 0, false, out fixture.Descriptor));
+            Task<Exception> disconnect = null;
+            try
+            {
+                if (!fallback)
+                {
+                    Assert.IsTrue(fixture.Native.BindSubmitted.Wait(3000));
+                    fixture.Native.CompleteBind(NtStatus.STATUS_SUCCESS);
+                }
+                Assert.IsTrue(published.Wait(3000));
+                Assert.AreEqual(1, fixture.PublishedWindows);
+                disconnect = Task.Run(() => CaptureDisconnect(fixture.Endpoint));
+                Assert.IsTrue(fixture.Native.Disconnected.Wait(3000));
+            }
+            finally
+            {
+                resume.Set();
+            }
+            Assert.AreEqual(NtStatus.STATUS_SUCCESS, registration.GetAwaiter().GetResult());
+            Assert.IsNull(disconnect.GetAwaiter().GetResult());
+            Assert.AreEqual(fallback ? 88u : 77u, fixture.Descriptor.Token);
+            Assert.AreEqual(16u, fixture.Descriptor.Length);
+            Assert.AreEqual(1, fixture.PublishedWindows);
+            Assert.AreEqual(1, fixture.Native.OwnedMemoryCount,
+                "A descriptor published first remains explicitly owned until its caller deregisters it.");
+            fixture.Native.InvalidateStatus = NtStatus.STATUS_CONNECTION_DISCONNECTED;
+            fixture.Endpoint.DeregisterMemoryWindow(fixture.Descriptor);
+            Assert.AreEqual(0, fixture.PublishedWindows);
+            Assert.AreEqual(0, fixture.Native.OwnedMemoryCount);
+            Assert.AreEqual(fallback ? 0 : 1, fixture.Native.Window.Disposals);
+            Assert.AreEqual(1, fixture.Native.Deregistrations);
+            Assert.AreEqual(0, fixture.Native.MemoryOperationOverlaps);
+            Assert.AreEqual(0, fixture.Count);
+        }
+
+        [TestMethod]
+        [TestCategory("PrincipalFollowup")]
+        public void NativeRegistrationFailurePreservesStatusWithoutPublishingOrBinding()
+        {
+            using var fixture = new Fixture();
+            fixture.Native.RejectMemoryOperationOverlap = true;
+            fixture.Native.RegisterStatus = NtStatus.STATUS_ACCESS_DENIED;
+            Assert.AreEqual(NtStatus.STATUS_ACCESS_DENIED,
+                fixture.Endpoint.RegisterMemoryWindow(16, 0, false, out fixture.Descriptor));
+            Assert.IsFalse(fixture.Native.BindSubmitted.IsSet);
+            Assert.AreEqual(0, fixture.PublishedWindows);
+            Assert.AreEqual(0, fixture.Native.OwnedMemoryCount);
+            Assert.AreEqual(0, fixture.Native.Deregistrations);
+            Assert.AreEqual(0, fixture.Count);
+            fixture.Endpoint.Disconnect();
+        }
+
+        [TestMethod]
+        [TestCategory("PrincipalFollowup")]
+        public void BlockedNativeRegistrationFailsDisconnectBoundedlyThenReclaimsOnResume()
+        {
+            using var fixture = new Fixture();
+            using var entered = new ManualResetEventSlim();
+            using var resume = new ManualResetEventSlim();
+            fixture.Native.OnRegisterMemory = () => WaitAtBarrier(entered, resume);
+            Task<NtStatus> registration = Task.Run(() =>
+                fixture.Endpoint.RegisterMemoryWindow(16, 0, false, out fixture.Descriptor));
+            Exception disconnectFailure;
+            try
+            {
+                Assert.IsTrue(entered.Wait(3000));
+                Task<Exception> disconnect = Task.Run(() => CaptureDisconnect(fixture.Endpoint));
+                Assert.IsTrue(fixture.Native.Disconnected.Wait(3000));
+                Assert.IsTrue(disconnect.Wait(7000), "An in-flight registration must not hold the shutdown-state lock.");
+                disconnectFailure = disconnect.GetAwaiter().GetResult();
+            }
+            finally
+            {
+                resume.Set();
+            }
+            NtStatus registrationStatus = registration.GetAwaiter().GetResult();
+            Assert.IsInstanceOfType<TimeoutException>(disconnectFailure,
+                "Incomplete native registration must cause an explicit bounded drain failure, not successful disposal.");
+            Assert.AreEqual(NtStatus.STATUS_CONNECTION_DISCONNECTED, registrationStatus);
+            Assert.AreEqual(0, fixture.PublishedWindows);
+            Assert.AreEqual(0, fixture.Native.OwnedMemoryCount);
+            Assert.AreEqual(1, fixture.Native.Deregistrations);
+            fixture.Endpoint.Disconnect();
+        }
+
+        private static void WaitAtBarrier(ManualResetEventSlim entered, ManualResetEventSlim resume)
+        {
+            entered.Set();
+            if (!resume.Wait(15000)) throw new TimeoutException("Controlled native operation was not resumed.");
+        }
+
+        private static Exception CaptureDisconnect(SmbdConnectionEndpoint endpoint)
+        {
+            try { endpoint.Disconnect(); return null; }
+            catch (Exception ex) { return ex; }
+        }
+
         private sealed class Fixture : IDisposable
         {
             internal readonly NativeDouble Native = new NativeDouble();
             internal readonly SmbdConnectionEndpoint Endpoint = new SmbdConnectionEndpoint(0, 16, 1, 1, 0, 0, 16);
             private readonly Thread callback;
             internal Action OnTimeoutLog;
+            internal Action OnPublicationLog;
+            private readonly System.Collections.Generic.List<string> Logs = new System.Collections.Generic.List<string>();
             internal RdmaBufferDescriptor Descriptor;
             internal int Count => (int)Get("requestCount");
+            internal int PublishedWindows => ((System.Collections.ICollection)Get("memoryWindowList")).Count;
             internal SyncFilterQueue<SmbdRequestResult> Results => (SyncFilterQueue<SmbdRequestResult>)Get("otherRequestResult");
 
             internal Fixture()
@@ -328,9 +615,14 @@ namespace Smbd.Endpoint.Tests
                 Set("threadStartSemaphore", new Semaphore(0, 2));
                 Set("logEndpointEvent", (SmbdLogEvent)(message =>
                 {
+                    lock (Logs) Logs.Add(message);
                     if (message.StartsWith("RegisterMemoryWindow: Timed out"))
                     {
                         OnTimeoutLog?.Invoke();
+                    }
+                    if (message.StartsWith("RegisterMemoryWindow: returning"))
+                    {
+                        OnPublicationLog?.Invoke();
                     }
                 }));
                 callback = new Thread(() => typeof(SmbdConnectionEndpoint)
@@ -348,6 +640,11 @@ namespace Smbd.Endpoint.Tests
 
             internal void WaitForDrain() =>
                 Assert.IsTrue(((ManualResetEventSlim)Get("bindsDrained")).Wait(3000));
+
+            internal bool HasLog(Predicate<string> predicate)
+            {
+                lock (Logs) return Logs.Exists(predicate);
+            }
 
             internal void ConfigureReceive()
             {
@@ -379,7 +676,8 @@ namespace Smbd.Endpoint.Tests
 internal sealed class WindowDouble : INativeRdmaMemoryWindow
 {
     internal int Disposals;
-    public uint RemoteToken => 77;
+    internal Action OnRemoteToken;
+    public uint RemoteToken { get { OnRemoteToken?.Invoke(); return 77; } }
     public void Dispose() => Interlocked.Increment(ref Disposals);
 }
 
@@ -390,6 +688,10 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
     internal readonly WindowDouble Window = new WindowDouble();
     internal readonly ManualResetEventSlim BindSubmitted = new ManualResetEventSlim();
     internal readonly ManualResetEventSlim SendSubmitted = new ManualResetEventSlim();
+    internal readonly ManualResetEventSlim Disconnected = new ManualResetEventSlim();
+    internal readonly ManualResetEventSlim NotificationObserved = new ManualResetEventSlim();
+    internal readonly ManualResetEventSlim DeregisterEntered = new ManualResetEventSlim();
+    internal readonly ManualResetEventSlim OverlapObserved = new ManualResetEventSlim();
     internal readonly AutoResetEvent Notified = new AutoResetEvent(false);
     private readonly ConcurrentQueue<(ulong Id, NdResult Result)> completions = new ConcurrentQueue<(ulong, NdResult)>();
     internal NtStatus SubmitStatus;
@@ -397,6 +699,17 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
     internal NtStatus FlushStatus;
     internal NtStatus WindowStatus;
     internal NtStatus MemoryDescriptionStatus;
+    internal NtStatus RegisterStatus;
+    internal NtStatus InvalidateStatus;
+    internal Action OnRegisterMemory;
+    internal Action OnGetRegisteredMemory;
+    internal Action OnCreateMemoryWindow;
+    internal bool RejectMemoryOperationOverlap;
+    internal int MemoryOperationOverlaps;
+    internal int SendCalls;
+    private int memoryOperations;
+    private readonly ConcurrentDictionary<ulong, uint> ownedMemory = new ConcurrentDictionary<ulong, uint>();
+    internal int OwnedMemoryCount => ownedMemory.Count;
     internal int Deregistrations;
     internal int Registrations;
     internal int Drained;
@@ -406,7 +719,7 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
         completions.Enqueue((id, new NdResult { Status = (int)status }));
         Notified.Set();
     }
-    public int Notify() { Notified.WaitOne(); return 0; }
+    public int Notify() { Notified.WaitOne(); NotificationObserved.Set(); return 0; }
     public ulong GetResult(out ulong resultHandler, out NdResult requestResult)
     {
         if (completions.TryDequeue(out var item))
@@ -428,10 +741,45 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
         BindSubmitted.Set();
         return (int)SubmitStatus;
     }
-    public int RegisterMemory(uint size, out ulong handler) { Interlocked.Increment(ref Registrations); handler = 42; return 0; }
-    public int DeregisterMemory(ulong handler) { Interlocked.Increment(ref Deregistrations); return (int)DeregisterStatus; }
+    public int RegisterMemory(uint size, out ulong handler)
+    {
+        handler = 0;
+        int registration = Interlocked.Increment(ref Registrations);
+        bool overlap = EnterMemoryOperation();
+        try
+        {
+            if (overlap) return unchecked((int)NtStatus.STATUS_DEVICE_BUSY);
+            OnRegisterMemory?.Invoke();
+            if (RegisterStatus != NtStatus.STATUS_SUCCESS) return (int)RegisterStatus;
+            handler = (ulong)(42 + registration);
+            ownedMemory.TryAdd(handler, size);
+            return 0;
+        }
+        finally { Interlocked.Decrement(ref memoryOperations); }
+    }
+    public int DeregisterMemory(ulong handler)
+    {
+        Interlocked.Increment(ref Deregistrations);
+        DeregisterEntered.Set();
+        bool overlap = EnterMemoryOperation();
+        try
+        {
+            if (overlap) return unchecked((int)NtStatus.STATUS_DEVICE_BUSY);
+            if (DeregisterStatus == NtStatus.STATUS_SUCCESS) ownedMemory.TryRemove(handler, out _);
+            return (int)DeregisterStatus;
+        }
+        finally { Interlocked.Decrement(ref memoryOperations); }
+    }
+    private bool EnterMemoryOperation()
+    {
+        if (Interlocked.Increment(ref memoryOperations) == 1 || !RejectMemoryOperationOverlap) return false;
+        Interlocked.Increment(ref MemoryOperationOverlaps);
+        OverlapObserved.Set();
+        return true;
+    }
     public int CreateMemoryWindow(ulong result, out INativeRdmaMemoryWindow window)
     {
+        OnCreateMemoryWindow?.Invoke();
         window = WindowStatus == NtStatus.STATUS_SUCCESS ? Window : null;
         return (int)WindowStatus;
     }
@@ -443,13 +791,14 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
     public int CreateConnector(out INativeRdmaConnector connector) => throw new NotSupportedException();
     public int GetRegisteredMemory(ulong handler, out RdmaRegisteredMemory memory)
     {
-        memory = default;
+        OnGetRegisteredMemory?.Invoke();
+        memory = new RdmaRegisteredMemory { Address = 0x1000, RemoteToken = 88, Length = ownedMemory[handler] };
         return (int)MemoryDescriptionStatus;
     }
     public int Listen(int protocol, ushort port, out INativeRdmaListen listen) => throw new NotSupportedException();
-    public int Send(NdSegment[] segments, out ulong handler) { handler = 300; SendSubmitted.Set(); return 0; }
+    public int Send(NdSegment[] segments, out ulong handler) { handler = (ulong)(299 + Interlocked.Increment(ref SendCalls)); SendSubmitted.Set(); return 0; }
     public int Receive(NdSegment[] segments, out ulong handler) { handler = 400; return 0; }
-    public int Invalidate(INativeRdmaMemoryWindow window, out ulong handler) { handler = 200; return 0; }
+    public int Invalidate(INativeRdmaMemoryWindow window, out ulong handler) { handler = 200; return (int)InvalidateStatus; }
     public int CreateEndpoint(INativeRdmaCompletionQueue queue, uint inbound, uint outbound,
         uint inboundSegment, uint outboundSegment, uint inboundRead, uint outboundRead,
         out uint maxInlineData, out INativeRdmaEndpoint endpoint) => throw new NotSupportedException();
@@ -457,5 +806,5 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
     public int CompleteConnect() => 0;
     public int Accept(INativeRdmaEndpoint endpoint) => 0;
     public int NotifyDisconnect() => 0;
-    public void Disconnect() { }
+    public void Disconnect() { Disconnected.Set(); }
 }
