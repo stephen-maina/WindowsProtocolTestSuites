@@ -59,6 +59,42 @@ public sealed class CaptureProviderContractTests
     }
 
     [TestMethod]
+    public async Task CompleteAsync_AuxiliaryStopPending_StillAttemptsPrimaryCleanupBeforeTimeout()
+    {
+        using ProviderTestContext context = ProviderTestContext.Create();
+        var stop = new TaskCompletionSource<CaptureProviderStopResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var primary = new DeterministicCaptureProvider();
+        var auxiliary = new DeterministicCaptureProvider
+        {
+            RequestStopAsyncHandler = (_, _) => stop.Task,
+        };
+        var errors = new DiagnosticErrorLedger();
+        CaptureProviderSession session = await CaptureProviderOrchestrator.CreateEnabled(errors)
+            .StartAsync(() => context.Request,
+                () => new AuxiliaryCaptureProvider(primary, auxiliary),
+                BoundedTimeouts, CancellationToken.None);
+        CaptureProviderCompletionResult completion;
+        int primaryStopCallsAtTimeout;
+        try
+        {
+            completion = await session.CompleteAsync(ShortTimeouts, CancellationToken.None);
+            primaryStopCallsAtTimeout = primary.Calls.Count(call => call == "Stop");
+        }
+        finally
+        {
+            stop.SetResult(CaptureProviderStopResult.Failed(
+                false, CaptureProviderFailureCode.StopTimeout, "Unresolved."));
+        }
+
+        Assert.AreEqual(CaptureProviderLifecycleState.Abandoned, completion.State);
+        Assert.AreEqual(CaptureProviderFailureCode.StopTimeout, completion.FailureCode);
+        Assert.IsFalse(completion.WriterResolved);
+        Assert.AreEqual(1, primaryStopCallsAtTimeout);
+        Assert.IsFalse(primary.Calls.Contains("Finalization"));
+    }
+
+    [TestMethod]
     public async Task FinalizeAsync_AuxiliaryStopUnresolved_DoesNotReturnPrimarySuccess()
     {
         using ProviderTestContext context = ProviderTestContext.Create();

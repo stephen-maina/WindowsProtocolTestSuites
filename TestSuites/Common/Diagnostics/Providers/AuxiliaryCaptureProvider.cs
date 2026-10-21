@@ -111,34 +111,41 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
         CaptureProviderSessionHandle handle,
         CancellationToken cancellationToken)
     {
-        CaptureProviderStopResult primaryResult;
-        CaptureProviderStopResult? auxiliaryResult = null;
-        try
+        Task<CaptureProviderStopResult>? auxiliaryStop = null;
+        if (TryGetAuxiliaryHandle(handle, out CaptureProviderSessionHandle? aux) &&
+            sessions.TryGetValue(handle.SessionId, out AuxiliarySession? session))
         {
-            // Stop the auxiliary first, but never let its failure skip primary cleanup.
-            if (TryGetAuxiliaryHandle(handle, out CaptureProviderSessionHandle? aux) &&
-                sessions.TryGetValue(handle.SessionId, out AuxiliarySession? session))
+            session.StopResult = null;
+            auxiliaryStop = Task.Run(async () =>
             {
-                session.StopResult = null;
-                auxiliaryResult = await auxiliary.RequestStopAsync(aux!, cancellationToken)
+                CaptureProviderStopResult result =
+                    await auxiliary.RequestStopAsync(aux!, cancellationToken)
                     .ConfigureAwait(false) ??
                     throw new InvalidOperationException("The auxiliary returned no stop result.");
-                session.StopResult = auxiliaryResult;
-            }
-        }
-        finally
-        {
-            primaryResult = await primary.RequestStopAsync(handle, cancellationToken)
-                .ConfigureAwait(false);
+                session.StopResult = result;
+                return result;
+            }, CancellationToken.None);
         }
 
-        if (auxiliaryResult is not null && !auxiliaryResult.WriterResolved)
+        // Isolate both prologues so a blocked or throwing auxiliary cannot skip
+        // primary cleanup. The orchestrator bounds the combined wait.
+        Task<CaptureProviderStopResult> primaryStop = Task.Run(
+            () => primary.RequestStopAsync(handle, cancellationToken),
+            CancellationToken.None);
+        if (auxiliaryStop is null)
+        {
+            return await primaryStop.ConfigureAwait(false);
+        }
+
+        await Task.WhenAll(primaryStop, auxiliaryStop).ConfigureAwait(false);
+        CaptureProviderStopResult primaryResult = await primaryStop.ConfigureAwait(false);
+        CaptureProviderStopResult auxiliaryResult = await auxiliaryStop.ConfigureAwait(false);
+        if (!auxiliaryResult.WriterResolved)
         {
             return auxiliaryResult;
         }
 
-        if (primaryResult.FailureCode != CaptureProviderFailureCode.None ||
-            auxiliaryResult is null)
+        if (primaryResult.FailureCode != CaptureProviderFailureCode.None)
         {
             return primaryResult;
         }

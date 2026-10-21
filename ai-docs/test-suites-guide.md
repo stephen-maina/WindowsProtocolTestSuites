@@ -331,7 +331,8 @@ verified provider contract; it is not a generic [MS-SMBD] 3.1.5.8 requirement an
 `TestSuites\Common\Diagnostics.Ptf` supplies `PtfDiagnosticsSuite`, `PtfTestDiagnostics`, PTF log/lifecycle bridges and optional `SutLogCollector`. Provider selection uses DriverPlatform plus runtime, independently of SUT Platform. Other property namespaces use an explicit property map.
 
 MS-SMBD integrates the bridge in `TestSuites\MS-SMBD\src\TestSuite\SmbdTestBase.cs`. Deployment owns topology; `MS-SMBD_ServerTestSuite.ptfconfig` owns Diagnostics.* policy. Per-invocation outputs are ptf-log.ndjson, manifest.json and capture.etl when capture succeeds; the runner reconciles authoritative TRX outcomes in runner\runner-evidence.json. Diagnostics.Enabled and SutLog.Enabled are disabled by default.
-`DiagnosticsInvocationLifecycle` restores the complete error ledger into the manifest, including the original protocol primary and sequence/timestamps. `AuxiliaryCaptureProvider` treats an unavailable auxiliary as optional, not a started writer as optional: unresolved or throwing auxiliary stop must still attempt primary cleanup and retain failure/unresolved-writer evidence. Managed regressions in `Diagnostics.Tests\Lifecycle` and `Diagnostics.Tests\Providers` exercise these persistence and composite-ownership boundaries without a SUT.
+
+`DiagnosticsInvocationLifecycle` restores the complete error ledger into the manifest, including the original protocol primary and sequence/timestamps. `AuxiliaryCaptureProvider` treats an unavailable auxiliary as optional, not a started writer as optional: unresolved, throwing or pending auxiliary stop must still attempt primary cleanup and retain failure/unresolved-writer evidence. Both stops are initiated independently; the orchestrator bounds their combined wait. Managed regressions in `Diagnostics.Tests\Lifecycle` and `Diagnostics.Tests\Providers` exercise these persistence and composite-ownership boundaries without a SUT.
 
 ---
 
