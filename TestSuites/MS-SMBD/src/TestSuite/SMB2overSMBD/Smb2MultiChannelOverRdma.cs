@@ -317,16 +317,28 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             alternativeChannelClient.TreeId = treeId;
             alternativeChannelClient.FileId = fileId;
 
-            // Send each read request according to SMB2 read file limit
-	    uint maxReadSize = alternativeChannelClient.Smb2MaxReadSize;
+            ReadFileFromAlternativeChannel(content, lengthRead);
+
+            status = (NtStatus)alternativeChannelClient.Smb2CloseFile();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 Close file is {0}", status);
+
+            alternativeChannelClient.Smb2TreeDisconnect();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 Tree Disconnect is {0}", status);
+
+            alternativeChannelClient.Smb2LogOff();
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 Logoff is {0}", status);
+        }
+
+        private void ReadFileFromAlternativeChannel(byte[] content, uint lengthRead)
+        {
+            uint maxReadSize = Math.Min(
+                alternativeChannelClient.Smb2MaxReadSize,
+                alternativeChannelClient.ClientConnection.MaxReadWriteSize);
+            BaseTestSite.Assert.IsTrue(maxReadSize > 0, "Negotiated READ size must be greater than zero.");
             uint offset = 0;
             while (offset < lengthRead)
             {
-                uint length = maxReadSize;
-                if (offset + length > lengthRead)
-                {
-                    length = lengthRead - offset;
-                }
+                uint length = Math.Min(maxReadSize, lengthRead - offset);
 
                 // Register Memory for RDMA read
                 byte[] directMemory = new byte[length];
@@ -341,7 +353,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 // Read over RDMA channel
                 READ_Response readResponse;
                 byte[] readData;
-                status = (NtStatus)alternativeChannelClient.Smb2ReadOverRdmaChannel(
+                NtStatus status = (NtStatus)alternativeChannelClient.Smb2ReadOverRdmaChannel(
                     (UInt64)offset,
                     (uint)length,
                     channelInfo,
@@ -357,15 +369,6 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 BaseTestSite.Assert.IsTrue(SmbdUtilities.CompareByteArray(directMemory, expected), "Check file content at offset {0} length {1}", offset, length);
                 offset += length;
             }
-
-            status = (NtStatus)alternativeChannelClient.Smb2CloseFile();
-            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 Close file is {0}", status);
-
-            alternativeChannelClient.Smb2TreeDisconnect();
-            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 Tree Disconnect is {0}", status);
-
-            alternativeChannelClient.Smb2LogOff();
-            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 Logoff is {0}", status);
         }
 
 

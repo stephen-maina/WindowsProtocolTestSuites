@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Xml.Linq;
 using Microsoft.Protocol.TestSuites.Smbd.TestSuite;
 using Microsoft.Protocols.TestSuites.Smbd.Adapter;
@@ -28,6 +29,8 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
         private object previousSite;
         private static readonly FieldInfo BaseSite = typeof(TestClassBase).GetField(
             "baseTestSite", BindingFlags.NonPublic | BindingFlags.Static);
+
+        public TestContext TestContext { get; set; }
 
         [TestInitialize]
         public void Initialize()
@@ -268,6 +271,193 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             Assert.IsTrue(new TestConfig(Site(properties)).ExpectDisconnectOnReceiveOverflow);
         }
 
+        [DataTestMethod]
+        [DataRow("final", 1u, (ushort)0, false)]
+        [DataRow("final", 1u, (ushort)1, true)]
+        [DataRow("final", 1u, (ushort)2, true)]
+        [DataRow("final", 3u, (ushort)0, true)]
+        [DataRow("final", 3u, (ushort)1, true)]
+        [DataRow("intermediate", 1u, (ushort)0, false)]
+        [DataRow("intermediate", 1u, (ushort)1, true)]
+        [DataRow("intermediate", 3u, (ushort)0, true)]
+        [DataRow("intermediate", 3u, (ushort)1, true)]
+        [DataRow("empty", 1u, (ushort)0, false)]
+        [DataRow("empty", 1u, (ushort)1, true)]
+        [DataRow("empty", 3u, (ushort)0, true)]
+        [DataRow("empty", 3u, (ushort)1, true)]
+        public void ValidateReadResponse_ChecksEveryMessageBeforeReplenishment(
+            string kind, uint initialCredits, ushort grant, bool accepted)
+        {
+            var packet = ReadResponse();
+            packet.Buffer = Enumerable.Range(0, 17).Select(i => (byte)i).ToArray();
+            packet.PayLoad.DataLength = (uint)packet.Buffer.Length;
+            byte[] bytes = packet.ToBytes();
+            var messages = new List<SmbdDataTransferMessage>();
+            if (kind == "empty")
+            {
+                messages.Add(Transfer(Array.Empty<byte>(), 0, grant));
+                messages.Add(Transfer(bytes, 0, 1));
+            }
+            else if (kind == "intermediate")
+            {
+                messages.Add(Transfer(bytes.Take(40).ToArray(), (uint)bytes.Length - 40, grant));
+                messages.Add(Transfer(bytes.Skip(40).ToArray(), 0, 1));
+            }
+            else
+            {
+                messages.Add(Transfer(bytes, 0, grant));
+            }
+
+            var test = new SmbdCreditManagement();
+            Configure(test, Properties());
+            using var receiveResults = new SyncFilterQueue<SmbdRequestResult>();
+            var endpoint = (SmbdConnectionEndpoint)RuntimeHelpers.GetUninitializedObject(
+                typeof(SmbdConnectionEndpoint));
+            Set(endpoint, "receiveRequestResult", receiveResults);
+            var client = new CreditClient(messages);
+            SetConnection(client, new SmbdConnection
+            {
+                ReceiveCredits = initialCredits,
+                SendCreditTarget = 1,
+                Endpoint = endpoint
+            });
+            Set(Get(test, "smbdAdapter"), "client", client);
+            try
+            {
+                Action validate = () => test.ValidateReadResponse((int)initialCredits, bytes.Length);
+                if (accepted)
+                {
+                    validate();
+                    Assert.AreEqual(messages.Count, client.Received);
+                }
+                else
+                {
+                    var failure = Assert.ThrowsExactly<AssertFailedException>(validate);
+                    StringAssert.Contains(failure.Message, "last credit");
+                    Assert.AreEqual(1, client.Received);
+                    Assert.AreEqual(0, client.Posted);
+                    Assert.AreEqual(0, client.Sent);
+                }
+            }
+            finally
+            {
+                TestContext.WriteLine(
+                    $"kind={kind}, initialCredits={initialCredits}, grant={grant}, "
+                    + $"received={client.Received}, posted={client.Posted}, sent={client.Sent}");
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(65536u)]
+        [DataRow(32768u)]
+        [DataRow(1048576u)]
+        public void AlternativeChannelInitialization_ForwardsConfiguredCap(uint configured)
+        {
+            var properties = Properties();
+            properties["ClientMaxReadWriteSize"] = configured.ToString();
+            var test = InitializeMultichannel(properties);
+            var client = (Smb2OverSmbdTestClient)Get(test, "alternativeChannelClient");
+            TestContext.WriteLine($"configured={configured}, alternativeClientCap={client.ClientMaxReadWriteSize}");
+            Assert.AreEqual(configured, client.ClientMaxReadWriteSize);
+        }
+
+        [DataTestMethod]
+        [DataRow(65536u, 1048576u, 150000u, new uint[] { 65536, 65536, 18928 })]
+        [DataRow(32768u, 1048576u, 70000u, new uint[] { 32768, 32768, 4464 })]
+        [DataRow(1048576u, 32768u, 70000u, new uint[] { 32768, 32768, 4464 })]
+        [DataRow(1048576u, 1048576u, 1048593u, new uint[] { 1048576, 17 })]
+        [DataRow(65536u, 65536u, 65536u, new uint[] { 65536 })]
+        [DataRow(1048576u, 1048576u, 0u, new uint[] { })]
+        public void AlternativeChannelRead_BoundsActualRegisteredAndEncodedLengths(
+            uint effectiveRdmaLimit, uint smb2Limit, uint total, uint[] expectedLengths)
+        {
+            var test = InitializeMultichannel(Properties());
+            byte[] content = Enumerable.Range(0, (int)total).Select(i => (byte)(i % 251)).ToArray();
+            var client = new RdmaReadClient(content) { Smb2MaxReadSize = smb2Limit };
+            SetConnection(client, new SmbdConnection { MaxReadWriteSize = effectiveRdmaLimit });
+            Set(test, "alternativeChannelClient", client);
+            Invoke(test, "ReadFileFromAlternativeChannel", content, total);
+
+            TestContext.WriteLine(
+                $"SMBD={effectiveRdmaLimit}, SMB2={smb2Limit}, total={total}, "
+                + $"registered=[{string.Join(",", client.Registered.Select(d => d.Length))}], "
+                + $"requested=[{string.Join(",", client.Requests.Select(r => r.Length))}], "
+                + $"offsets=[{string.Join(",", client.Requests.Select(r => r.Offset))}]");
+            CollectionAssert.AreEqual(expectedLengths, client.Registered.Select(d => d.Length).ToArray());
+            CollectionAssert.AreEqual(expectedLengths, client.Requests.Select(r => r.Length).ToArray());
+            CollectionAssert.AreEqual(expectedLengths, client.Descriptors.Select(d => d.Length).ToArray());
+            CollectionAssert.AreEqual(expectedLengths, client.MemoryReads.ToArray());
+            ulong offset = 0;
+            foreach (var request in client.Requests)
+            {
+                Assert.AreEqual(offset, request.Offset);
+                Assert.AreEqual(Channel_Values.CHANNEL_RDMA_V1, request.Channel);
+                offset += request.Length;
+            }
+            Assert.AreEqual((ulong)total, offset);
+        }
+
+        [DataTestMethod]
+        [DataRow(0u, 65536u)]
+        [DataRow(65536u, 0u)]
+        public void AlternativeChannelRead_ZeroLimitFailsBeforeRegistration(uint rdmaLimit, uint smb2Limit)
+        {
+            var test = InitializeMultichannel(Properties());
+            var client = new RdmaReadClient(new byte[1]) { Smb2MaxReadSize = smb2Limit };
+            SetConnection(client, new SmbdConnection { MaxReadWriteSize = rdmaLimit });
+            Set(test, "alternativeChannelClient", client);
+            Assert.ThrowsExactly<AssertFailedException>(() =>
+                Invoke(test, "ReadFileFromAlternativeChannel", new byte[1], 1u));
+            Assert.AreEqual(0, client.Registered.Count);
+            Assert.AreEqual(0, client.Requests.Count);
+        }
+
+        private static SmbdDataTransferMessage Transfer(byte[] buffer, uint remaining, ushort grant) =>
+            new SmbdDataTransferMessage
+            {
+                CreditsRequested = 1,
+                CreditsGranted = grant,
+                DataOffset = buffer.Length == 0 ? 0u : (uint)SmbdDataTransferMessage.DEFAULT_DATA_OFFSET,
+                DataLength = (uint)buffer.Length,
+                RemainingDataLength = remaining,
+                Buffer = buffer
+            };
+
+        private static Smb2ReadResponsePacket ReadResponse()
+        {
+            var response = new Smb2ReadResponsePacket();
+            response.Header.Command = Smb2Command.READ;
+            response.Header.Flags = Packet_Header_Flags_Values.FLAGS_SERVER_TO_REDIR;
+            response.Header.CreditRequestResponse = 64;
+            response.PayLoad.StructureSize = 17;
+            response.PayLoad.DataOffset = (byte)Smb2OverSmbdTestClient.READ_RESPONSE_HEADER_SIZE;
+            return response;
+        }
+
+        private static Smb2MultiChannelOverRdma InitializeMultichannel(NameValueCollection properties)
+        {
+            var test = new Smb2MultiChannelOverRdma();
+            Configure(test, properties);
+            Invoke(test, "TestInitialize");
+            return test;
+        }
+
+        private static void Invoke(object target, string name, params object[] args)
+        {
+            try
+            {
+                target.GetType().GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)
+                    .Invoke(target, args);
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+            }
+        }
+
+        private static void SetConnection(Smb2OverSmbdTestClient client, SmbdConnection connection) =>
+            typeof(SmbdClient).GetProperty("Connection").SetValue(Get(client, "smbdClient"), connection);
+
         private static DetectorClient Detector(uint margin)
         {
             var client = (DetectorClient)RuntimeHelpers.GetUninitializedObject(typeof(DetectorClient));
@@ -395,6 +585,87 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                     throw Failure;
                 }
                 return Status;
+            }
+        }
+
+        private sealed class CreditClient : Smb2OverSmbdTestClient
+        {
+            private readonly Queue<SmbdDataTransferMessage> messages;
+            public int Received { get; private set; }
+            public int Posted { get; private set; }
+            public int Sent { get; private set; }
+            public CreditClient(IEnumerable<SmbdDataTransferMessage> messages) : base(TimeSpan.Zero)
+            {
+                this.messages = new Queue<SmbdDataTransferMessage>(messages);
+                Decoder.TransportType = Smb2TransportType.Rdma;
+            }
+            public override NtStatus SmbdReceiveDataTransferMessage(
+                TimeSpan timeout, out SmbdDataTransferMessage message)
+            {
+                message = messages.Dequeue();
+                Received++;
+                ClientConnection.ReceiveCredits--;
+                ClientConnection.SendCredits += message.CreditsGranted;
+                return NtStatus.STATUS_SUCCESS;
+            }
+            public override NtStatus SmbdPostReceive()
+            {
+                Posted++;
+                ClientConnection.ReceiveCredits++;
+                return NtStatus.STATUS_SUCCESS;
+            }
+            public override NtStatus SmbdSendDataTransferMessage(
+                ushort requested, ushort granted, SmbdDataTransfer_Flags flags, ushort reserved,
+                uint remaining, uint dataOffset, uint dataLength, byte[] padding, byte[] buffer)
+            {
+                Sent++;
+                return NtStatus.STATUS_SUCCESS;
+            }
+        }
+
+        private sealed class RdmaReadClient : Smb2OverSmbdTestClient
+        {
+            private readonly byte[] content;
+            public List<SmbdBufferDescriptorV1> Registered { get; } = new();
+            public List<SmbdBufferDescriptorV1> Descriptors { get; } = new();
+            public List<READ_Request> Requests { get; } = new();
+            public List<uint> MemoryReads { get; } = new();
+            public RdmaReadClient(byte[] content) : base(TimeSpan.Zero)
+            {
+                this.content = content;
+                Smb2AvailableCredits = 64;
+            }
+            public override NtStatus SmbdRegisterBuffer(
+                uint length, SmbdBufferReadWrite flag, bool reversed, out SmbdBufferDescriptorV1 descriptor)
+            {
+                if (length == 0)
+                {
+                    throw new InvalidOperationException("A zero-size registration would prevent READ progress.");
+                }
+                Assert.AreEqual(SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE, flag);
+                descriptor = new SmbdBufferDescriptorV1 { Length = length, Token = 1 };
+                Registered.Add(descriptor);
+                return NtStatus.STATUS_SUCCESS;
+            }
+            public override void SendPacket(byte[] data)
+            {
+                var header = TypeMarshal.ToStruct<Packet_Header>(data);
+                Assert.AreEqual(Smb2Command.READ, header.Command);
+                var request = TypeMarshal.ToStruct<READ_Request>(data.Skip(64).ToArray());
+                Requests.Add(request);
+                Descriptors.Add(TypeMarshal.ToStruct<SmbdBufferDescriptorV1>(
+                    data.Skip(request.ReadChannelInfoOffset).ToArray()));
+            }
+            public override T ExpectPacket<T>(ulong messageId)
+            {
+                Assert.AreEqual(typeof(Smb2ReadResponsePacket), typeof(T));
+                return (T)(object)ReadResponse();
+            }
+            public override NtStatus SmbdReadRegisteredBuffer(byte[] data, SmbdBufferDescriptorV1 descriptor)
+            {
+                MemoryReads.Add((uint)data.Length);
+                Array.Copy(content, (long)Requests.Last().Offset, data, 0, data.Length);
+                return NtStatus.STATUS_SUCCESS;
             }
         }
     }

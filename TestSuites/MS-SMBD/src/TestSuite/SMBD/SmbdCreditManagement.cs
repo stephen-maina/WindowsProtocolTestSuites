@@ -425,6 +425,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                         status,
                         "Received SMBDirect Data Transfer Message with status {0}", status);
 
+                    // The SDK has consumed the receive credit corresponding to the peer's send credit.
+                    // [MS-SMBD] 3.1.5.1 applies to every message, including final and empty messages.
+                    if (smbdAdapter.ClientConnection.ReceiveCredits == 0)
+                    {
+                        BaseTestSite.Assert.IsTrue(transferPackage.CreditsGranted > 0,
+                            "SMBDirect Data Transfer message with last credit should have CreditsGranted greater than 0");
+                    }
+
                     // WHAT: skip empty Data Transfer messages (DataLength 0 and RemainingDataLength 0) instead of validating them as read data.
                     // WHY: a peer may legally send an empty message purely to grant credits; the old code treated it as a malformed read
                     //      fragment and failed on ksmbd (Windows never sends them here, so the test only passed by accident).
@@ -455,14 +463,6 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     }
                 }
 
-                // WHAT: assert the last-credit rule only when receive credits are exhausted and more fragments follow.
-                // WHY: an unconditional CreditsGranted > 0 check fails on legal messages that carry a zero grant.
-                // SPEC: [MS-SMBD] 3.1.5.1 "If Connection.SendCredits is 1 and the CreditsGranted field of the message is 0, stop processing".
-                if (smbdAdapter.ClientConnection.ReceiveCredits == 0 && transferPackage.RemainingDataLength != 0)
-                {
-                    BaseTestSite.Assert.IsTrue(transferPackage.CreditsGranted > 0,
-                        "SMBDirect Data Transfer message with last credit should have CreditsGranted greater than 0");
-                }
                 #region send empty message to grant credit
                 status = NtStatus.STATUS_SUCCESS;
                 do

@@ -307,6 +307,17 @@ Reuse `SmbdAdapter.GetRdmaChannelDataSize()` for the configured multiple-buffer-
 Other boundary tests retain their scenario-specific lengths. `QueryNetworkInterfaceMaxOutputResponse` controls the actual
 IOCTL output request, capped at SMB2 MaxTransactSize with matching SMB2 credit charge (not SMBD credits).
 The multi-channel scenario creates its own main-channel client; its initializer must forward this setting explicitly.
+Its independent alternative-channel client must likewise receive `ClientMaxReadWriteSize` before negotiation.
+`Smb2MultiChannelOverRdma.ReadFileFromAlternativeChannel` is the actual post-session-setup READ loop: both registered
+memory lengths and encoded READ lengths use the smaller of effective SMBD MaxReadWriteSize and SMB2 MaxReadSize,
+with a bounded tail. Its hardware-free regressions execute that loop and the real packet builder, replacing only provider
+operations and negotiated state. Do not infer successful live negotiation or registration from those regressions.
+`SmbdCreditManagement.ValidateReadResponse` must validate the last-credit grant on **every** received message before
+final/empty exits or replenishment: the SDK already decremented client ReceiveCredits, which tracks the peer's remaining
+SendCredits. A zero grant is legal when credits remain; there is no final/empty exception when they reach zero.
+These invariants are covered by `ValidateReadResponse_ChecksEveryMessageBeforeReplenishment`,
+`AlternativeChannelInitialization_ForwardsConfiguredCap`, and
+`AlternativeChannelRead_BoundsActualRegisteredAndEncodedLengths` in the existing regression fixture.
 The receive-overflow-disconnection test requires explicit `ExpectDisconnectOnReceiveOverflow=true` for an independently
 verified provider contract; it is not a generic [MS-SMBD] 3.1.5.8 requirement and defaults to inconclusive.
 

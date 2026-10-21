@@ -672,7 +672,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | &#32;| &#32; |
 | -------------| ------------- |
 |  **Smb2MultichannelOverRdma**| | 
-|  **Test ID**|  **BVT_Smb2MultiChannel_2Channels_DiffNicTypeDiffTransport**| 
+|  **Test ID**|  **BVT_Smb2MultipleChannel_2Channels_DiffNicTypeDiffTransport**|
 |  **Priority**| P0| 
 |  **Description** | Verify SMB2 can establish alternate channel over SMBD. Main channel is established over TCP on non RDMA NIC. The alternative channel is over RDMA on RDMA-NIC.| 
 |  **Prerequisites**| N/A| 
@@ -680,9 +680,10 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Establish SMB2 session and open file and get the returned **TreeId** and **FileId**.| 
 | | SMB2 WRITE file.| 
 | | Query Network interface to find RDMA capable NIC.| 
+| | Apply ClientMaxReadWriteSize to the independent alternative-channel client before SMBD negotiation.|
 | | Establish alternate connection over RDMA over R-NIC| 
 | | Establish SMB2 session and open file with **TreeId** and **FileId** returned in TCP connection.| 
-| | SMB2 READ file over RDMA| 
+| | SMB2 READ file over RDMA. Bound each registered buffer and READ Length by both negotiated SMB2 MaxReadSize and effective SMBD MaxReadWriteSize, with a smaller final chunk when needed.|
 | | SMB2 CLOSE file| 
 | | SMB2 TreeDisconnect| 
 | | SMB2 LOGOFF| 
@@ -1661,6 +1662,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Establish SMB2 session and open file.| 
 | | Create SMB2 READ request package with **Moderate** size| 
 | | Receive 10 SMBD data transfer messages to consume all the credits on server.| 
+| | Before replenishment or skipping an empty/final message, require CreditsGranted greater than zero when receiving that message exhausts the credits granted to the server. Zero grants remain valid while credits remain.|
 | | Wait for 4 seconds and verify server will not continue to send SMBD Data Transfer message. Send empty SMBD Data Transfer message with 10 credits.| 
 | | Verify server will continue to send SMBD data transfer message.| 
 | | Receive 10 SMBD data transfer messages to consume all the credits| 
@@ -2449,9 +2451,10 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | Establish SMB2 session and open file and get the returned **TreeId** and **FileId**.| 
 | | SMB2 WRITE file.| 
 | | Query Network interface to find RDMA capable NIC.| 
+| | Apply ClientMaxReadWriteSize to the independent alternative-channel client before SMBD negotiation.|
 | | Establish alternate connection over RDMA over R-NIC| 
 | | Establish SMB2 session and open file with **TreeId** and **FileId** returned in TCP connection.| 
-| | SMB2 READ file over RDMA| 
+| | SMB2 READ file over RDMA. Bound each registered buffer and READ Length by both negotiated SMB2 MaxReadSize and effective SMBD MaxReadWriteSize, with a smaller final chunk when needed.|
 | | SMB2 CLOSE file| 
 | | SMB2 TreeDisconnect| 
 | | SMB2 LOGOFF| 
@@ -2588,9 +2591,17 @@ Packet-builder tests capture encoded requests instead of using a provider.
 | NegotiateCreditsAreNonzeroNotBoundedByRequest | Grants equal to and above the requested credit pass; a zero grant fails the actual checker. |
 | ReceiveOverflowProviderExpectationIsOptIn | Both Windows and non-Windows platforms mark the overflow scenario inconclusive before provider access when the opt-in is false. |
 | MissingOverflowExpectationRemainsDisabled | An absent property defaults to false; an explicit true value is parsed. |
+| ValidateReadResponse_ChecksEveryMessageBeforeReplenishment | Drive the actual validator with final, intermediate, and empty messages: reject zero grants consuming the last credit before posting/sending replenishment; accept nonzero last-credit grants and zero grants while credits remain. Valid sequences reassemble and decode an actual SMB2 READ response. |
+| AlternativeChannelInitialization_ForwardsConfiguredCap | The actual multi-channel initializer forwards configured 32768, 65536, and default 1048576 caps to its independent alternative client. |
+| AlternativeChannelRead_BoundsActualRegisteredAndEncodedLengths | Run the actual alternative READ loop and READ packet builder with controlled registered memory. Assert matching registration, descriptor, encoded READ, and memory-read lengths; contiguous offsets; and data equality for lower effective SMBD or SMB2 caps, tail chunks, the default, and empty input. |
+| AlternativeChannelRead_ZeroLimitFailsBeforeRegistration | Zero effective SMBD or SMB2 READ capacity fails before registration or request transmission, preventing a non-progressing loop. This is a local READ prerequisite, not a protocol-defined SMBD minimum. |
 
 Only genuine timeout exceptions are accepted by existing negative no-response scenarios. Provider, cancellation, and
 connection failures now fail those scenarios instead of being mistaken for successful no-response checks.
+The credit fixture supplies post-receive accounting at the client/provider forwarding boundary; the SDK's real decrement
+is separately traced in `SmbdClient.ReceiveDataTransferMessage`. The alternative READ tests inject already-negotiated
+connection state; they do not perform live negotiation, session binding, or provider memory registration. The READ loop is
+the same method called after alternative-channel session setup, not a duplicate sizing implementation.
 The true overflow-provider branch, native queues, and successful end-to-end READ/WRITE responses still require an
 appropriately configured RDMA SUT; the local regressions do not claim to validate these.
 

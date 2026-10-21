@@ -255,7 +255,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             return status;
         }
 
-        public NtStatus SmbdRegisterBuffer(
+        public virtual NtStatus SmbdRegisterBuffer(
             uint length,
             SmbdBufferReadWrite flag,
             bool reversed,
@@ -279,12 +279,12 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             logEvent = null;
         }
 
-        public NtStatus SmbdPostReceive()
+        public virtual NtStatus SmbdPostReceive()
         {
             return this.smbdClient.PostReceive();
         }
 
-        public NtStatus SmbdSendDataTransferMessage(
+        public virtual NtStatus SmbdSendDataTransferMessage(
             ushort creditsRequested,
             ushort creditsGranted,
             SmbdDataTransfer_Flags flags,
@@ -310,7 +310,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         }
 
 
-        public NtStatus SmbdReceiveDataTransferMessage(
+        public virtual NtStatus SmbdReceiveDataTransferMessage(
             TimeSpan timeout,
             out SmbdDataTransferMessage transferMsg
             )
@@ -326,7 +326,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             return smbdClient.WriteRegisteredBuffer(data, bufferDescriptor);
         }
 
-        public NtStatus SmbdReadRegisteredBuffer(byte[] data, SmbdBufferDescriptorV1 bufferDescriptor)
+        public virtual NtStatus SmbdReadRegisteredBuffer(byte[] data, SmbdBufferDescriptorV1 bufferDescriptor)
         {
             return smbdClient.ReadRegisteredBuffer(data, bufferDescriptor);
         }

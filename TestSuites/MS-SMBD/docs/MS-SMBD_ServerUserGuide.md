@@ -432,7 +432,7 @@ The following settings are the capability of the MS-SMBD protocol.
 | | The default value is 8136.| 
 | WindowsMinMaxReadWriteSize| **Windows-specific** ([MS-SMBD] Appendix A <7>, Section 3.1.5.7). The minimum MaxReadWriteSize a Windows SUT returns. The protocol defines no minimum; this is only asserted when Platform is a Windows SUT.| 
 | | The default value is 1048576.| 
-| ClientMaxReadWriteSize| Implementation-specific value ([MS-SMBD] Section 3.1.5.7): the client's MaxReadWriteSize; the negotiated value is the smaller of this and the SUT's value.| 
+| ClientMaxReadWriteSize| Implementation-specific value ([MS-SMBD] Section 3.1.5.7): the client's MaxReadWriteSize; the negotiated value is the smaller of this and the SUT's value. Also applied to the independent alternative-channel client in both **Smb2MultiChannelOverRdma** scenarios. Its registered READ chunks respect both this effective SMBD limit and SMB2 MaxReadSize, including the final partial chunk. A zero effective READ limit fails before registration rather than looping without progress.|
 | | The default value is 1048576.| 
 | QueryNetworkInterfaceMaxOutputResponse| Nonzero requested MaxOutputResponse for FSCTL_QUERY_NETWORK_INTERFACE_INFO; capped at negotiated SMB2 MaxTransactSize and charged the corresponding SMB2 credits. Choose a value sufficient for the SUT's interface list; insufficient space can return a server buffer-size error.|
 | | The default value is 65536.| 
