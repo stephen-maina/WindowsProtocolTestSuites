@@ -243,6 +243,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
     {
         internal readonly V1.RdmaEndpoint Inner;
         public Ndv1Endpoint(V1.RdmaEndpoint endpoint) { Inner = endpoint; }
+        public int Flush() { return Inner.Flush(); }
 
         public int Send(NdSegment[] segments, out ulong resultHandler)
         {
@@ -563,6 +564,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
     {
         internal readonly V2.RdmaEndpoint Inner;
         public Ndv2Endpoint(V2.RdmaEndpoint endpoint) { Inner = endpoint; }
+        public int Flush() { return Inner.Flush(); }
 
         public int Send(NdSegment[] segments, out ulong resultHandler)
         {

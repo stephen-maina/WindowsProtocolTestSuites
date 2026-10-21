@@ -133,6 +133,10 @@ HRESULT RdmaAdapter::DeregisterMemory(unsigned __int64 memoryHandler)
         SIZE_T BytesRet;
         result = _adapter->GetOverlappedResult(_pOverlapped, &BytesRet, TRUE );
     }
+	if (result != ND_SUCCESS)
+	{
+		return result;
+	}
 	delete newElem->Buffer;
 
 	// remove from list
@@ -216,7 +220,13 @@ void RdmaAdapter::ReleaseRegisterMemory()
 {
 	while(_memoryHandlerList->Next != NULL)
 	{
-		DeregisterMemory((unsigned __int64)_memoryHandlerList->Next);
+		HRESULT result = DeregisterMemory((unsigned __int64)_memoryHandlerList->Next);
+		if (result != ND_SUCCESS)
+		{
+			throw gcnew InvalidOperationException(String::Format(
+				"RDMA memory deregistration failed with 0x{0:X8}; registered storage remains owned.",
+				result));
+		}
 	}
 }
 

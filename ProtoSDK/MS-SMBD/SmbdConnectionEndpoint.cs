@@ -28,6 +28,20 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         private INativeRdmaCompletionQueue rdmaCompletionQueue;
         private INativeRdmaConnector rdmaConnector;
         private INativeRdmaEndpoint rdmaEndpoint;
+        private readonly HashSet<ulong> submittedRequests = new HashSet<ulong>();
+        private readonly Dictionary<ulong, PendingBind> pendingBinds = new Dictionary<ulong, PendingBind>();
+        private readonly Dictionary<ulong, SmbdMemoryWindow> pendingInvalidations = new Dictionary<ulong, SmbdMemoryWindow>();
+        private readonly List<SmbdMemoryWindow> retainedBindCleanup = new List<SmbdMemoryWindow>();
+        private readonly ManualResetEventSlim bindsDrained = new ManualResetEventSlim(true);
+        private int registrationInProgress;
+
+        private sealed class PendingBind
+        {
+            internal SmbdMemoryWindow Window;
+            internal SmbdRequest InvalidRequest;
+            internal bool Abandoned;
+            internal bool Completed;
+        }
 #else
         private RdmaLinuxAdapter linuxAdapter;
 #endif
@@ -479,6 +493,42 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         /// <returns></returns>
         public void Disconnect()
         {
+#if WINDOWS
+            bool wasConnected;
+            lock (locker)
+            {
+                wasConnected = isConnected;
+                isConnected = false;
+                if (pendingBinds.Count != 0 || pendingInvalidations.Count != 0)
+                {
+                    NtStatus flushStatus = (NtStatus)rdmaEndpoint.Flush();
+                    LogEvent($"Disconnect: Bind drain requested; Flush returned {flushStatus}. Resources remain owned until completion.");
+                }
+            }
+            if (wasConnected)
+            {
+                rdmaConnector.Disconnect();
+                rdmaNotificationSemaphore.Release();
+            }
+            if (!bindsDrained.Wait(TimeSpan.FromSeconds(5)))
+            {
+                LogEvent("Disconnect: Bind completions did not drain. Registered memory and windows remain owned; disposal is incomplete.");
+                throw new TimeoutException("RDMA Bind completion drain failed; native resources are retained.");
+            }
+            lock (locker)
+            {
+                foreach (SmbdMemoryWindow window in retainedBindCleanup.ToArray())
+                {
+                    retainedBindCleanup.Remove(window);
+                    CleanupFailedRegisterMemoryWindow(window, default, false);
+                }
+                if (retainedBindCleanup.Count != 0)
+                {
+                    throw new InvalidOperationException("RDMA Bind resource cleanup failed; registered memory is retained.");
+                }
+            }
+            LogEvent("RDMA connection is disconnected by test suite.");
+#else
             lock (locker)
             {
                 if (isConnected == false)
@@ -498,17 +548,6 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             }
 #endif
 
-#if WINDOWS
-            rdmaConnector.Disconnect();
-            // let notify thread stop
-            rdmaNotificationSemaphore.Release();
-            for (int i = 0; i < THREAD_COUNT; ++i)
-            {
-                //threadStopSemaphore.WaitOne(); // wait thread to stop
-            }
-
-            LogEvent("RDMA connection is disconnected by test suite.");
-            this.logEndpointEvent = null;
 #endif
         }
 
@@ -533,6 +572,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 #endif
 
 #if WINDOWS
+            lock (locker)
+            {
+                if (retainedBindCleanup.Count != 0)
+                {
+                    LogEvent("SendData: registered memory cleanup is outstanding; refusing another allocation.");
+                    return NtStatus.STATUS_DEVICE_BUSY;
+                }
+            }
             NdSegment sge = new NdSegment();
             sge.Length = (uint)data.LongLength;
             sge.MemoryHandler = 0;
@@ -544,17 +591,22 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 
             // send
             UInt64 resultId;
-            NtStatus status = (NtStatus)rdmaEndpoint.Send(new NdSegment[] { sge }, out resultId);
+            NtStatus status;
+            lock (locker)
+            {
+                status = (NtStatus)rdmaEndpoint.Send(new NdSegment[] { sge }, out resultId);
+                if (status == NtStatus.STATUS_SUCCESS)
+                {
+                    TrackSubmittedRequest(resultId);
+                }
+            }
             if (status != NtStatus.STATUS_SUCCESS)
             {
                 return status;
             }
-            // send request has been submitted
-            requestCount++;
-            rdmaNotificationSemaphore.Release();
-
             // get the notification
-            SmbdRequestResult item = GetRequestResult(new TimeSpan(0, 0, 5), RequestType.Send);
+            SmbdRequestResult item = otherRequestResult.Dequeue(
+                new TimeSpan(0, 0, 5), result => result.ResultId == resultId);
             this.LogEvent(string.Format("Send data with result id: 0x{0:X}. And get notification with id: 0x{1:X}, status: {2}",
                 resultId,
                 item.ResultId,
@@ -562,9 +614,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 ));
 
             // deregister memory
-            rdmaAdapter.DeregisterMemory(sge.MemoryHandler);
+            NtStatus cleanupStatus = CleanupFailedRegisterMemoryWindow(
+                new SmbdMemoryWindow { MemoryHandlerId = sge.MemoryHandler }, default, false);
 
-            return (NtStatus)item.ResultInfo.Status;
+            return item.ResultInfo.Status == 0 ? cleanupStatus : (NtStatus)item.ResultInfo.Status;
 #endif
         }
 
@@ -726,25 +779,25 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             receiveRequest.EntryIndex = receiveIndex;
             receiveRequest.Type = RequestType.Receive;
 #if WINDOWS
-            NtStatus ret = (NtStatus)rdmaEndpoint.Receive(
-                new NdSegment[] { receiveEntries[receiveIndex].Segment },
-                out receiveRequest.ResultId);
+            NtStatus ret;
+            lock (locker)
+            {
+                ret = (NtStatus)rdmaEndpoint.Receive(
+                    new NdSegment[] { receiveEntries[receiveIndex].Segment },
+                    out receiveRequest.ResultId);
+                if (ret == NtStatus.STATUS_SUCCESS)
+                {
+                    receiveRequestList.Add(receiveRequest);
+                    ReceivePostedCount++;
+                    TrackSubmittedRequest(receiveRequest.ResultId);
+                }
+            }
 
             if (ret != NtStatus.STATUS_SUCCESS)
             {
                 this.LogEvent(string.Format("Raise receive request with error code {0}", ret));
                 return ret;
             }
-            // receive request has been submitted
-            requestCount++;
-            rdmaNotificationSemaphore.Release();
-
-            lock (locker)
-            {
-                receiveRequestList.Add(receiveRequest);
-                ReceivePostedCount++;
-            }
-
             this.LogEvent(
                 string.Format(
                     "Post receive successfully with entry 0x{0:X} with memory handler 0x{1:X} notification id: 0x{2:X}",
@@ -863,6 +916,38 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 #endif
 
 #if WINDOWS
+            if (Interlocked.CompareExchange(ref registrationInProgress, 1, 0) != 0)
+            {
+                LogEvent("RegisterMemoryWindow: another registration owns the submission slot.");
+                return NtStatus.STATUS_DEVICE_BUSY;
+            }
+            try
+            {
+                return RegisterMemoryWindowWindows(size, flag, reversed, out bufferDescriptor);
+            }
+            finally
+            {
+                Volatile.Write(ref registrationInProgress, 0);
+            }
+#endif
+        }
+
+#if WINDOWS
+        private NtStatus RegisterMemoryWindowWindows(uint size, uint flag, bool reversed, out RdmaBufferDescriptor bufferDescriptor)
+        {
+            bufferDescriptor = new RdmaBufferDescriptor();
+            lock (locker)
+            {
+                if (!isConnected)
+                {
+                    return NtStatus.STATUS_CONNECTION_DISCONNECTED;
+                }
+                if (pendingBinds.Count != 0 || pendingInvalidations.Count != 0 || retainedBindCleanup.Count != 0)
+                {
+                    LogEvent("RegisterMemoryWindow: previous Bind or failed cleanup still owns resources; refusing another allocation.");
+                    return NtStatus.STATUS_DEVICE_BUSY;
+                }
+            }
             // register the buffer
             SmbdMemoryWindow memoryWindow = new SmbdMemoryWindow();
             memoryWindow.IsValid = true;
@@ -910,26 +995,41 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 }
 
                 LogEvent(string.Format("RegisterMemoryWindow: CreateMemoryWindow failed with {0}", status));
-                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false, false);
+                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false);
                 return status;
             }
 
             memoryWindowSupported = true;
 
-            // invalid notification request has been submitted
-            Interlocked.Increment(ref requestCount);
-            rdmaNotificationSemaphore.Release();
-
             // bind
             this.LogEvent(string.Format("Binding memory window: size={0}, flag={1}, reversed={2}",
                 size, flag, reversed));
             UInt64 resultId;
-            status = (NtStatus)rdmaEndpoint.Bind(
-                memoryWindow.MemoryHandlerId,
-                memoryWindow.RdmaMW,
-                (RdmaReadWriteFlag)flag,
-                reversed,
-                out memoryWindow.BufferDescriptor, out resultId);
+            PendingBind pending = new PendingBind { Window = memoryWindow, InvalidRequest = invalidRequest };
+            lock (locker)
+            {
+                if (!isConnected)
+                {
+                    CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false);
+                    return NtStatus.STATUS_CONNECTION_DISCONNECTED;
+                }
+                status = (NtStatus)rdmaEndpoint.Bind(
+                    memoryWindow.MemoryHandlerId,
+                    memoryWindow.RdmaMW,
+                    (RdmaReadWriteFlag)flag,
+                    reversed,
+                    out memoryWindow.BufferDescriptor, out resultId);
+                if (status == NtStatus.STATUS_SUCCESS)
+                {
+                    pendingBinds.Add(resultId, pending);
+                    bindsDrained.Reset();
+                    if (invalidRequest.ResultId != 0)
+                    {
+                        receiveRequestList.Add(invalidRequest);
+                    }
+                    TrackSubmittedRequest(resultId);
+                }
+            }
 
             LogEvent(string.Format(
                 "RegisterMemoryWindow: Bind returned {0}, resultId=0x{1:X}",
@@ -937,13 +1037,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             if (status != NtStatus.STATUS_SUCCESS)
             {
                 LogEvent(string.Format("RegisterMemoryWindow: Bind failed with {0}", status));
-                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false, true);
+                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false);
                 return status;
-            }
-
-            lock (locker)
-            {
-                this.receiveRequestList.Add(invalidRequest);
             }
 
             // NDSPI v2 Bind is asynchronous. Wait for the completion whose result id
@@ -962,8 +1057,17 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 LogEvent(string.Format(
                     "RegisterMemoryWindow: Timed out waiting for Bind completion with resultId=0x{0:X}. Exception: {1}",
                     resultId, ex.Message));
-                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, true, true);
-                return NtStatus.STATUS_TIMEOUT;
+                lock (locker)
+                {
+                    if (!pending.Completed)
+                    {
+                        pending.Abandoned = true;
+                        LogEvent($"RegisterMemoryWindow: retaining Bind 0x{resultId:X} and its registered memory until completion; further registrations are blocked.");
+                        return NtStatus.STATUS_TIMEOUT;
+                    }
+                    // Completion won the race after the queue's timeout check.
+                    requestResult = otherRequestResult.Dequeue(TimeSpan.Zero, item => item.ResultId == resultId);
+                }
             }
 
             this.LogEvent(string.Format("Bind memory window with expected result id: {0}. Actual notification id: {1}, status: {2}, requestType={3}",
@@ -977,7 +1081,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             if (status != NtStatus.STATUS_SUCCESS)
             {
                 LogEvent(string.Format("RegisterMemoryWindow: Bind completion failed with status {0}", status));
-                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, true, true);
+                CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, true);
+                FinishPendingBind(resultId);
                 return status;
             }
 
@@ -1013,9 +1118,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             LogEvent(string.Format(
                 "RegisterMemoryWindow: returning descriptor Offset=0x{0:X16}, Token=0x{1:X8}, Length={2}",
                 bufferDescriptor.Offset, bufferDescriptor.Token, bufferDescriptor.Length));
+            FinishPendingBind(resultId);
             return status;
-#endif
         }
+#endif
 
         /// <summary>
         /// Deregister memory window
@@ -1075,24 +1181,44 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             if (target.IsValid)
             {
                 UInt64 resultId;
-                NtStatus status = (NtStatus)rdmaEndpoint.Invalidate(target.RdmaMW, out resultId);
-
-                if (status == NtStatus.STATUS_SUCCESS)
+                lock (locker)
                 {
-                    Interlocked.Increment(ref requestCount);
-                    rdmaNotificationSemaphore.Release();
+                    NtStatus status = (NtStatus)rdmaEndpoint.Invalidate(target.RdmaMW, out resultId);
+                    if (status == NtStatus.STATUS_SUCCESS)
+                    {
+                        pendingInvalidations.Add(resultId, target);
+                        bindsDrained.Reset();
+                        TrackSubmittedRequest(resultId);
+                        return;
+                    }
+                    LogEvent($"DeregisterMemoryWindow: Invalidate was rejected with {status}; releasing window before deregistration.");
                 }
             }
 
-            rdmaAdapter.DeregisterMemory(target.MemoryHandlerId);
-            if (target.RdmaMW != null)
-            {
-                target.RdmaMW.Dispose();
-            }
+            CleanupFailedRegisterMemoryWindow(target, default, false);
 #endif
         }
 
 #if WINDOWS
+        private void FinishPendingBind(ulong resultId)
+        {
+            lock (locker)
+            {
+                pendingBinds.Remove(resultId);
+                if (pendingBinds.Count == 0 && pendingInvalidations.Count == 0) bindsDrained.Set();
+            }
+        }
+
+        private void TrackSubmittedRequest(ulong resultId)
+        {
+            if (!submittedRequests.Add(resultId))
+            {
+                throw new InvalidOperationException($"RDMA reused outstanding ResultId 0x{resultId:X}.");
+            }
+            Interlocked.Increment(ref requestCount);
+            rdmaNotificationSemaphore.Release();
+        }
+
         /// <summary>
         /// Builds a buffer descriptor directly from a registered memory region.
         /// Used as a fallback when the RDMA provider does not support memory windows.
@@ -1105,10 +1231,9 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             int mrStatus = rdmaAdapter.GetRegisteredMemory(memoryHandler, out mrInfo);
             if (mrStatus != 0)
             {
-                NtStatus deregisterStatus = (NtStatus)rdmaAdapter.DeregisterMemory(memoryHandler);
-                LogEvent(string.Format(
-                    "RegisterMemoryWindow: GetRegisteredMemory failed with 0x{0:X8}; deregistered memory handler 0x{1:X} with status {2}",
-                    mrStatus, memoryHandler, deregisterStatus));
+                LogEvent($"RegisterMemoryWindow: GetRegisteredMemory failed with 0x{mrStatus:X8}.");
+                CleanupFailedRegisterMemoryWindow(
+                    new SmbdMemoryWindow { MemoryHandlerId = memoryHandler }, default, false);
                 return (NtStatus)mrStatus;
             }
 
@@ -1160,11 +1285,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         /// Cleans up resources allocated by RegisterMemoryWindow when it fails
         /// after memory (and optionally a memory window) has been allocated.
         /// </summary>
-        private void CleanupFailedRegisterMemoryWindow(
+        private NtStatus CleanupFailedRegisterMemoryWindow(
             SmbdMemoryWindow memoryWindow,
             SmbdRequest invalidRequest,
-            bool invalidRequestAdded,
-            bool decrementRequestCount)
+            bool invalidRequestAdded)
         {
             if (invalidRequestAdded)
             {
@@ -1174,23 +1298,50 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 }
             }
 
-            if (decrementRequestCount)
+            try
             {
-                Interlocked.Decrement(ref requestCount);
-            }
+                if (memoryWindow.RdmaMW != null)
+                {
+                    memoryWindow.RdmaMW.Dispose();
+                    memoryWindow.RdmaMW = null;
+                }
 
-            if (memoryWindow.RdmaMW != null)
-            {
-                memoryWindow.RdmaMW.Dispose();
-                memoryWindow.RdmaMW = null;
+                if (memoryWindow.MemoryHandlerId != 0)
+                {
+                    NtStatus deregisterStatus = (NtStatus)rdmaAdapter.DeregisterMemory(memoryWindow.MemoryHandlerId);
+                    LogEvent(string.Format(
+                        "RegisterMemoryWindow: deregistered memory handler 0x{0:X} during cleanup with status {1}",
+                        memoryWindow.MemoryHandlerId, deregisterStatus));
+                    if (deregisterStatus == NtStatus.STATUS_SUCCESS)
+                    {
+                        memoryWindow.MemoryHandlerId = 0;
+                    }
+                    else
+                    {
+                        lock (locker)
+                        {
+                            if (!retainedBindCleanup.Contains(memoryWindow))
+                            {
+                                retainedBindCleanup.Add(memoryWindow);
+                            }
+                        }
+                        LogEvent("RegisterMemoryWindow: cleanup failed; registered storage remains owned and further registrations are blocked.");
+                        return deregisterStatus;
+                    }
+                }
+                return NtStatus.STATUS_SUCCESS;
             }
-
-            if (memoryWindow.MemoryHandlerId != 0)
+            catch (Exception ex)
             {
-                NtStatus deregisterStatus = (NtStatus)rdmaAdapter.DeregisterMemory(memoryWindow.MemoryHandlerId);
-                LogEvent(string.Format(
-                    "RegisterMemoryWindow: deregistered memory handler 0x{0:X} during cleanup with status {1}",
-                    memoryWindow.MemoryHandlerId, deregisterStatus));
+                lock (locker)
+                {
+                    if (!retainedBindCleanup.Contains(memoryWindow))
+                    {
+                        retainedBindCleanup.Add(memoryWindow);
+                    }
+                }
+                LogEvent($"RegisterMemoryWindow: cleanup threw {ex}; resources remain owned and further registrations are blocked.");
+                return NtStatus.STATUS_UNSUCCESSFUL;
             }
         }
 #endif
@@ -1474,86 +1625,114 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 
                 while (true)
                 {
-                    UInt64 resultId;
-                    NdResult ndResult;
-                    UInt64 size = rdmaCompletionQueue.GetResult(out resultId, out ndResult);
-
-                    if (size == 0)
-                    {
-                        break;
-                    }
-                    // WaitOne for reduce the request count
-                    rdmaNotificationSemaphore.WaitOne();
-                    Interlocked.Decrement(ref requestCount);
-
-                    RequestType type = RequestType.None;
-                    int segmentIndex = -1;
-                    #region Receive and invalid memory window
                     lock (locker)
                     {
-                        foreach (SmbdRequest request in receiveRequestList)
+                        if (!ProcessCompletion())
                         {
-                            if (request.ResultId == resultId)
-                            {
-                                type = request.Type;
-                                segmentIndex = request.EntryIndex;
-
-                                // get the result
-                                SmbdRequestResult requestResultItem = new SmbdRequestResult();
-                                requestResultItem.EntryIndex = request.EntryIndex;
-                                requestResultItem.ResultInfo = ndResult;
-                                requestResultItem.ResultId = request.ResultId;
-
-                                switch (request.Type)
-                                {
-                                    case RequestType.Receive:
-                                        receiveRequestResult.Enqueue(requestResultItem);
-                                        ReceivePostedCount--;
-                                        break;
-                                    case RequestType.Invalid:
-                                        lock (locker)
-                                        {
-                                            for (int i = 0; i < memoryWindowList.Count; ++i)
-                                            {
-                                                if (memoryWindowList[i].InvalidResultId == request.ResultId)
-                                                {
-                                                    memoryWindowList[i].IsValid = false;
-                                                }
-                                            }
-                                        }
-                                        break;
-                                }
-
-                                receiveRequestList.Remove(request);
-                                break;
-                            }
+                            break;
                         }
                     }
-                    #endregion
-                    if (type == RequestType.None)
-                    {
-                        otherRequestResult.Enqueue(
-                            new SmbdRequestResult()
-                            {
-                                ResultId = resultId,
-                                ResultInfo = ndResult
-                            });
-                    }
-
-                    // log
-                    this.LogEvent(
-                        string.Format(
-                        "1 operation {0} has been finished with result {1} and result Id: {2:X};" +
-                        " requestType={6}; Bytes of data transferred is {3}; Segment Index is {4}; Count of work items is {5}",
-                            type,
-                            (NtStatus)ndResult.Status,
-                            resultId,
-                            ndResult.BytesTransferred,
-                            segmentIndex,
-                            this.receiveRequestList.Count,
-                            ndResult.RequestType));
                 }
             }
+        }
+
+        // Called under locker: native completions cannot overtake publication of their ResultId.
+        private bool ProcessCompletion()
+        {
+            ulong size = rdmaCompletionQueue.GetResult(out ulong resultId, out NdResult ndResult);
+            if (size == 0)
+            {
+                return false;
+            }
+
+            bool submitted = submittedRequests.Remove(resultId);
+            if (submitted)
+            {
+                rdmaNotificationSemaphore.WaitOne();
+                Interlocked.Decrement(ref requestCount);
+            }
+            else
+            {
+                LogEvent($"NotifyCallback: untracked/passive completion 0x{resultId:X}; outstanding request accounting is unchanged.");
+            }
+
+            if (pendingBinds.TryGetValue(resultId, out PendingBind pending))
+            {
+                pending.Completed = true;
+                if (pending.Abandoned)
+                {
+                    LogEvent($"NotifyCallback: draining abandoned Bind 0x{resultId:X}, status={(NtStatus)ndResult.Status}; releasing unpublished resources.");
+                    CleanupFailedRegisterMemoryWindow(pending.Window, pending.InvalidRequest, true);
+                    FinishPendingBind(resultId);
+                    return true;
+                }
+            }
+
+            if (pendingInvalidations.TryGetValue(resultId, out SmbdMemoryWindow invalidatedWindow))
+            {
+                LogEvent($"NotifyCallback: Invalidate 0x{resultId:X} completed with {(NtStatus)ndResult.Status}; releasing window.");
+                CleanupFailedRegisterMemoryWindow(invalidatedWindow, default, false);
+                pendingInvalidations.Remove(resultId);
+                if (pendingBinds.Count == 0 && pendingInvalidations.Count == 0)
+                {
+                    bindsDrained.Set();
+                }
+                return true;
+            }
+
+            RequestType type = RequestType.None;
+            int segmentIndex = -1;
+            foreach (SmbdRequest request in receiveRequestList)
+            {
+                if (request.ResultId != resultId)
+                {
+                    continue;
+                }
+                type = request.Type;
+                segmentIndex = request.EntryIndex;
+                switch (request.Type)
+                {
+                    case RequestType.Receive:
+                        receiveRequestResult.Enqueue(new SmbdRequestResult
+                        {
+                            EntryIndex = request.EntryIndex,
+                            ResultInfo = ndResult,
+                            ResultId = request.ResultId
+                        });
+                        ReceivePostedCount--;
+                        break;
+                    case RequestType.Invalid:
+                        foreach (SmbdMemoryWindow window in memoryWindowList)
+                        {
+                            if (window.InvalidResultId == request.ResultId)
+                            {
+                                window.IsValid = false;
+                            }
+                        }
+                        break;
+                }
+                receiveRequestList.Remove(request);
+                break;
+            }
+            if (type == RequestType.None && submitted)
+            {
+                otherRequestResult.Enqueue(new SmbdRequestResult
+                {
+                    ResultId = resultId,
+                    ResultInfo = ndResult
+                });
+            }
+            LogEvent(string.Format(
+                "1 operation {0} has been finished with result {1} and result Id: {2:X};" +
+                " requestType={6}; Bytes of data transferred is {3}; Segment Index is {4}; Count of work items is {5}",
+                type,
+                (NtStatus)ndResult.Status,
+                resultId,
+                ndResult.BytesTransferred,
+                segmentIndex,
+                receiveRequestList.Count,
+                ndResult.RequestType));
+            return true;
         }
 
         /// <summary>

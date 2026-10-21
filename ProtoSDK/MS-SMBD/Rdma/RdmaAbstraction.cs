@@ -164,6 +164,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
     /// </summary>
     public interface INativeRdmaEndpoint
     {
+        // Flush requests cancellation; matching completions must still be drained.
+        int Flush();
         int Send(NdSegment[] segments, out ulong resultHandler);
         int Receive(NdSegment[] segments, out ulong resultHandler);
         int Bind(

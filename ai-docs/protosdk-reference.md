@@ -139,6 +139,23 @@ The base RDP connectivity protocol. Other RDP protocols (RDPEGFX, RDPEDYC, etc.)
 - `ProtoSDK/RDMA/` — C++/CLI wrapper around the NetworkDirect DDK (`ndspi.h`) for Windows
 - `ProtoSDK/RdmaLinux/` — C# Linux RDMA adapter (added recently for Linux interop testing)
 
+**Deterministic Windows endpoint regressions:**
+- `ProtoSDK/MS-SMBD.Tests/Smbd.Endpoint.Tests.csproj` source-links the production
+  endpoint, native-service contracts and `SyncFilterQueue<T>`, replacing only
+  native provider boundaries with controlled doubles. Run
+  `dotnet test ProtoSDK\MS-SMBD.Tests\Smbd.Endpoint.Tests.csproj`.
+- Tests exercise Bind submission/completion failure, timeout followed by late
+  success/failure, passive-completion accounting, stale-result filtering,
+  completion-owned cleanup, and bounded disconnect drain. A timed-out Bind
+  retains its window and registered memory and blocks further registrations
+  until its matching completion drains. Disconnect requests Flush but does not
+  treat Flush return as completed cancellation; failure to drain is an explicit
+  error, not permission to free storage.
+- Reuse this project for deterministic endpoint lifecycle regressions, not
+  protocol conformance scenarios. It does **not** load either C++/CLI wrapper or
+  qualify NDv1/NDv2 provider behavior. Native builds and live RDMA-provider
+  completion/cancellation tests remain separate requirements.
+
 ### MS-WSP (`ProtoSDK/MS-WSP/`)
 
 **Namespace:** `Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Wsp`

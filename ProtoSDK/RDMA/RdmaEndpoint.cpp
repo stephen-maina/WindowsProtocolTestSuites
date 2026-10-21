@@ -175,6 +175,7 @@ HRESULT RdmaEndpoint::Bind(
 		&mwDescriptor);
 	if(result != ND_SUCCESS)
 	{
+		delete ndResult;
 		return result;
 	}
 

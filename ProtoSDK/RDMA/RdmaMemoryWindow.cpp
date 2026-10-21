@@ -16,6 +16,11 @@ BEGIN_RDMA_NAMESPACE
 /// </summary>
 RdmaMemoryWindow::~RdmaMemoryWindow()
 {
+	if (_memoryWindow != NULL)
+	{
+		_memoryWindow->Release();
+		_memoryWindow = NULL;
+	}
 }
 
 // =================================================================

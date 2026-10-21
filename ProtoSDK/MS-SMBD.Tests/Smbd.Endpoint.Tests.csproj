@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <DefineConstants>WINDOWS</DefineConstants>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EndpointSource Condition="'$(EndpointSource)' == ''">..\MS-SMBD\SmbdConnectionEndpoint.cs</EndpointSource>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.9.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.9.1" />
+    <Compile Include="BindLifecycleTests.cs" />
+    <Compile Include="$(EndpointSource)" Link="Source\SmbdConnectionEndpoint.cs" />
+    <Compile Include="..\MS-SMBD\SmbdTypes.cs" Link="Source\SmbdTypes.cs" />
+    <Compile Include="..\MS-SMBD\RdmaBufferDescriptor.cs" Link="Source\RdmaBufferDescriptor.cs" />
+    <Compile Include="..\MS-SMBD\Rdma\RdmaAbstraction.cs" Link="Source\RdmaAbstraction.cs" />
+    <Compile Include="..\Common\SyncFilterQueue.cs" Link="Source\SyncFilterQueue.cs" />
+    <Compile Include="..\Common\NtStatus.cs" Link="Source\NtStatus.cs" />
+  </ItemGroup>
+</Project>

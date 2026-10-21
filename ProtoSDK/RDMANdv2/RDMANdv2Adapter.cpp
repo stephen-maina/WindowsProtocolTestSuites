@@ -218,6 +218,11 @@ HRESULT RdmaAdapter::DeregisterMemory(unsigned __int64 memoryHandler)
         result = elem->MemoryRegion->GetOverlappedResult(_pOverlapped, TRUE);
     }
 
+    if (result != ND_SUCCESS)
+    {
+        return result;
+    }
+
     elem->MemoryRegion->Release();
     VirtualFree(elem->Buffer, 0, MEM_RELEASE);
 
@@ -331,12 +336,23 @@ HRESULT RdmaAdapter::Listen(int protocol, unsigned __int16 port, [Out]RdmaListen
 
 void RdmaAdapter::ReleaseRegisterMemory()
 {
+    HRESULT result = ND_SUCCESS;
     EnterCriticalSection(_memoryHandlerLock);
     while (_memoryHandlerList->Next != NULL)
     {
-        DeregisterMemory((unsigned __int64)_memoryHandlerList->Next);
+        result = DeregisterMemory((unsigned __int64)_memoryHandlerList->Next);
+        if (result != ND_SUCCESS)
+        {
+            break;
+        }
     }
     LeaveCriticalSection(_memoryHandlerLock);
+    if (result != ND_SUCCESS)
+    {
+        throw gcnew InvalidOperationException(String::Format(
+            "RDMA memory deregistration failed with 0x{0:X8}; registered storage remains owned.",
+            result));
+    }
 }
 
 RdmaAdapter::RdmaAdapter(IND2Adapter *adapter)
