@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Protocols.TestSuites.Diagnostics.Configuration;
+using Microsoft.Protocols.TestSuites.Diagnostics.Errors;
 using Microsoft.Protocols.TestSuites.Diagnostics.Evidence;
 using Microsoft.Protocols.TestSuites.Diagnostics.Identity;
 using Microsoft.Protocols.TestSuites.Diagnostics.Lifecycle;
@@ -404,6 +405,90 @@ public sealed class DiagnosticsLifecycleIntegrationTests
     }
 
     [TestMethod]
+    public void Dispose_ProtocolAndDiagnosticErrors_PersistsPrimaryChronologyWithoutReplacementException()
+    {
+        using LifecycleFixture fixture = LifecycleFixture.Create();
+        fixture.Provider.RequestStopAsyncHandler =
+            static (_, _) => throw new IOException("hostile top-secret\r\nforged");
+        using DiagnosticsInvocationLifecycle lifecycle = fixture.Start();
+        DateTimeOffset occurredAt = DateTimeOffset.Parse("2026-10-21T10:00:00Z");
+        lifecycle.Errors.Record(
+            DiagnosticErrorCategory.Capture, "Before", "Earlier diagnostic.", occurredAt);
+        DiagnosticError primary = lifecycle.Errors.RecordProtocolError(
+            "ProtocolAssertionFailed", "Original protocol failure.", occurredAt.AddSeconds(1));
+        lifecycle.MarkCleanupFailed();
+        fixture.Router.Route(
+            fixture.ScopeKey, occurredAt, "Comment", "hostile top-secret\r\nforged");
+
+        lifecycle.Dispose();
+        lifecycle.Dispose();
+
+        string persisted = File.ReadAllText(fixture.ManifestPath);
+        ManifestDocument manifest = ManifestSerializer.Deserialize(persisted);
+        Assert.AreSame(primary, lifecycle.Errors.PrimaryProtocolError);
+        Assert.AreEqual(primary.Code, manifest.Errors.PrimaryProtocolError?.Code);
+        Assert.AreEqual(primary.Sequence, manifest.Errors.PrimaryProtocolError?.Sequence);
+        Assert.AreEqual(primary.OccurredAt, manifest.Errors.PrimaryProtocolError?.OccurredAt);
+        CollectionAssert.AreEqual(
+            new[] { "Before", "ProtocolAssertionFailed", "Diagnostics.CleanupFailed", "StopFailed" },
+            manifest.Errors.Chronology.Select(error => error.Code).ToArray());
+        CollectionAssert.AreEqual(
+            lifecycle.Errors.Chronology.Select(error =>
+                (error.Sequence, error.Category, error.Code, error.Message, error.OccurredAt)).ToArray(),
+            manifest.Errors.Chronology.Select(error =>
+                (error.Sequence, error.Category, error.Code, error.Message, error.OccurredAt)).ToArray());
+        Assert.IsFalse(persisted.Contains("top-secret", StringComparison.Ordinal));
+        Assert.IsFalse(File.ReadAllText(fixture.LogPath).Contains("top-secret", StringComparison.Ordinal));
+    }
+
+    [DataTestMethod]
+    [DataRow("unresolved")]
+    [DataRow("throw")]
+    [DataRow("cancel")]
+    [DataRow("stopped")]
+    [DataRow("unavailable")]
+    public void Dispose_AuxiliaryStopOutcome_PersistsHonestWriterResolution(string outcome)
+    {
+        using LifecycleFixture fixture = LifecycleFixture.Create();
+        var auxiliary = new DeterministicCaptureProvider
+        {
+            RequestStopAsyncHandler = (_, _) => outcome switch
+            {
+                "throw" => throw new IOException("hostile top-secret"),
+                "cancel" => throw new OperationCanceledException("hostile top-secret"),
+                "unresolved" => Task.FromResult(CaptureProviderStopResult.Failed(
+                    false, CaptureProviderFailureCode.StopTimeout, "hostile top-secret")),
+                _ => Task.FromResult(CaptureProviderStopResult.Stopped("Stopped.")),
+            },
+        };
+        if (outcome == "unavailable")
+        {
+            auxiliary.ProbeAsyncHandler = static (_, _) => Task.FromResult(
+                CaptureProviderProbeResult.Unavailable(
+                    CaptureProviderFailureCode.ToolMissing, "Unavailable."));
+        }
+        using DiagnosticsInvocationLifecycle lifecycle =
+            fixture.Start(new AuxiliaryCaptureProvider(fixture.Provider, auxiliary));
+
+        lifecycle.MarkCleanupCompleted();
+        lifecycle.Dispose();
+
+        bool unresolved = outcome is "unresolved" or "throw" or "cancel";
+        Assert.AreEqual(1, fixture.Provider.Calls.Count(call => call == "Stop"));
+        Assert.AreEqual(outcome == "unavailable" ? 0 : 1,
+            auxiliary.Calls.Count(call => call == "Stop"));
+        string persisted = File.ReadAllText(fixture.ManifestPath);
+        using JsonDocument manifest = JsonDocument.Parse(persisted);
+        CollectionAssert.AreEqual(
+            unresolved ? new[] { "deterministic" } : Array.Empty<string>(),
+            manifest.RootElement.GetProperty("unresolvedWriters")
+                .EnumerateArray().Select(value => value.GetString()!).ToArray());
+        Assert.AreEqual(unresolved, lifecycle.Errors.Chronology.Any(error =>
+            error.Category == DiagnosticErrorCategory.Cleanup));
+        Assert.IsFalse(persisted.Contains("top-secret", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void Dispose_ProtocolCleanupFailureRemainsIndependentFromDiagnosticsFailure()
     {
         using LifecycleFixture fixture = LifecycleFixture.Create();
@@ -601,7 +686,7 @@ public sealed class DiagnosticsLifecycleIntegrationTests
                 sensitiveValue);
         }
 
-        public DiagnosticsInvocationLifecycle Start()
+        public DiagnosticsInvocationLifecycle Start(ICaptureProvider? provider = null)
         {
             DiagnosticsInvocationLifecycle lifecycle =
                 DiagnosticsInvocationLifecycle.Start(
@@ -615,7 +700,7 @@ public sealed class DiagnosticsLifecycleIntegrationTests
                         identity,
                         ArtifactInvocation,
                         Router,
-                        Provider,
+                        provider ?? Provider,
                         new[] { sensitiveValue });
                 });
             Assert.IsTrue(

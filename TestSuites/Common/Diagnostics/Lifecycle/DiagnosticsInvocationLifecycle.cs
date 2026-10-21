@@ -427,7 +427,8 @@ public sealed class DiagnosticsInvocationLifecycle : IDisposable
 
         foreach (DiagnosticError error in errors.Chronology)
         {
-            manifest.Errors.Record(
+            manifest.Errors.Restore(
+                error.Sequence,
                 error.Category,
                 error.Code,
                 error.Message,

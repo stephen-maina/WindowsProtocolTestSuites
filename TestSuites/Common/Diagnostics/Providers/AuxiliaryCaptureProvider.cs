@@ -13,8 +13,8 @@ namespace Microsoft.Protocols.TestSuites.Diagnostics.Providers;
 /// <summary>
 /// Runs a best-effort auxiliary capture provider (for example the RDMA NIC
 /// sniffer) alongside a primary provider. The orchestrator sees only the
-/// primary provider's identity and results; the auxiliary provider only adds
-/// artifacts and never fails the invocation.
+/// primary provider's identity. Auxiliary unavailability is best effort, but
+/// every started writer must be resolved before completion can be reported.
 /// </summary>
 public sealed class AuxiliaryCaptureProvider : ICaptureProvider
 {
@@ -111,21 +111,41 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
         CaptureProviderSessionHandle handle,
         CancellationToken cancellationToken)
     {
-        // Stop the sniffer first so it does not outlive the primary capture.
-        if (TryGetAuxiliaryHandle(handle, out CaptureProviderSessionHandle? aux) &&
-            sessions.TryGetValue(handle.SessionId, out AuxiliarySession? session))
+        CaptureProviderStopResult primaryResult;
+        CaptureProviderStopResult? auxiliaryResult = null;
+        try
         {
-            CaptureProviderStopResult? stop = await IgnoreFailuresAsync(
-                () => auxiliary.RequestStopAsync(aux!, cancellationToken))
+            // Stop the auxiliary first, but never let its failure skip primary cleanup.
+            if (TryGetAuxiliaryHandle(handle, out CaptureProviderSessionHandle? aux) &&
+                sessions.TryGetValue(handle.SessionId, out AuxiliarySession? session))
+            {
+                session.StopResult = null;
+                auxiliaryResult = await auxiliary.RequestStopAsync(aux!, cancellationToken)
+                    .ConfigureAwait(false) ??
+                    throw new InvalidOperationException("The auxiliary returned no stop result.");
+                session.StopResult = auxiliaryResult;
+            }
+        }
+        finally
+        {
+            primaryResult = await primary.RequestStopAsync(handle, cancellationToken)
                 .ConfigureAwait(false);
-            session.Stopped = stop is not null &&
-                (stop.Status == CaptureProviderStopStatus.Stopped ||
-                    stop.Status == CaptureProviderStopStatus.AlreadyStopped);
         }
 
-        return await primary
-            .RequestStopAsync(handle, cancellationToken)
-            .ConfigureAwait(false);
+        if (auxiliaryResult is not null && !auxiliaryResult.WriterResolved)
+        {
+            return auxiliaryResult;
+        }
+
+        if (primaryResult.FailureCode != CaptureProviderFailureCode.None ||
+            auxiliaryResult is null)
+        {
+            return primaryResult;
+        }
+
+        return auxiliaryResult.FailureCode != CaptureProviderFailureCode.None
+            ? auxiliaryResult
+            : primaryResult;
     }
 
     public async Task<CaptureProviderFinalizationResult> WaitForFinalizationAsync(
@@ -136,10 +156,21 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
             .WaitForFinalizationAsync(handle, cancellationToken)
             .ConfigureAwait(false);
 
-        if (result.Status != CaptureProviderFinalizationStatus.Finalized ||
-            !TryGetAuxiliaryHandle(handle, out CaptureProviderSessionHandle? aux) ||
-            !sessions.TryGetValue(handle.SessionId, out AuxiliarySession? session) ||
-            !session.Stopped)
+        if (!TryGetAuxiliaryHandle(handle, out CaptureProviderSessionHandle? aux) ||
+            !sessions.TryGetValue(handle.SessionId, out AuxiliarySession? session))
+        {
+            return result;
+        }
+
+        if (session.StopResult?.WriterResolved != true)
+        {
+            return CaptureProviderFinalizationResult.Failed(
+                CaptureProviderFailureCode.FinalizationFailed,
+                "The auxiliary writer is unresolved.",
+                result.Artifacts);
+        }
+
+        if (result.Status != CaptureProviderFinalizationStatus.Finalized)
         {
             return result;
         }
@@ -193,6 +224,6 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
 
         public string? Note { get; set; }
 
-        public bool Stopped { get; set; }
+        public CaptureProviderStopResult? StopResult { get; set; }
     }
 }

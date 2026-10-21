@@ -25,6 +25,93 @@ public sealed class CaptureProviderContractTests
     private static readonly CaptureProviderTimeouts BoundedTimeouts =
         new(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
 
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CompleteAsync_AuxiliaryUnresolvedOrThrowing_AlwaysStopsPrimaryAndAbandonsWriter(bool throws)
+    {
+            using ProviderTestContext context = ProviderTestContext.Create();
+            var primary = new DeterministicCaptureProvider();
+            var auxiliary = new DeterministicCaptureProvider
+            {
+                RequestStopAsyncHandler = (_, _) => throws
+                    ? throw new InvalidOperationException("hostile secret")
+                    : Task.FromResult(CaptureProviderStopResult.Failed(
+                        false, CaptureProviderFailureCode.StopTimeout, "Still active.")),
+            };
+            var errors = new DiagnosticErrorLedger();
+            CaptureProviderSession session = await CaptureProviderOrchestrator.CreateEnabled(errors)
+                .StartAsync(() => context.Request,
+                    () => new AuxiliaryCaptureProvider(primary, auxiliary),
+                    BoundedTimeouts, CancellationToken.None);
+
+            CaptureProviderCompletionResult completion =
+                await session.CompleteAsync(BoundedTimeouts, CancellationToken.None);
+
+            Assert.AreEqual(CaptureProviderLifecycleState.Abandoned, completion.State);
+            Assert.IsFalse(completion.WriterResolved);
+            Assert.AreEqual(throws ? CaptureProviderFailureCode.StopFailed :
+                CaptureProviderFailureCode.StopTimeout, completion.FailureCode);
+            Assert.AreEqual(1, primary.Calls.Count(call => call == "Stop"));
+            Assert.AreEqual(1, auxiliary.Calls.Count(call => call == "Stop"));
+            Assert.IsFalse(primary.Calls.Contains("Finalization"));
+            Assert.IsFalse(errors.Chronology.Any(error => error.Message.Contains("hostile")));
+    }
+
+    [TestMethod]
+    public async Task FinalizeAsync_AuxiliaryStopUnresolved_DoesNotReturnPrimarySuccess()
+    {
+        using ProviderTestContext context = ProviderTestContext.Create();
+        var primary = new DeterministicCaptureProvider();
+        var auxiliary = new DeterministicCaptureProvider
+        {
+            RequestStopAsyncHandler = static (_, _) => Task.FromResult(
+                CaptureProviderStopResult.Failed(false, CaptureProviderFailureCode.StopFailed, "Unresolved.")),
+        };
+        var composite = new AuxiliaryCaptureProvider(primary, auxiliary);
+        CaptureProviderStartResult start = await composite.StartAsync(context.Request, CancellationToken.None);
+
+        CaptureProviderStopResult stop = await composite.RequestStopAsync(start.Handle!, CancellationToken.None);
+        CaptureProviderFinalizationResult finalization =
+            await composite.WaitForFinalizationAsync(start.Handle!, CancellationToken.None);
+
+        Assert.IsFalse(stop.WriterResolved);
+        Assert.AreEqual(CaptureProviderFinalizationStatus.Failed, finalization.Status);
+        Assert.AreEqual(CaptureProviderFailureCode.FinalizationFailed, finalization.FailureCode);
+        Assert.AreEqual(1, primary.Calls.Count(call => call == "Stop"));
+        Assert.IsFalse(auxiliary.Calls.Contains("Finalization"));
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CompleteAsync_AuxiliaryUnavailableOrStopped_CompletesWithResolvedWriter(bool unavailable)
+    {
+        using ProviderTestContext context = ProviderTestContext.Create();
+        var primary = new DeterministicCaptureProvider();
+        var auxiliary = new DeterministicCaptureProvider();
+        if (unavailable)
+        {
+            auxiliary.ProbeAsyncHandler = static (_, _) => Task.FromResult(
+                CaptureProviderProbeResult.Unavailable(CaptureProviderFailureCode.ToolMissing, "Absent."));
+        }
+        var errors = new DiagnosticErrorLedger();
+        CaptureProviderSession session = await CaptureProviderOrchestrator.CreateEnabled(errors)
+            .StartAsync(() => context.Request,
+                () => new AuxiliaryCaptureProvider(primary, auxiliary),
+                BoundedTimeouts, CancellationToken.None);
+
+        CaptureProviderCompletionResult completion =
+            await session.CompleteAsync(BoundedTimeouts, CancellationToken.None);
+
+        Assert.AreEqual(CaptureProviderLifecycleState.Completed, completion.State);
+        Assert.IsTrue(completion.WriterResolved);
+        Assert.AreEqual(1, primary.Calls.Count(call => call == "Stop"));
+        Assert.AreEqual(1, primary.Calls.Count(call => call == "Finalization"));
+        Assert.AreEqual(unavailable ? 0 : 1, auxiliary.Calls.Count(call => call == "Stop"));
+        Assert.AreEqual(0, errors.Chronology.Count);
+    }
+
     [TestMethod]
     public async Task StartAsync_Disabled_DoesNotCreateRequestOrProvider_Issue64410325()
     {
