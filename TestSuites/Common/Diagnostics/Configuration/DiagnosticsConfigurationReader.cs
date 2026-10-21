@@ -60,6 +60,7 @@ public static class DiagnosticsConfigurationReader
         ArgumentNullException.ThrowIfNull(errors);
         ArgumentNullException.ThrowIfNull(propertyMap);
         policy ??= DiagnosticsConfigurationPolicy.Default;
+        var configurationErrors = new ConfigurationReadErrors(errors);
 
         ClassifiedRawValue rawEnabled = ReadRawValue(
             source,
@@ -74,7 +75,7 @@ public static class DiagnosticsConfigurationReader
             !bool.TryParse(rawEnabled.TrimmedValue, out bool enabled))
         {
             Record(
-                errors,
+                configurationErrors,
                 DiagnosticsConfigurationErrorCodes.InvalidValue,
                 propertyMap.Enabled,
                 occurredAt);
@@ -90,7 +91,23 @@ public static class DiagnosticsConfigurationReader
                 ConfigurationProvenance.Configured);
         }
 
-        int initialErrorCount = errors.Chronology.Count;
+        return ReadEnabled(
+            source,
+            configurationErrors,
+            occurredAt,
+            propertyMap,
+            policy,
+            runtimePlatform);
+    }
+
+    private static DiagnosticsConfiguration ReadEnabled(
+        IEffectiveConfigurationSource source,
+        ConfigurationReadErrors errors,
+        DateTimeOffset occurredAt,
+        DiagnosticsConfigurationPropertyMap propertyMap,
+        DiagnosticsConfigurationPolicy policy,
+        DiagnosticsRuntimePlatform runtimePlatform)
+    {
         ProvenancedValue<string>? artifactRoot =
             ReadArtifactRoot(
                 source,
@@ -142,7 +159,7 @@ public static class DiagnosticsConfigurationReader
         ProvenancedValue<DiagnosticsRetentionPolicy> retention =
             ReadRetention(source, propertyMap, errors, occurredAt);
 
-        if (errors.Chronology.Count != initialErrorCount ||
+        if (errors.HasErrors ||
             artifactRoot is null ||
             toolPath is null ||
             targets.Count == 0 ||
@@ -177,7 +194,7 @@ public static class DiagnosticsConfigurationReader
     private static ProvenancedValue<string>? ReadArtifactRoot(
         IEffectiveConfigurationSource source,
         DiagnosticsConfigurationPropertyMap propertyMap,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt,
         DiagnosticsRuntimePlatform runtimePlatform)
     {
@@ -210,7 +227,7 @@ public static class DiagnosticsConfigurationReader
         IEffectiveConfigurationSource source,
         DiagnosticsConfigurationPropertyMap propertyMap,
         DiagnosticsConfigurationPolicy policy,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt)
     {
         string property = propertyMap.Provider;
@@ -251,7 +268,7 @@ public static class DiagnosticsConfigurationReader
     private static ProvenancedValue<string?>? ReadToolPath(
         IEffectiveConfigurationSource source,
         DiagnosticsConfigurationPropertyMap propertyMap,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt,
         DiagnosticsRuntimePlatform runtimePlatform)
     {
@@ -289,7 +306,7 @@ public static class DiagnosticsConfigurationReader
     private static IReadOnlyList<CaptureTargetSelector> ReadTargets(
         IEffectiveConfigurationSource source,
         DiagnosticsConfigurationPropertyMap propertyMap,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt)
     {
         string property = propertyMap.Targets;
@@ -364,7 +381,7 @@ public static class DiagnosticsConfigurationReader
     private static ProvenancedValue<CaptureTrafficScope> ReadTrafficScope(
         IEffectiveConfigurationSource source,
         DiagnosticsConfigurationPropertyMap propertyMap,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt)
     {
         string property = propertyMap.TrafficScope;
@@ -408,7 +425,7 @@ public static class DiagnosticsConfigurationReader
     private static ProvenancedValue<TimeSpan>? ReadRequiredDuration(
         IEffectiveConfigurationSource source,
         string propertyName,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt)
     {
         ClassifiedRawValue raw = ReadRawValue(source, propertyName);
@@ -446,7 +463,7 @@ public static class DiagnosticsConfigurationReader
     private static ProvenancedValue<long>? ReadRequiredPositiveInteger(
         IEffectiveConfigurationSource source,
         string propertyName,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt)
     {
         ClassifiedRawValue raw = ReadRawValue(source, propertyName);
@@ -476,7 +493,7 @@ public static class DiagnosticsConfigurationReader
     private static ProvenancedValue<CaptureFileFormat> ReadFormat(
         IEffectiveConfigurationSource source,
         DiagnosticsConfigurationPropertyMap propertyMap,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt)
     {
         string property = propertyMap.Format;
@@ -514,7 +531,7 @@ public static class DiagnosticsConfigurationReader
     private static ProvenancedValue<bool> ReadNativeLogsEnabled(
         IEffectiveConfigurationSource source,
         DiagnosticsConfigurationPropertyMap propertyMap,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt)
     {
         string property = propertyMap.NativeLogsEnabled;
@@ -543,7 +560,7 @@ public static class DiagnosticsConfigurationReader
     private static ProvenancedValue<DiagnosticsRetentionPolicy> ReadRetention(
         IEffectiveConfigurationSource source,
         DiagnosticsConfigurationPropertyMap propertyMap,
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         DateTimeOffset occurredAt)
     {
         string property = propertyMap.Retention;
@@ -844,7 +861,7 @@ public static class DiagnosticsConfigurationReader
     }
 
     private static void RecordMissing(
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         string propertyName,
         DateTimeOffset occurredAt)
     {
@@ -856,7 +873,7 @@ public static class DiagnosticsConfigurationReader
     }
 
     private static void RecordInvalid(
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         string propertyName,
         DateTimeOffset occurredAt)
     {
@@ -868,7 +885,7 @@ public static class DiagnosticsConfigurationReader
     }
 
     private static void RecordUnsupported(
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         string propertyName,
         DateTimeOffset occurredAt)
     {
@@ -880,7 +897,7 @@ public static class DiagnosticsConfigurationReader
     }
 
     private static void Record(
-        DiagnosticErrorLedger errors,
+        ConfigurationReadErrors errors,
         string code,
         string propertyName,
         DateTimeOffset occurredAt)
@@ -890,6 +907,28 @@ public static class DiagnosticsConfigurationReader
             code,
             $"Diagnostics property '{propertyName}' is missing, invalid, or unsupported.",
             occurredAt);
+    }
+
+    private sealed class ConfigurationReadErrors
+    {
+        private readonly DiagnosticErrorLedger ledger;
+
+        internal ConfigurationReadErrors(DiagnosticErrorLedger ledger)
+        {
+            this.ledger = ledger;
+        }
+
+        internal bool HasErrors { get; private set; }
+
+        internal void Record(
+            DiagnosticErrorCategory category,
+            string code,
+            string message,
+            DateTimeOffset occurredAt)
+        {
+            ledger.Record(category, code, message, occurredAt);
+            HasErrors = true;
+        }
     }
 
     private enum RawValueKind
