@@ -60,6 +60,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         private void AppInstanceIdTestWithEncryption(bool encryptionInInitialOpen, bool encryptionInReOpen)
         {
             #region Check Applicability
+            if (!TestConfig.IsPerShareEncryptionSupported)
+            {
+                BaseTestSite.Assert.Inconclusive("The SUT does not support per-share encryption (IsPerShareEncryptionSupported=false).");
+            }
             TestConfig.CheckDialect(DialectRevision.Smb30);
             TestConfig.CheckCapabilities(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_ENCRYPTION
                 | NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_LEASING

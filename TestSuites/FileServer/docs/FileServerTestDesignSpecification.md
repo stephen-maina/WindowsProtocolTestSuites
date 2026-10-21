@@ -13,6 +13,20 @@ diagnostics before class cleanup even when generated cleanup throws; finalize th
 cleanup status; create no diagnostics artifact root when disabled. A failed setup may still have successful cleanup.
 The framework boundary, rather than a trailing generated `CleanupTestManager` call, owns guaranteed disposal.
 
+## Local prerequisite regression tests
+
+`SMB2\Tests\EncryptionPrerequisiteTests.cs` exercises the six existing AppInstanceId and multichannel encryption entry methods with per-share support disabled, enabled, and unspecified (the backward-compatible default). Disabled support must report an explicit inconclusive reason before scenario setup; enabled and unspecified support must continue past applicability. These are local regression checks, not additional protocol-SUT scenarios.
+
+`SMB2\Tests\SigningSelectionTests.cs` exercises the production wrong-session-key signing-selection decision for each offered HMAC-SHA256, AES-CMAC, and AES-GMAC algorithm against an absent context, each known selection, and an unknown identifier. A matching selection is applicable; an absent context or AES-CMAC fallback makes only non-CMAC rows inconclusive. An explicitly unoffered non-fallback algorithm must fail before applicability can skip the case. These local decision-boundary checks do not replace live NEGOTIATE and malformed-ECHO execution.
+
+From the repository root:
+
+```powershell
+dotnet test .\TestSuites\FileServer\src\SMB2\Tests\SMB2.Regression.Tests.csproj -c Release
+```
+
+The fixture uses the actual compiled scenario methods and configuration reader with strict PTF doubles. It stops at the first SUT-name lookup, before network activity; it does not verify the subsequent protocol exchange.
+
 ## Content
 
 * [  Test Environment](#1)
@@ -2452,8 +2466,8 @@ This is used to test SMB2 common user scenarios.
 | Field | Details |
 |---|---|
 | **Description**          | These test cases verify that when the server receives a signed, unencrypted SMB2 request whose signature fails verification, it fails the request with STATUS_ACCESS_DENIED per MS-SMB2 3.3.5.2.4. A later disconnect is only an optional post-response action; for a Windows SUT the connection is additionally verified to be retained. |
-| **Prerequisites**        | For the Windows SUT coverage documented here, the supported targets are Windows Server 2022 and Windows Server 2025. `SendSignedRequest` is `true` and global encryption is not enabled (signed, unencrypted session). SMB 3.1.1 signing-algorithm cases require the SUT to return `SMB2_SIGNING_CAPABILITIES`, and the applicable algorithm must be listed in the authoritative `SupportedSigningAlgorithms` test configuration. |
-| **Dialect/signing cases** | SMB 2.0.2 / HMAC-SHA256; SMB 2.1 / HMAC-SHA256; SMB 3.0 / AES-CMAC; SMB 3.0.2 / AES-CMAC; SMB 3.1.1 / HMAC-SHA256; SMB 3.1.1 / AES-CMAC; SMB 3.1.1 / AES-GMAC. Each combination is an independently discoverable test case. Unsupported dialect or signing-algorithm cases are marked not applicable from authoritative test configuration. For SMB 3.1.1 cases the test is Inconclusive when the server does not select the algorithm in `SMB2_SIGNING_CAPABILITIES`. |
+| **Prerequisites**        | For the Windows SUT coverage documented here, the supported targets are Windows Server 2022 and Windows Server 2025. `SendSignedRequest` is `true` and global encryption is not enabled (signed, unencrypted session). The applicable algorithm must be listed in authoritative `SupportedSigningAlgorithms` configuration. SMB 3.1.1 HMAC-SHA256 and AES-GMAC rows additionally require the offered algorithm to be selected through `SMB2_SIGNING_CAPABILITIES`; an absent context or AES-CMAC fallback makes those rows inconclusive. The AES-CMAC row remains applicable with an absent context. An explicit unoffered non-fallback selection fails rather than skips, per MS-SMB2 3.3.5.4. |
+| **Dialect/signing cases** | SMB 2.0.2 / HMAC-SHA256; SMB 2.1 / HMAC-SHA256; SMB 3.0 / AES-CMAC; SMB 3.0.2 / AES-CMAC; SMB 3.1.1 / HMAC-SHA256; SMB 3.1.1 / AES-CMAC; SMB 3.1.1 / AES-GMAC. Each combination is an independently discoverable test case. Unsupported dialect or signing-algorithm cases are marked not applicable from authoritative test configuration. |
 | **Transport evidence**   | After normal signing, the test flips one signature byte and verifies that the complete 16-byte mutated signature, SMB2 protocol identifier, ECHO command, SMB2_FLAGS_SIGNED flag, and MessageId are present in the serialized payload after the underlying transport accepts it. The log records the dialect, effective signing algorithm, MessageId, and SHA-256 payload digest without logging session/signing keys. The rejection response MessageId must match the malformed request. |
 | **Pass criteria**        | The mutation callback, completed transport send, serialized mutation evidence, correlated server response, and exact STATUS_ACCESS_DENIED status are assertions. A timeout, a local serialization/send failure, or a server closure before the response fails the case. A disconnect after the rejection response is optional; connection retention is asserted only when the SUT is authoritatively configured as Windows. ECHO is used so the negative request has no operation side effect and the case does not use encryption. |
 | **Traceability**         | MS-SMB2 3.3.5.2.4 (signed unencrypted request verification and STATUS_ACCESS_DENIED); MS-SMB2 Appendix A product note 263 (Windows does not disconnect for a mismatched signature). |
@@ -8469,7 +8483,7 @@ Following scenarios extend “SMB2 Feature Test” by adding more complex messag
 |---|---|
 |**Test ID**|MultipleChannel_EncryptionOnBothChannels|
 |**Description**|Operate file via multi-channel with encryption on both channels.|
-|**Prerequisites**||
+|**Prerequisites**|`IsPerShareEncryptionSupported` = true; otherwise inconclusive before scenario setup.|
 |**Test Execution Steps**|Create main channel|
 ||NEGOTIATE (with/without SMB2_GLOBAL_CAP_ENCRYPTION)|
 ||SESSION_SETUP|
@@ -8492,7 +8506,7 @@ Following scenarios extend “SMB2 Feature Test” by adding more complex messag
 |---|---|
 |**Test ID**|MultipleChannel_Negative_EncryptionOnMainChannel|
 |**Description**|Operate file via multi-channel only with encryption on main channel.|
-|**Prerequisites**||
+|**Prerequisites**|`IsPerShareEncryptionSupported` = true; otherwise inconclusive before scenario setup.|
 |**Test Execution Steps**|Create main channel|
 ||NEGOTIATE (with SMB2_GLOBAL_CAP_ENCRYPTION)|
 ||SESSION_SETUP|
@@ -8515,7 +8529,7 @@ Following scenarios extend “SMB2 Feature Test” by adding more complex messag
 |---|---|
 |**Test ID**|MultipleChannel_Negative_EncryptionOnAlternativeChannel|
 |**Description**|Operate file via multi-channel only with encryption on alternative channel|
-|**Prerequisites**||
+|**Prerequisites**|`IsPerShareEncryptionSupported` = true, including when the main channel is unencrypted; otherwise inconclusive before scenario setup.|
 |**Test Execution Steps**|Create main channel|
 ||NEGOTIATE (without SMB2_GLOBAL_CAP_ENCRYPTION)|
 ||SESSION_SETUP|
@@ -8751,7 +8765,7 @@ Following scenarios extend “SMB2 Feature Test” by adding more complex messag
 |---|---|
 |**Test ID**|AppInstanceId_Encryption|
 |**Description**|Operate files with encrypted message before and after client failover|
-|**Prerequisites**||
+|**Prerequisites**|`IsPerShareEncryptionSupported` = true; otherwise inconclusive before scenario setup.|
 |**Test Execution Steps**|**Based on NIC1, create client1:**|
 ||NEGOTIATE (with SMB2_GLOBAL_CAP_ENCRYPTION)|
 ||SESSION_SETUP|
@@ -8776,7 +8790,7 @@ Following scenarios extend “SMB2 Feature Test” by adding more complex messag
 |---|---|
 |**Test ID**|AppInstanceId_Negative_NoEncryptionInInitialOpen_EncryptionInReOpen|
 |**Description**|Operate files with encrypted message before client failover but with unencrypted message after failover|
-|**Prerequisites**||
+|**Prerequisites**|`IsPerShareEncryptionSupported` = true, including when the initial open is unencrypted; otherwise inconclusive before scenario setup.|
 |**Test Execution Steps**|**Based on NIC1, create client1:**|
 ||NEGOTIATE (with SMB2_GLOBAL_CAP_ENCRYPTION)|
 ||SESSION_SETUP|
@@ -8802,7 +8816,7 @@ Following scenarios extend “SMB2 Feature Test” by adding more complex messag
 |---|---|
 |**Test ID**|AppInstanceId_Negative_EncryptionInInitialOpen_NoEncryptionInReOpen|
 |**Description**|Operate files with encrypted message before failover but with unencrypted message after failover|
-|**Prerequisites**||
+|**Prerequisites**|`IsPerShareEncryptionSupported` = true; otherwise inconclusive before scenario setup.|
 |**Test Execution Steps**|**Based on NIC1, create client1:**|
 ||NEGOTIATE (with SMB2_GLOBAL_CAP_ENCRYPTION)|
 ||SESSION_SETUP|

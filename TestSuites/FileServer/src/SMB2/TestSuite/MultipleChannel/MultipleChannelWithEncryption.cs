@@ -22,6 +22,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         public void MultipleChannel_EncryptionOnBothChannels()
         {
             #region Check Applicability
+            if (!TestConfig.IsPerShareEncryptionSupported)
+            {
+                BaseTestSite.Assert.Inconclusive("The SUT does not support per-share encryption (IsPerShareEncryptionSupported=false).");
+            }
             TestConfig.CheckDialect(DialectRevision.Smb30);
             TestConfig.CheckCapabilities(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_ENCRYPTION | NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_MULTI_CHANNEL);
             #endregion
@@ -90,6 +94,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         public void MultipleChannel_Negative_EncryptionOnMainChannel()
         {
             #region Check Applicability
+            if (!TestConfig.IsPerShareEncryptionSupported)
+            {
+                BaseTestSite.Assert.Inconclusive("The SUT does not support per-share encryption (IsPerShareEncryptionSupported=false).");
+            }
             TestConfig.CheckServerEncrypt();
             #endregion
             uncSharePath = Smb2Utility.GetUncPath(TestConfig.SutComputerName, TestConfig.EncryptedFileShare);
@@ -168,6 +176,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         public void MultipleChannel_Negative_EncryptionOnAlternativeChannel()
         {
             #region Check Applicability
+            if (!TestConfig.IsPerShareEncryptionSupported)
+            {
+                BaseTestSite.Assert.Inconclusive("The SUT does not support per-share encryption (IsPerShareEncryptionSupported=false).");
+            }
             TestConfig.CheckServerEncrypt();
             #endregion
             uncSharePath = Smb2Utility.GetUncPath(TestConfig.SutComputerName, TestConfig.EncryptedFileShare);
