@@ -604,18 +604,17 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
         [TestMethod()]
         [TestCategory("SmbdDataTransfer")]
-        [Description("Verify the connection will be terminated if (DataOffset + DataLength) is greater than the length of the SMBD message. "
-                    + "In this test case, update only DataLength to terminate the connection.")]
+        [Description("Verify the opted-in SUT/provider disconnects on an RDMA receive exceeding MaxReceiveSize, "
+                    + "then verify a message exactly at the negotiated limit succeeds after reconnecting.")]
         // [MS-SMBD] 3.1.5.7 / 3.1.5.9: the receiver posts receive buffers of Connection.MaxReceiveSize and the sender's
         // Connection.MaxSendSize is capped to the peer's MaxReceiveSize. 3.1.5.8 has no explicit "message <= MaxReceiveSize" check.
         [TestProperty("SpecSection", "[MS-SMBD] 3.1.5.7 Receiving a Negotiate Response Message; [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; [MS-SMBD] 3.1.5.9 Managing Credits Prior to Sending")]
-        [TestProperty("SpecCompliance", "TODO")]
+        [TestProperty("SpecCompliance", "ImplementationSpecific")]
         public void SmbdDataTransfer_NegativeParameter_DataLength_AgainstMaxReceiveSize()
         {
-            // TODO(spec): 3.1.5.8 does not list a message-size > MaxReceiveSize check among its terminate conditions; termination here
-            // stems from RDMA receive-buffer overflow (3.1.5.9), which is provider behavior, not a normative SMBD verification. The
-            // Description (copied from the DataLength test) also does not match the scenario, and the Windows <6> branch is not normative.
-            // Re-describe as an RDMA-level expectation or drop the termination assertion.
+            BaseTestSite.Assume.IsTrue(smbdAdapter.TestConfig.ExpectDisconnectOnReceiveOverflow,
+                "This provider-specific test requires ExpectDisconnectOnReceiveOverflow=true and an independently verified "
+                + "SUT/provider overflow-disconnection contract; [MS-SMBD] 3.1.5.8 does not require this behavior.");
             // define data for test case, get the server's capability
             uint MAX_SEND_SIZE;
             if (smbdAdapter.TestConfig.IsWindowsServer2012R2OrLater)
@@ -667,9 +666,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 "Status of send data is {0}", status);
             #endregion
 
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify server connection will be terminated.");
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify the opted-in provider overflow-disconnection contract.");
             smbdAdapter.WaitRdmaDisconnect();
-            BaseTestSite.Assert.IsFalse(smbdAdapter.ClientConnection.Endpoint.IsConnected, "Connection should be terminated.");
+            BaseTestSite.Assert.IsFalse(smbdAdapter.ClientConnection.Endpoint.IsConnected,
+                "Connection should be terminated according to the configured SUT/provider contract.");
             smbdAdapter.DisconnectRdma();
             #endregion
 

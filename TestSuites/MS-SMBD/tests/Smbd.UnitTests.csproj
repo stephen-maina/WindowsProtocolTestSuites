@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <DefineConstants Condition="'$(OS)' == 'Windows_NT'">$(DefineConstants);WINDOWS</DefineConstants>
+    <DefineConstants Condition="'$(OS)' != 'Windows_NT'">$(DefineConstants);LINUX</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.9.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.9.1" />
+    <ProjectReference Include="..\src\TestSuite\MS-SMBD_ServerTestSuite.csproj" />
+    <ProjectReference Include="..\..\..\ProtoSDK\RDMA\RDMA.vcxproj" Condition="'$(OS)' == 'Windows_NT'" />
+    <Compile Include="..\src\Plugin\SMBDPlugin\Detector\SmbdClient.cs" Link="Detector\SmbdClient.cs" />
+    <Compile Include="..\src\Plugin\SMBDPlugin\Detector\DetectionInfo.cs" Link="Detector\DetectionInfo.cs" />
+    <Compile Include="..\src\Plugin\SMBDPlugin\RdmaPlatformAdapter.cs" Link="Detector\RdmaPlatformAdapter.cs" />
+    <Compile Include="..\..\..\AssemblyInfo\SharedAssemblyInfo.cs" Link="SharedAssemblyInfo.cs" />
+    <None Include="..\src\TestSuite\*.ptfconfig" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -481,7 +481,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 | | **NegotiatedVersion**: 0x0100| 
 | | **Reserved**: 0x0000| 
 | | **CreditsRequested**: must be greater than 0| 
-| | **CreditsGranted**: must be greater than 0 and not great than 0x000A (10) (CreditRequested in Negotiate request)| 
+| | **CreditsGranted**: greater than 0; [MS-SMBD] 3.1.5.3 sets this from posted receive credits, without a universal upper bound at the request's CreditsRequested.|
 | | **Status**: 0x0000| 
 | | **MaxReadWriteSize**: at least 1048576 bytes| 
 | | **PreferredSendSize**: at least 128 bytes and not greater than 1024 (1KB)(MaxReceiveSize in Negotiate request)| 
@@ -1356,24 +1356,21 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **SmbdDataTransfer**| | 
 |  **Test ID**|  **SmbdDataTransfer_NegativeParameter_DataLength_AgainstMaxReceiveSize**| 
 |  **Priority**| P1| 
-|  **Description** | Verify the connection will be terminated if (**DataOffset** + **DataLength)** is greater than the length of the SMBD message. In this test case, update only **DataLength** to terminate the connection.| 
-|  **Prerequisites**| N/A| 
+|  **Description** | Provider-specific overflow-disconnection check, followed by a successful message exactly at the negotiated receive limit. This does not test an invalid DataOffset/DataLength range and is not a normative [MS-SMBD] 3.1.5.8 termination condition.|
+|  **Prerequisites**| Independently verified SUT/provider overflow-disconnection contract and **ExpectDisconnectOnReceiveOverflow=true**. Otherwise mark inconclusive before connecting, regardless of Platform.|
 |  **Test Execution Steps**| Connect to server over RDMA.| 
 | | SMBD negotiate with peer.| 
-| | •   MaxSendSize = 1024| 
-| | •   MaxReceiveSize = 1024| 
-| | •   MaxFragmentedSize = 128  &#42;  1024| 
+| | • PreferredSendSize = configured WindowsMaxPreferredSendSize on Windows Server 2012 R2 or later; otherwise uint.MaxValue.|
+| | • MaxReceiveSize = uint.MaxValue; MaxFragmentedSize = uint.MaxValue.|
 | | Establish SMB2 session and open file.| 
-| | Create SMB2 WRITE request package, whose size is **SMBD negotiated MaxSendSize – 24 + 1**.| 
+| | Construct a complete SMBD message one byte larger than the server's negotiated MaxReceiveSize.|
 | | Sends SMB2 WRITE request over SMBD | 
-| | Verify the connection is terminated.| 
+| | Verify disconnection according to the opted-in provider contract, not a protocol MUST.|
 | | Connect to server over RDMA.| 
 | | SMBD negotiate with peer.| 
-| | •   MaxSendSize = 1024| 
-| | •   MaxReceiveSize = 1024| 
-| | •   MaxFragmentedSize = 128  &#42;  1024| 
+| | Use the same negotiation parameters.|
 | | Establish SMB2 session and open file.| 
-| | Create SMB2 WRITE request package, whose **SMBD negotiated MaxSendSize - 24**| 
+| | Construct a complete SMBD message exactly at the server's negotiated MaxReceiveSize.|
 | | Sends SMB2 WRITE request over SMBD | 
 | | Verify server return SMB2 WRITE response with STATUS_SUCCESS.| 
 |  **Requirements Covered**| N/A| 
@@ -1771,6 +1768,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **Test Execution Steps**| Connect to server over RDMA.| 
 | | SMBD negotiate with peer| 
 | | Establish SMB2 session and open file.| 
+| | Select READ/WRITE payload size as min(**RdmaChannelDataSizeInByte**, negotiated SMB2 MaxReadSize, SMB2 MaxWriteSize, SMBD MaxReadWriteSize); require a nonzero size fitting a managed byte array.|
 | | Register **4095 (ushort.MaxValue / BufferDescriptor Size, supported maximum size of BufferDescriptor List)** buffers for RDMA Read.| 
 | | Write file content into **4095** registered buffers.| 
 | | Send SMB2 WRITE request over RDMA Channel with Channel information list.| 
@@ -2566,6 +2564,35 @@ the specification; implementation-specific applicability gates must be checked i
 | `Smb2OverRdmaTransformEdge` (6) | Encryption transform on an unencrypted request and unknown `TransformType` → `STATUS_INVALID_PARAMETER`; READ with no negotiated transform; READ response crypto-transform fields for AES-GMAC and AES-CMAC | [MS-SMB2] 3.3.5.12, 3.3.5.13, 2.2.43, 2.2.43.1 |
 | `SmbdProtocolGaps` (9) | Reserved/Padding ignored; second Negotiate Request terminates; Data Transfer before negotiation rejected; credit cap and growth; fragmented READ response headers; exact `MaxReadWriteSize` READ/WRITE | [MS-SMBD] 2.2.1, 2.2.3, 3.1.4.5, 3.1.4.6, 3.1.5.3, 3.1.5.4, 3.1.5.6, 3.1.5.8, 3.1.5.9 |
 | `Smb2MultiChannelGaps` (7) | `FSCTL_QUERY_NETWORK_INTERFACE_INFO` over RDMA; session-bind negatives (`STATUS_INVALID_PARAMETER`, `STATUS_USER_SESSION_DELETED`, `STATUS_REQUEST_NOT_ACCEPTED`); RDMA failover; 8 concurrent connections; requests exceeding initial credits | [MS-SMB2] 3.3.5.5, 3.3.5.15.11, 3.3.7.1, 3.3.1.2, [MS-SMBD] 3.1.5.1, 3.1.5.9 |
+### Hardware-free implementation regressions
+
+These are local implementation tests, not additional SUT protocol scenarios. All belong to category **HardwareFree**
+in `TestSuites\MS-SMBD\tests\NegotiationReviewTests.cs`. Run
+`dotnet test TestSuites\MS-SMBD\tests\Smbd.UnitTests.csproj -p:OS=Unix` from the repository root.
+This selects managed Linux paths even on Windows; native builds and live RDMA remain separate validation requirements.
+The detector is compiled from its actual source; adapter and negotiation assertions execute from the actual suite assemblies.
+Packet-builder tests capture encoded requests instead of using a provider.
+
+| Test name | Scenario and pass criteria |
+| --- | --- |
+| DetectorRejectsInvalidSafetyMargin | Margins 65536 and uint.MaxValue throw ArgumentOutOfRangeException before unsigned subtraction. |
+| DetectorRetainsValidSingleCreditLimit | Margins 0, 100, and 65535 produce 65536, 65436, and 1-byte bounds respectively. |
+| DetectorRetainsNegotiatedLimitsAndPrerequisite | The smaller negotiated READ/WRITE limit wins; an unnegotiated detector still fails. |
+| ConfiguredIoctlOutputSizeReachesEncodedRequest | Configured 4096, 32768, and default 65536 pass through the actual multi-channel scenario initialization and reach actual IOCTL MaxOutputResponse bytes. |
+| IoctlPreservesNegotiatedLimitAndCreditCharge | The actual IOCTL output size respects negotiated MaxTransactSize; encoded CreditCharge and consumed credits match the bounded size. |
+| ConfiguredRdmaPayloadReachesReadAndWriteBuilders | Two configured sizes and each of the three negotiated caps reach actual READ Length and RDMA WRITE RemainingBytes through the adapter. |
+| ZeroConfiguredBuffersAreRejectedBeforeSending | Zero IOCTL/RDMA configured sizes fail explicitly rather than sending empty probes. |
+| DisconnectedTransportIsNotAcceptedAsNoResponseTimeout | The actual disconnected managed Linux receive path throws a non-timeout exception retaining NTSTATUS. |
+| ReceiveStatusClassificationDoesNotHideProviderFailures | STATUS_TIMEOUT/STATUS_IO_TIMEOUT remain timeouts; cancellation, disconnection, internal error, and resource failure do not. |
+| NativeQueueTimeoutExceptionIsPreserved | An existing receive-queue TimeoutException passes through unchanged; this injects the exception, not a native queue. |
+| NegotiateCreditsAreNonzeroNotBoundedByRequest | Grants equal to and above the requested credit pass; a zero grant fails the actual checker. |
+| ReceiveOverflowProviderExpectationIsOptIn | Both Windows and non-Windows platforms mark the overflow scenario inconclusive before provider access when the opt-in is false. |
+| MissingOverflowExpectationRemainsDisabled | An absent property defaults to false; an explicit true value is parsed. |
+
+Only genuine timeout exceptions are accepted by existing negative no-response scenarios. Provider, cancellation, and
+connection failures now fail those scenarios instead of being mistaken for successful no-response checks.
+The true overflow-provider branch, native queues, and successful end-to-end READ/WRITE responses still require an
+appropriately configured RDMA SUT; the local regressions do not claim to validate these.
 
 ## <a name="_Toc427489520"/>Appendix
 

@@ -63,6 +63,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
         public uint Smb2MaxReadSize { get; set; }
         public uint Smb2MaxWriteSize { get; set; }
+        public uint Smb2MaxTransactSize { get; set; } = 65536;
 
         // To store available credits for sending Smb2 request messages
         public ushort Smb2AvailableCredits { get; set; }
@@ -80,7 +81,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
         /// <summary>
         /// MaxOutputResponse used by the FSCTL_QUERY_NETWORK_INTERFACE_INFO request. [MS-SMB2] does not mandate a
-        /// value; it only has to be large enough to hold the interface list returned by the server.
+        /// fixed value; the requested size is capped at the negotiated SMB2 MaxTransactSize and charged accordingly.
         /// Populated from the "QueryNetworkInterfaceMaxOutputResponse" ptfconfig property.
         /// </summary>
         public uint QueryNetworkInterfaceMaxOutputResponse { get; set; } = 65536;
@@ -126,6 +127,11 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             }
         }
 
+        protected virtual NtStatus ReceiveSmbdMessage(out byte[] message)
+        {
+            return smbdClient.ReceiveMessage(smb2ConnectionTimeout, out message);
+        }
+
         // Override ExpectPacket
         public override T ExpectPacket<T>(ulong messageId)
         {
@@ -135,23 +141,17 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                 while (smb2Response == null
                     || smb2Response.Length == 0)
                 {
-                    NtStatus ret = smbdClient.ReceiveMessage(smb2ConnectionTimeout, out smb2Response);
+                    NtStatus ret = ReceiveSmbdMessage(out smb2Response);
                     if (ret != NtStatus.STATUS_SUCCESS)
                     {
-                        // Any failure here means the SMBD connection can no longer
-                        // deliver the response: a timeout, an explicit disconnect,
-                        // or cancelled receives after the server tore the connection
-                        // down. Fail fast with the actual status instead of looping
-                        // through the cancelled completions and then waiting the
-                        // full connection timeout.
-                        // WHAT: the exception message carries the real NTSTATUS from ReceiveMessage; the type stays TimeoutException.
-                        // WHY: every failure (timeout, disconnect, cancelled receive) used to look like a plain timeout, hiding the
-                        //      cause; tests that expect "no response" still catch TimeoutException, so the type is unchanged.
-                        // SPEC: [MS-SMBD] 3.1.7.1 Connection Loss - after loss/termination no further messages are delivered, so a
-                        //       failed receive means the SMB2 response will never arrive.
-                        throw new TimeoutException(string.Format(
-                            "SMBD ReceiveMessage failed with status 0x{0:X8} while waiting for the SMB2 response.",
-                            (uint)ret));
+                        string message = string.Format(
+                            "SMBD ReceiveMessage failed with status {0} (0x{1:X8}) while waiting for the SMB2 response.",
+                            ret, (uint)ret);
+                        if (ret == NtStatus.STATUS_IO_TIMEOUT || ret == NtStatus.STATUS_TIMEOUT)
+                        {
+                            throw new TimeoutException(message);
+                        }
+                        throw new InvalidOperationException(message);
                     }
                 }
 
@@ -384,6 +384,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
             this.Smb2MaxReadSize = negotiateResponse.MaxReadSize;
             this.Smb2MaxWriteSize = negotiateResponse.MaxWriteSize;
+            this.Smb2MaxTransactSize = negotiateResponse.MaxTransactSize;
 
             CalculateSmb2AvailableCredits(1, packetHeader.CreditRequestResponse);
             return status;
@@ -459,6 +460,19 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
         public uint Smb2QueryNetworkInterfaceInfo(out NETWORK_INTERFACE_INFO_Response[] networkInterfaceInfos)
         {
+            if (QueryNetworkInterfaceMaxOutputResponse == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(QueryNetworkInterfaceMaxOutputResponse),
+                    "The IOCTL output buffer must be nonzero.");
+            }
+            // [MS-SMB2] 3.3.5.15 permits rejecting an output buffer above Connection.MaxTransactSize.
+            uint maxOutputResponse = Math.Min(QueryNetworkInterfaceMaxOutputResponse, Smb2MaxTransactSize);
+            if (maxOutputResponse == 0 || maxOutputResponse > (uint)ushort.MaxValue * 65536)
+            {
+                throw new InvalidOperationException("Negotiate an IOCTL output size that fits the SMB2 credit charge.");
+            }
+            ushort creditCharge = CalculateCreditCharge(maxOutputResponse);
+            RequestCreditsFromSmb2Server(creditCharge);
             byte[] responseInput;
             byte[] responseOutput;
             Packet_Header packetHeader;
@@ -466,7 +480,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
             // IoCtl Query Network Interface INFO
             this.IoCtl(
-                1,
+                creditCharge,
                 64,
                 SessionRequestFlags,
                 messageId,
@@ -476,14 +490,14 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                 new FILEID { Persistent = 0xffffffffffffffff, Volatile = 0xffffffffffffffff },
                 0,
                 new byte[0],
-                QueryNetworkInterfaceMaxOutputResponse,
+                maxOutputResponse,
                 IOCTL_Request_Flags_Values.SMB2_0_IOCTL_IS_FSCTL,
                 out responseInput,
                 out responseOutput,
                 out packetHeader,
                 out ioCtlResponse);
 
-            CalculateSmb2AvailableCredits(1, packetHeader.CreditRequestResponse);
+            CalculateSmb2AvailableCredits(creditCharge, packetHeader.CreditRequestResponse);
 
             if ((NtStatus)packetHeader.Status != NtStatus.STATUS_SUCCESS)
             {

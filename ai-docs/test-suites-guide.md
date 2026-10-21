@@ -295,6 +295,20 @@ and does not duplicate `Diagnostics.*` values. Per-test outputs are
 succeeds; runner reconciliation writes `runner/runner-evidence.json`.
 Diagnostics regression tests are supporting infrastructure tests, not protocol
 conformance cases.
+**Hardware-free SMBD review regressions:** `TestSuites\MS-SMBD\tests\Smbd.UnitTests.csproj` exercises the actual
+adapter/test-suite assemblies and linked detector source, without connecting to a provider. Run from the repository root:
+`dotnet test TestSuites\MS-SMBD\tests\Smbd.UnitTests.csproj -p:OS=Unix`.
+On Windows, this deliberately selects the managed Linux conditional paths; it does **not** validate native compilation
+or live Linux/Windows RDMA interoperability. The project links the detector's source and platform adapter to avoid pulling
+in the plugin's UI/PowerShell dependencies. Its fake PTF checker rejects unsupported assertion operations.
+
+Reuse `SmbdAdapter.GetRdmaChannelDataSize()` for the configured multiple-buffer-descriptor scenario: it caps
+`RdmaChannelDataSizeInByte` at both SMB2 negotiated READ/WRITE limits and SMBD MaxReadWriteSize.
+Other boundary tests retain their scenario-specific lengths. `QueryNetworkInterfaceMaxOutputResponse` controls the actual
+IOCTL output request, capped at SMB2 MaxTransactSize with matching SMB2 credit charge (not SMBD credits).
+The multi-channel scenario creates its own main-channel client; its initializer must forward this setting explicitly.
+The receive-overflow-disconnection test requires explicit `ExpectDisconnectOnReceiveOverflow=true` for an independently
+verified provider contract; it is not a generic [MS-SMBD] 3.1.5.8 requirement and defaults to inconclusive.
 
 ---
 

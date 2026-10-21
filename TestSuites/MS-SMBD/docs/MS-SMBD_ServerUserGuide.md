@@ -434,10 +434,12 @@ The following settings are the capability of the MS-SMBD protocol.
 | | The default value is 1048576.| 
 | ClientMaxReadWriteSize| Implementation-specific value ([MS-SMBD] Section 3.1.5.7): the client's MaxReadWriteSize; the negotiated value is the smaller of this and the SUT's value.| 
 | | The default value is 1048576.| 
-| QueryNetworkInterfaceMaxOutputResponse| Implementation-specific MaxOutputResponse for FSCTL_QUERY_NETWORK_INTERFACE_INFO; must hold the SUT's interface list.| 
+| QueryNetworkInterfaceMaxOutputResponse| Nonzero requested MaxOutputResponse for FSCTL_QUERY_NETWORK_INTERFACE_INFO; capped at negotiated SMB2 MaxTransactSize and charged the corresponding SMB2 credits. Choose a value sufficient for the SUT's interface list; insufficient space can return a server buffer-size error.|
 | | The default value is 65536.| 
-| RdmaChannelDataSizeInByte| Implementation-specific size of data transferred over an SMB2 RDMA channel by the SMB2-over-SMBD test cases.| 
+| RdmaChannelDataSizeInByte| Nonzero requested READ/WRITE payload size for **Smb2OverRdmaChannel_ReadWriteMultipleBufferDescriptorList**. The actual size is the minimum of this setting, SMB2 MaxReadSize, SMB2 MaxWriteSize, and SMBD MaxReadWriteSize. It must fit a managed byte array. Other size-boundary scenarios keep their own sizes.|
 | | The default value is 1048576.| 
+| ExpectDisconnectOnReceiveOverflow| Optional Boolean (`true` or `false`). Set `true` only when an independently verified SUT/provider contract requires disconnection on RDMA receive-buffer overflow. This enables **SmbdDataTransfer_NegativeParameter_DataLength_AgainstMaxReceiveSize**; it is not a normative [MS-SMBD] 3.1.5.8 check. `false` skips this scenario before connecting, for Windows and non-Windows providers alike.|
+| | The default value is false, including when the property is absent.|
 
 
 * **MS-SMBD Test Case Switches.**

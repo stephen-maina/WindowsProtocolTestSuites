@@ -60,6 +60,22 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         }
         #endregion
 
+        public uint GetRdmaChannelDataSize()
+        {
+            if (testConfig.RdmaChannelDataSizeInByte == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(TestConfig.RdmaChannelDataSizeInByte),
+                    "The RDMA channel payload must be nonzero.");
+            }
+            uint size = Math.Min(testConfig.RdmaChannelDataSizeInByte,
+                Math.Min(Smb2MaxReadSize, Math.Min(Smb2MaxWriteSize, ClientConnection.MaxReadWriteSize)));
+            if (size == 0 || size > int.MaxValue)
+            {
+                throw new InvalidOperationException("Negotiate a nonzero RDMA channel payload that fits a managed byte array.");
+            }
+            return size;
+        }
+
         #region Constructors
         public SmbdAdapter(
             ITestSite testSite,

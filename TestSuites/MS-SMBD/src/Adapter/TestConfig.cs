@@ -70,17 +70,21 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         public uint ClientMaxReadWriteSize { get; set; }
 
         /// <summary>
-        /// MaxOutputResponse of the FSCTL_QUERY_NETWORK_INTERFACE_INFO request. Not defined by [MS-SMB2]; it only
-        /// needs to be large enough for the interface list returned by the SUT.
+        /// Requested MaxOutputResponse of FSCTL_QUERY_NETWORK_INTERFACE_INFO, capped at negotiated MaxTransactSize.
+        /// No fixed value is defined by [MS-SMB2]; it must accommodate the interface list returned by the SUT.
         /// </summary>
         public uint QueryNetworkInterfaceMaxOutputResponse { get; set; }
 
         /// <summary>
-        /// Size in bytes of the data written/read through an RDMA channel by the SMB2-over-SMBD test cases.
-        /// Not defined by the specifications; it should be large enough to need multiple buffer descriptors
-        /// and no larger than the SMB2 negotiated MaxReadSize/MaxWriteSize and the SMBD negotiated MaxReadWriteSize.
+        /// Requested payload size for the multiple-buffer-descriptor RDMA channel scenario.
+        /// Capped at the SMB2 MaxReadSize/MaxWriteSize and SMBD MaxReadWriteSize negotiated limits.
         /// </summary>
         public uint RdmaChannelDataSizeInByte { get; set; }
+        /// <summary>
+        /// Opt in only when the SUT/provider contract requires disconnection on an oversized RDMA receive.
+        /// This is not a normative [MS-SMBD] Section 3.1.5.8 requirement.
+        /// </summary>
+        public bool ExpectDisconnectOnReceiveOverflow { get; set; }
         public bool CheckDataLengthRemainingDataLength { get; set; }
         public bool RdmaLayerLoggingEnabled { get; set; }
         public List<string> ActiveTDI { get; private set; }
@@ -177,6 +181,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             ClientMaxReadWriteSize = uint.Parse(site.Properties["ClientMaxReadWriteSize"]);
             QueryNetworkInterfaceMaxOutputResponse = uint.Parse(site.Properties["QueryNetworkInterfaceMaxOutputResponse"]);
             RdmaChannelDataSizeInByte = uint.Parse(site.Properties["RdmaChannelDataSizeInByte"]);
+            ExpectDisconnectOnReceiveOverflow = bool.Parse(site.Properties["ExpectDisconnectOnReceiveOverflow"] ?? "false");
             #endregion
 
             Smb2ConnectionTimeout = TimeSpan.FromSeconds(int.Parse(site.Properties["Smb2ConnectionTimeoutInSeconds"]));

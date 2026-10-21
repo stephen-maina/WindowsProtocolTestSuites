@@ -45,7 +45,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             this.testConfig = new TestConfig(BaseTestSite);
             this.clientId = Guid.NewGuid();
             this.mainChannelClient = new Smb2OverSmbdTestClient(
-                testConfig.Smb2ConnectionTimeout);
+                testConfig.Smb2ConnectionTimeout)
+            {
+                QueryNetworkInterfaceMaxOutputResponse = testConfig.QueryNetworkInterfaceMaxOutputResponse
+            };
             this.alternativeChannelClient = new Smb2OverSmbdTestClient(
                 testConfig.Smb2ConnectionTimeout);
             foreach (Smb2OverSmbdTestClient channelClient in new[] { this.mainChannelClient, this.alternativeChannelClient })

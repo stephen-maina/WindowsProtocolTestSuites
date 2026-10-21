@@ -108,6 +108,11 @@ namespace Microsoft.Protocols.TestManager.SMBDPlugin.Detector
             {
                 throw new InvalidOperationException("Not negotiated!");
             }
+            if (BufferSizeSafetyMargin >= SingleCreditPayloadSize)
+            {
+                throw new ArgumentOutOfRangeException(nameof(BufferSizeSafetyMargin), BufferSizeSafetyMargin,
+                    "The safety margin must be smaller than the single-credit payload size (65536 bytes).");
+            }
             // The probe is limited to a single credit of payload ([MS-SMB2] Section 3.2.4.1.5) minus the safety margin.
             uint maxBufferSize = SingleCreditPayloadSize - BufferSizeSafetyMargin;
             var list = new uint[] { maxReadSize, maxWriteSize, maxBufferSize };

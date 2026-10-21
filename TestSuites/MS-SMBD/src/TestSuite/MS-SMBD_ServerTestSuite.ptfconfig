@@ -54,14 +54,20 @@
       ClientMaxReadWriteSize: [MS-SMBD] Section 3.1.5.7 - the client sets Connection.MaxReadWriteSize to the smaller of
       "an implementation-specific value" and the MaxReadWriteSize received from the server. This is that value.
       QueryNetworkInterfaceMaxOutputResponse: MaxOutputResponse of FSCTL_QUERY_NETWORK_INTERFACE_INFO; it must be large
-      enough to hold the SUT's network interface list ([MS-SMB2] Section 2.2.31).
-      RdmaChannelDataSizeInByte: size of data transferred through an SMB2 RDMA channel by the SMB2-over-SMBD test cases.
-      Use a value large enough to need multiple buffer descriptors and not larger than the SMB2 MaxReadSize/MaxWriteSize
-      and the SMBD MaxReadWriteSize negotiated with the SUT.
+      enough to hold the SUT's network interface list ([MS-SMB2] Section 2.2.31). The nonzero requested size is
+      capped at negotiated SMB2 MaxTransactSize, with the corresponding SMB2 credit charge.
+      RdmaChannelDataSizeInByte: nonzero requested payload in ReadWriteMultipleBufferDescriptorList, capped at
+      the negotiated SMB2 MaxReadSize/MaxWriteSize and SMBD MaxReadWriteSize. Other size-boundary cases retain
+      their scenario-specific sizes.
+      ExpectDisconnectOnReceiveOverflow: optional opt-in for the provider-specific MaxReceiveSize overflow test.
+      Set true only for an independently verified SUT/provider overflow-disconnection contract. Section 3.1.5.8
+      does not mandate that an oversized RDMA receive disconnects. False (also the absent-property default) skips
+      this scenario before connecting, regardless of Platform.
     -->
     <Property name="ClientMaxReadWriteSize" value="1048576" />
     <Property name="QueryNetworkInterfaceMaxOutputResponse" value="65536" />
     <Property name="RdmaChannelDataSizeInByte" value="1048576" />
+    <Property name="ExpectDisconnectOnReceiveOverflow" value="false" />
 
     <!--maximum number of outstanding Receive requests for RDMA driver-->
     <Property name="InboundEntries" value="63" />

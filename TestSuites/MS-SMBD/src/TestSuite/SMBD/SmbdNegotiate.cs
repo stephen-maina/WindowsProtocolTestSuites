@@ -33,8 +33,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         // Spec: [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message / 3.1.5.3 Sending a Negotiate Response Message / 2.2.2.
         // A valid request (version range includes 0x0100, CreditsRequested > 0, MaxReceiveSize >= 128,
         // MaxFragmentedSize >= 131072) MUST get a Negotiate Response with Status 0 and NegotiatedVersion 0x0100.
-        // Note: the shared NegotiateBasicChecker also asserts CreditsGranted <= CreditsRequested, which is not
-        // an explicit spec requirement (3.1.5.9 only bounds receive credits by ReceiveCreditTarget/Max).
+        // CreditsGranted reflects posted receive buffers (3.1.5.3 / 3.1.5.9), not a cap at CreditsRequested.
         [TestMethod()]
         [TestCategory("BVT")]
         [TestCategory("SmbdNegotiate")]
@@ -876,7 +875,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 response.Reserved,
                 "Reserved in negotiate response is {0}", response.Reserved);
             BaseTestSite.Assert.IsTrue(
-                response.CreditsGranted > 0 && response.CreditsGranted <= creditsRequested,
+                response.CreditsGranted > 0,
                 "CreditsGranted in negotiate response is {0}", response.CreditsGranted);
             BaseTestSite.Assert.IsTrue(
                 response.CreditsRequested > 0,

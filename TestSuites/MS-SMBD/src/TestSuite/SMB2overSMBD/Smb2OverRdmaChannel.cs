@@ -134,14 +134,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 smbdAdapter.SelectedSigningAlgorithm,
                 "Server MUST select AES_CMAC so the signing transform contains a 16-byte signature and no nonce.");
 
-            uint size = smbdAdapter.Smb2MaxReadSize;
-            if (size > smbdAdapter.Smb2MaxWriteSize)
-            {
-                size = smbdAdapter.Smb2MaxWriteSize;
-            }
             // Data size is not defined by the specifications; it comes from the RdmaChannelDataSizeInByte ptfconfig
             // property and should be large enough to test multiple buffer descriptors in channel info.
-            size = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte;
+            uint size = smbdAdapter.GetRdmaChannelDataSize();
             const int rdmaTransformHeaderSize = 16;
             const int rdmaCryptoHeaderSize = 8;
             const int signatureSize = 16;
