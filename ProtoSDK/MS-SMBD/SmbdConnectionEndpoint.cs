@@ -33,6 +33,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         private readonly Dictionary<ulong, SmbdMemoryWindow> pendingInvalidations = new Dictionary<ulong, SmbdMemoryWindow>();
         private readonly List<SmbdMemoryWindow> retainedBindCleanup = new List<SmbdMemoryWindow>();
         private readonly ManualResetEventSlim bindsDrained = new ManualResetEventSlim(true);
+        private readonly object memoryOperationLocker = new object();
         private int registrationInProgress;
 
         private sealed class PendingBind
@@ -512,8 +513,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             }
             if (!bindsDrained.Wait(TimeSpan.FromSeconds(5)))
             {
-                LogEvent("Disconnect: Bind completions did not drain. Registered memory and windows remain owned; disposal is incomplete.");
-                throw new TimeoutException("RDMA Bind completion drain failed; native resources are retained.");
+                LogEvent("Disconnect: Bind/Invalidate completions or in-flight registration did not drain. Registered memory and windows remain owned; disposal is incomplete.");
+                throw new TimeoutException("RDMA registration/completion drain failed; native resources are retained.");
             }
             lock (locker)
             {
@@ -585,7 +586,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             sge.MemoryHandler = 0;
 
             // register memory
-            rdmaAdapter.RegisterMemory(sge.Length, out sge.MemoryHandler);
+            RegisterNativeMemory(sge.Length, out sge.MemoryHandler);
             // Write data to memory
             rdmaService.WriteToMemory(sge.MemoryHandler, data);
 
@@ -916,10 +917,19 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 #endif
 
 #if WINDOWS
-            if (Interlocked.CompareExchange(ref registrationInProgress, 1, 0) != 0)
+            lock (locker)
             {
-                LogEvent("RegisterMemoryWindow: another registration owns the submission slot.");
-                return NtStatus.STATUS_DEVICE_BUSY;
+                if (!isConnected)
+                {
+                    return NtStatus.STATUS_CONNECTION_DISCONNECTED;
+                }
+                if (registrationInProgress != 0)
+                {
+                    LogEvent("RegisterMemoryWindow: another registration owns the submission slot.");
+                    return NtStatus.STATUS_DEVICE_BUSY;
+                }
+                registrationInProgress = 1;
+                bindsDrained.Reset();
             }
             try
             {
@@ -927,7 +937,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             }
             finally
             {
-                Volatile.Write(ref registrationInProgress, 0);
+                lock (locker)
+                {
+                    registrationInProgress = 0;
+                    SignalBindDrainIfIdle();
+                }
             }
 #endif
         }
@@ -951,7 +965,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             // register the buffer
             SmbdMemoryWindow memoryWindow = new SmbdMemoryWindow();
             memoryWindow.IsValid = true;
-            NtStatus status = (NtStatus)rdmaAdapter.RegisterMemory(size, out memoryWindow.MemoryHandlerId);
+            NtStatus status = RegisterNativeMemory(size, out memoryWindow.MemoryHandlerId);
             LogEvent(string.Format(
                 "RegisterMemoryWindow: RegisterMemory returned {0}, memoryHandlerId=0x{1:X}",
                 status, memoryWindow.MemoryHandlerId));
@@ -1010,8 +1024,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             {
                 if (!isConnected)
                 {
-                    CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false);
-                    return NtStatus.STATUS_CONNECTION_DISCONNECTED;
+                    LogEvent("RegisterMemoryWindow: shutdown won before Bind submission; reclaiming unpublished resources.");
+                    NtStatus cleanupStatus = CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, false);
+                    return cleanupStatus == NtStatus.STATUS_SUCCESS
+                        ? NtStatus.STATUS_CONNECTION_DISCONNECTED : cleanupStatus;
                 }
                 status = (NtStatus)rdmaEndpoint.Bind(
                     memoryWindow.MemoryHandlerId,
@@ -1105,16 +1121,12 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 memoryWindow.BufferDescriptor.Length,
                 descriptorHex));
 
-            lock (locker)
+            status = PublishMemoryWindow(memoryWindow, invalidRequest, true, out bufferDescriptor);
+            if (status != NtStatus.STATUS_SUCCESS)
             {
-                this.memoryWindowList.Add(memoryWindow);
+                FinishPendingBind(resultId);
+                return status;
             }
-            bufferDescriptor = new RdmaBufferDescriptor
-            {
-                Offset = memoryWindow.BufferDescriptor.Offset,
-                Token = memoryWindow.BufferDescriptor.Token,
-                Length = memoryWindow.BufferDescriptor.Length,
-            };
             LogEvent(string.Format(
                 "RegisterMemoryWindow: returning descriptor Offset=0x{0:X16}, Token=0x{1:X8}, Length={2}",
                 bufferDescriptor.Offset, bufferDescriptor.Token, bufferDescriptor.Length));
@@ -1205,7 +1217,61 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             lock (locker)
             {
                 pendingBinds.Remove(resultId);
-                if (pendingBinds.Count == 0 && pendingInvalidations.Count == 0) bindsDrained.Set();
+                SignalBindDrainIfIdle();
+            }
+        }
+
+        // Called under locker: registration, publication and shutdown share one drain decision.
+        private void SignalBindDrainIfIdle()
+        {
+            if (registrationInProgress == 0 && pendingBinds.Count == 0 && pendingInvalidations.Count == 0)
+            {
+                bindsDrained.Set();
+            }
+        }
+
+        // Each endpoint owns its native adapter. Both ND versions share one OVERLAPPED
+        // across Register/Deregister and their waits. Never acquire locker inside this gate.
+        private NtStatus RegisterNativeMemory(uint size, out ulong memoryHandler)
+        {
+            lock (memoryOperationLocker)
+            {
+                return (NtStatus)rdmaAdapter.RegisterMemory(size, out memoryHandler);
+            }
+        }
+
+        private NtStatus DeregisterNativeMemory(ulong memoryHandler)
+        {
+            lock (memoryOperationLocker)
+            {
+                return (NtStatus)rdmaAdapter.DeregisterMemory(memoryHandler);
+            }
+        }
+
+        private NtStatus PublishMemoryWindow(
+            SmbdMemoryWindow memoryWindow,
+            SmbdRequest invalidRequest,
+            bool invalidRequestAdded,
+            out RdmaBufferDescriptor bufferDescriptor)
+        {
+            bufferDescriptor = new RdmaBufferDescriptor();
+            lock (locker)
+            {
+                if (!isConnected)
+                {
+                    LogEvent("RegisterMemoryWindow: shutdown won descriptor publication; reclaiming unpublished resources.");
+                    NtStatus cleanupStatus = CleanupFailedRegisterMemoryWindow(memoryWindow, invalidRequest, invalidRequestAdded);
+                    return cleanupStatus == NtStatus.STATUS_SUCCESS
+                        ? NtStatus.STATUS_CONNECTION_DISCONNECTED : cleanupStatus;
+                }
+                memoryWindowList.Add(memoryWindow);
+                bufferDescriptor = new RdmaBufferDescriptor
+                {
+                    Offset = memoryWindow.BufferDescriptor.Offset,
+                    Token = memoryWindow.BufferDescriptor.Token,
+                    Length = memoryWindow.BufferDescriptor.Length,
+                };
+                return NtStatus.STATUS_SUCCESS;
             }
         }
 
@@ -1264,17 +1330,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 }
             };
 
-            lock (locker)
+            NtStatus status = PublishMemoryWindow(memoryWindow, default, false, out bufferDescriptor);
+            if (status != NtStatus.STATUS_SUCCESS)
             {
-                this.memoryWindowList.Add(memoryWindow);
+                return status;
             }
-
-            bufferDescriptor = new RdmaBufferDescriptor
-            {
-                Offset = mrInfo.Address,
-                Token = token,
-                Length = mrInfo.Length,
-            };
             LogEvent(string.Format(
                 "RegisterMemoryWindow: returning memory-region descriptor Offset=0x{0:X16}, Token=0x{1:X8}, Length={2} (memory window not supported)",
                 bufferDescriptor.Offset, bufferDescriptor.Token, bufferDescriptor.Length));
@@ -1308,7 +1368,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 
                 if (memoryWindow.MemoryHandlerId != 0)
                 {
-                    NtStatus deregisterStatus = (NtStatus)rdmaAdapter.DeregisterMemory(memoryWindow.MemoryHandlerId);
+                    NtStatus deregisterStatus = DeregisterNativeMemory(memoryWindow.MemoryHandlerId);
                     LogEvent(string.Format(
                         "RegisterMemoryWindow: deregistered memory handler 0x{0:X} during cleanup with status {1}",
                         memoryWindow.MemoryHandlerId, deregisterStatus));
@@ -1673,10 +1733,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 LogEvent($"NotifyCallback: Invalidate 0x{resultId:X} completed with {(NtStatus)ndResult.Status}; releasing window.");
                 CleanupFailedRegisterMemoryWindow(invalidatedWindow, default, false);
                 pendingInvalidations.Remove(resultId);
-                if (pendingBinds.Count == 0 && pendingInvalidations.Count == 0)
-                {
-                    bindsDrained.Set();
-                }
+                SignalBindDrainIfIdle();
                 return true;
             }
 
@@ -1793,7 +1850,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 receiveEntries[i].Segment = new NdSegment();
                 receiveEntries[i].Segment.Length = inboundDataSize;
                 receiveEntries[i].IsOccupied = false;
-                NtStatus ret = (NtStatus)rdmaAdapter.RegisterMemory(
+                NtStatus ret = RegisterNativeMemory(
                         receiveEntries[i].Segment.Length,
                         out receiveEntries[i].Segment.MemoryHandler);
                 LogEvent(string.Format("Entry 0x{0:X} register with memory handler 0x{1:X}.",

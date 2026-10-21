@@ -151,6 +151,19 @@ The base RDP connectivity protocol. Other RDP protocols (RDPEGFX, RDPEDYC, etc.)
   until its matching completion drains. Disconnect requests Flush but does not
   treat Flush return as completed cancellation; failure to drain is an explicit
   error, not permission to free storage.
+- Controlled barriers also cover late Bind cleanup against concurrent Send
+  registration, concurrent Sends, and shutdown versus normal Bind/MR-fallback
+  descriptor publication. Every native memory Register/Deregister operation
+  (including its synchronous wait) uses the endpoint-owned adapter's memory
+  operation gate. That gate never acquires the endpoint state lock. Memory-window
+  registration reservation, drain signalling and publication share the state lock with
+  shutdown; a shutdown-winning unpublished descriptor is reclaimed or retained
+  with an explicit cleanup error/retry. A descriptor published first remains
+  caller-owned until deregistration. Opaque native waits themselves are not
+  bounded by the managed five-second registration/completion drain.
+- Test output records the loaded endpoint assembly location, MVID, SHA256,
+  runtime and portable-PDB source document checksums for source/binary identity;
+  those identities do not establish independent acceptance or native behavior.
 - Reuse this project for deterministic endpoint lifecycle regressions, not
   protocol conformance scenarios. It does **not** load either C++/CLI wrapper or
   qualify NDv1/NDv2 provider behavior. Native builds and live RDMA-provider
