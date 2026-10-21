@@ -4,10 +4,12 @@
     <DefineConstants>WINDOWS</DefineConstants>
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EndpointSource Condition="'$(EndpointSource)' == ''">..\MS-SMBD\SmbdConnectionEndpoint.cs</EndpointSource>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\AssemblyInfo\SharedAssemblyInfo.cs" Link="SharedAssemblyInfo.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.9.1" />
     <PackageReference Include="MSTest.TestFramework" Version="3.9.1" />
