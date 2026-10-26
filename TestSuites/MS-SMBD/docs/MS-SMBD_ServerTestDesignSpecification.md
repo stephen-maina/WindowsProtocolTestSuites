@@ -2635,6 +2635,76 @@ the same method called after alternative-channel session setup, not a duplicate 
 The true overflow-provider branch, native queues, and successful end-to-end READ/WRITE responses still require an
 appropriately configured RDMA SUT; the local regressions do not claim to validate these.
 
+### Consumer transfer-bound handoff (task 64747425)
+
+The parent programme (task 62719670, decision marker
+`MLNX-RDMA-PROTOCOL-CORRECTIONS-20261026-CONSUMER-DISPOSITIONS`) accepted the
+effective-transfer-bound finding for PR17218739. This preparation starts from
+the explicit intermediate merge of owner source `3cf64d8edf385a478e4a65a138bce3a10f30941c`;
+it is not final source acceptance.
+
+The preparation originally characterized the bound as a normative upper-layer
+request restriction. The accepted final owner source
+`4231d78b8d84fda859181ae81adb7f27352d1562` narrows that interpretation: retain
+the cap as a **conservative single-buffer fixture policy**, not a universal
+SMBD limit on the total buffer of an SMB2 request. Sections 3.1.4.3 and 3.1.4.6
+permit multiple registrations and RDMA operations. Registration forwarding
+alone does not establish a provider failure, and none was reproduced here.
+This integration supersedes the earlier universal-limit claim without changing
+the approved bounded setup or its regressions. Zero rejection below remains
+a local test prerequisite, not a protocol-defined minimum.
+
+* **RDMA-C39-BOUND:** `ReadOnce` and `SendTransformWrite` must choose the minimum
+  of 4096, their respective SMB2 operation maximum, and the effective client
+  SMBD `MaxReadWriteSize`; zero capacity fails before registration.
+* **RDMA-C39-NEGATIVE:** keep the existing malformed transform/encryption fields.
+  `RdmaChannelDataSizeInByte` belongs to the descriptor-list scenario and must
+  not control these helpers or couple READ sizing to the WRITE limit.
+
+Preparation acceptance is executable RED/GREEN coverage of the actual private
+helpers using the existing `NegotiationReviewTests` injection fixtures. READ
+coverage must inspect registration and encoded request lengths; WRITE coverage
+must inspect registration after synthetic signing/encryption, stopping before
+native memory access. These controlled tests do not prove live protocol rejection.
+
+Task 64747425 owns this preparation and its regression evidence. Parent task
+62719670 must integrate the accepted final owner source, rerun the three final
+managed projects, obtain renewed full-source review, and retain native/live
+acceptance blockers before publication. No new owner source, push, PR mutation,
+or closure of live acceptance is part of this preparation. A repeated accurate
+finding at this corrected boundary requires re-scope/escalation, not an
+unbounded patch loop.
+
+#### Preparation evidence and downstream obligations (2026-10-26)
+
+| HardwareFree regression | Scenario and pass criteria |
+| --- | --- |
+| TransformEdgeRead_UsesEffectiveOperationLimit | Invoke actual `ReadOnce` twice; registration, descriptor and encoded READ lengths equal the effective SMBD cap, smaller READ cap, normal 4096 workload or one-byte boundary. Ignore the unrelated WRITE cap and descriptor-list configuration. |
+| TransformEdgeWrite_UsesEffectiveOperationLimitBeforeNativeMemory | Invoke actual `SendTransformWrite` with signing and encryption using synthetic session keys; record bounded registration length and READ permission, then stop deliberately before native memory access. No full WRITE or server-rejection claim. |
+| TransformEdge_ZeroCapacityFailsBeforeRegistration | A zero effective SMBD or respective SMB2 maximum fails the local prerequisite before registration, for both helpers. |
+
+The starting intermediate head was `3afc9a7b5fb7a29c9c360faa3088811214d1506d`.
+Existing builder baseline: 5 passed. The 16 added cases produced 10 failures
+and 6 passes before the correction; failures showed oversized helper-selected
+lengths or a missing zero prerequisite, not native provider rejection. A brief
+normative HOLD preserved that test/doc patch separately, with no source
+correction applied; the then-accepted 2.2.2/3.1.5.7 interpretation resolved it.
+The final-owner integration qualifies that historical rationale as described above.
+After correction, all 16 cases and the 5 existing builder cases passed (21/21).
+
+Reproduce from the repository root:
+`dotnet test TestSuites\MS-SMBD\tests\Smbd.UnitTests.csproj -p:OS=Unix -c Release --filter "FullyQualifiedName~TransformEdge|FullyQualifiedName~ConfiguredRdmaPayloadReachesReadAndWriteBuilders"`.
+The measured run used SDK 10.0.402 with isolated artifacts; this is the managed
+Linux conditional runner on Windows, not native coverage. Inherited build
+warnings remain; no warning-free strict SDK result is claimed.
+
+Learning row: task 64747425, bounded-fixture disposition Accurate; invariants
+RDMA-C39-BOUND/RDMA-C39-NEGATIVE now have actual-helper regressions.
+Parent 62719670 owns accepted-final-owner integration, artifact retention,
+full validation and the fresh review anchor; final-source/native acceptance is
+still blocked. Raw local TRX/logs are preparatory evidence only and must be
+retained by the parent with the durable task record before worktree disposal.
+
 ## <a name="_Toc427489520"/>Appendix
 
 ### <a name="_Toc427489521"/>Glossary

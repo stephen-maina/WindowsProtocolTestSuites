@@ -830,6 +830,94 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             _ => throw new ArgumentOutOfRangeException(nameof(entry))
         };
 
+        [DataTestMethod]
+        [DataRow(2048u, 8192u, 2048u)]
+        [DataRow(8192u, 1024u, 1024u)]
+        [DataRow(8192u, 8192u, 4096u)]
+        [DataRow(1u, 8192u, 1u)]
+        public void TransformEdgeRead_UsesEffectiveOperationLimit(
+            uint rdmaLimit, uint readLimit, uint expected)
+        {
+            var client = new RdmaReadClient(Array.Empty<byte>())
+            {
+                Smb2MaxReadSize = readLimit,
+                Smb2MaxWriteSize = 1,
+                ReportTransferredLength = true
+            };
+            var test = InitializeTransformEdge(client, rdmaLimit);
+            Invoke(test, "ReadOnce", new object[] { null });
+            Invoke(test, "ReadOnce", new object[] { null });
+
+            TestContext.WriteLine($"SMBD={rdmaLimit}, SMB2 READ={readLimit}, expected={expected}");
+            CollectionAssert.AreEqual(new[] { expected, expected },
+                client.Registered.Select(d => d.Length).ToArray());
+            CollectionAssert.AreEqual(new[] { expected, expected },
+                client.Requests.Select(r => r.Length).ToArray());
+            CollectionAssert.AreEqual(new[] { expected, expected },
+                client.Descriptors.Select(d => d.Length).ToArray());
+            Assert.IsTrue(client.Requests.All(r => r.Channel == Channel_Values.CHANNEL_RDMA_V1));
+        }
+
+        [DataTestMethod]
+        [DataRow(2048u, 8192u, 2048u, false)]
+        [DataRow(2048u, 8192u, 2048u, true)]
+        [DataRow(8192u, 1024u, 1024u, false)]
+        [DataRow(8192u, 1024u, 1024u, true)]
+        [DataRow(8192u, 8192u, 4096u, false)]
+        [DataRow(8192u, 8192u, 4096u, true)]
+        [DataRow(1u, 8192u, 1u, false)]
+        [DataRow(1u, 8192u, 1u, true)]
+        public void TransformEdgeWrite_UsesEffectiveOperationLimitBeforeNativeMemory(
+            uint rdmaLimit, uint writeLimit, uint expected, bool encrypt)
+        {
+            var client = new TransformWriteProbeClient
+            {
+                Smb2MaxReadSize = 1,
+                Smb2MaxWriteSize = writeLimit
+            };
+            var test = InitializeTransformEdge(client, rdmaLimit);
+            Assert.ThrowsExactly<RegistrationReachedException>(() =>
+                Invoke(test, "SendTransformWrite", (Smb2RDMATransformType)0x00FF, encrypt, 0));
+
+            TestContext.WriteLine(
+                $"SMBD={rdmaLimit}, SMB2 WRITE={writeLimit}, encrypted={encrypt}, registration={client.RegisteredLength}");
+            Assert.AreEqual(expected, client.RegisteredLength);
+            Assert.AreEqual(SmbdBufferReadWrite.RDMA_READ_PERMISSION_FOR_WRITE_FILE, client.Permission);
+        }
+
+        [DataTestMethod]
+        [DataRow("ReadOnce", 0u, 8192u)]
+        [DataRow("ReadOnce", 8192u, 0u)]
+        [DataRow("SendTransformWrite", 0u, 8192u)]
+        [DataRow("SendTransformWrite", 8192u, 0u)]
+        public void TransformEdge_ZeroCapacityFailsBeforeRegistration(
+            string method, uint rdmaLimit, uint smb2Limit)
+        {
+            var client = new TransformWriteProbeClient
+            {
+                Smb2MaxReadSize = smb2Limit,
+                Smb2MaxWriteSize = smb2Limit
+            };
+            var test = InitializeTransformEdge(client, rdmaLimit);
+            object[] arguments = method == "ReadOnce"
+                ? new object[] { null }
+                : new object[] { (Smb2RDMATransformType)0x00FF, false, 0 };
+            Assert.ThrowsExactly<AssertFailedException>(() => Invoke(test, method, arguments));
+            Assert.IsNull(client.RegisteredLength);
+        }
+
+        private static Smb2OverRdmaTransformEdge InitializeTransformEdge(
+            Smb2OverSmbdTestClient client, uint rdmaLimit)
+        {
+            var properties = Properties();
+            properties["RdmaChannelDataSizeInByte"] = "0";
+            var test = new Smb2OverRdmaTransformEdge();
+            Configure(test, properties);
+            SetConnection(client, new SmbdConnection { MaxReadWriteSize = rdmaLimit });
+            Set((SmbdAdapter)Get(test, "smbdAdapter"), "client", client);
+            return test;
+        }
+
         private static SmbdDataTransferMessage Transfer(byte[] buffer, uint remaining, ushort grant) =>
             new SmbdDataTransferMessage
             {
@@ -1356,9 +1444,34 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
 
         private sealed class SendCapturedException : Exception { }
 
+        private sealed class RegistrationReachedException : Exception { }
+
+        private sealed class TransformWriteProbeClient : Smb2OverSmbdTestClient
+        {
+            public uint? RegisteredLength { get; private set; }
+            public SmbdBufferReadWrite Permission { get; private set; }
+            public TransformWriteProbeClient() : base(TimeSpan.Zero)
+            {
+                cryptoInfoTable[0] = new Smb2CryptoInfo(
+                    DialectRevision.Smb311, new byte[16], true, false, false,
+                    preauthIntegrityHashValue: new byte[64],
+                    cipherId: EncryptionAlgorithm.ENCRYPTION_AES128_GCM,
+                    signingId: SigningAlgorithm.AES_GMAC,
+                    isSigningAlgorithmNegotiated: true);
+            }
+            public override NtStatus SmbdRegisterBuffer(
+                uint length, SmbdBufferReadWrite flag, bool reversed, out SmbdBufferDescriptorV1 descriptor)
+            {
+                RegisteredLength = length;
+                Permission = flag;
+                throw new RegistrationReachedException();
+            }
+        }
+
         private sealed class RdmaReadClient : Smb2OverSmbdTestClient
         {
             private readonly byte[] content;
+            public bool ReportTransferredLength { get; set; } = true;
             public List<SmbdBufferDescriptorV1> Registered { get; } = new();
             public List<SmbdBufferDescriptorV1> Descriptors { get; } = new();
             public List<READ_Request> Requests { get; } = new();
@@ -1395,7 +1508,10 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             {
                 Assert.AreEqual(typeof(Smb2ReadResponsePacket), typeof(T));
                 var response = ReadResponse();
-                response.PayLoad.DataRemaining = Requests.Last().Length;
+                if (ReportTransferredLength)
+                {
+                    response.PayLoad.DataRemaining = Requests.Last().Length;
+                }
                 return (T)(object)response;
             }
             public override NtStatus SmbdReadRegisteredBuffer(byte[] data, SmbdBufferDescriptorV1 descriptor)

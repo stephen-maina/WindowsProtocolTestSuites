@@ -254,7 +254,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
         private READ_Response ReadOnce(out byte[] readData)
         {
-            uint length = Math.Min(smbdAdapter.Smb2MaxReadSize, 4096u);
+            uint length = Math.Min(4096u,
+                Math.Min(smbdAdapter.Smb2MaxReadSize, smbdAdapter.ClientConnection.MaxReadWriteSize));
+            BaseTestSite.Assert.IsTrue(length > 0, "Negotiate nonzero SMB2 READ and SMBD transfer limits before this READ.");
             smbdAdapter.SmbdRegisterBuffer(length, SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE, out SmbdBufferDescriptorV1 descp);
             byte[] channelInfo = TypeMarshal.ToBytes(descp);
 
@@ -269,7 +271,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         // session keys (signature/nonce of valid ciphertext or signed data) so only the intended field is malformed.
         private NtStatus SendTransformWrite(Smb2RDMATransformType transformType, bool encrypt, int remainingBytesAdjust)
         {
-            uint writeSize = Math.Min(smbdAdapter.Smb2MaxWriteSize, 4096u);
+            uint writeSize = Math.Min(4096u,
+                Math.Min(smbdAdapter.Smb2MaxWriteSize, smbdAdapter.ClientConnection.MaxReadWriteSize));
+            BaseTestSite.Assert.IsTrue(writeSize > 0, "Negotiate nonzero SMB2 WRITE and SMBD transfer limits before this WRITE.");
             byte[] content = Encoding.ASCII.GetBytes(Smb2Utility.CreateRandomStringInByte((int)writeSize));
             byte[] payload;
             byte[] nonce;
