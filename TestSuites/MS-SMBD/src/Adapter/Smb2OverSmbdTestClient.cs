@@ -186,7 +186,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
         #region SMBD methods
 
-        public NtStatus ConnectToServerOverRDMA(
+        public virtual NtStatus ConnectToServerOverRDMA(
             string clientIp,
             string serverIp,
             int port,
@@ -222,7 +222,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                 );
         }
 
-        public NtStatus SmbdNegotiate(
+        public virtual NtStatus SmbdNegotiate(
             SmbdVersion minVersion,
             SmbdVersion maxVersion,
             ushort reserved,
@@ -321,7 +321,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                 );
         }
 
-        public NtStatus SmbdWriteRegisteredBuffer(byte[] data, SmbdBufferDescriptorV1 bufferDescriptor)
+        public virtual NtStatus SmbdWriteRegisteredBuffer(byte[] data, SmbdBufferDescriptorV1 bufferDescriptor)
         {
             return smbdClient.WriteRegisteredBuffer(data, bufferDescriptor);
         }

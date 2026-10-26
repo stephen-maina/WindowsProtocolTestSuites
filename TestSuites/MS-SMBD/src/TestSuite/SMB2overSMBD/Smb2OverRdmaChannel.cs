@@ -658,7 +658,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING
             };
 
-            InitSmbdConnectionForTestCases(fileName, rdmaTransformIds);
+            InitSmbdConnectionForTestCases(fileName, rdmaTransformIds, requireRdmaTransform: false);
             // WHAT: no longer skip when the server does not select SMB2_RDMA_TRANSFORM_SIGNING; write with plain SMB2_CHANNEL_RDMA_V1 instead.
             // WHY: the RDMA transform is optional, but an RDMA WRITE over a plain buffer descriptor is mandatory server behaviour,
             //      so skipping hid a core scenario on servers that do not implement transforms (e.g. Tuxera).
@@ -910,7 +910,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void InitSmbdConnectionForTestCases(
             string fileName,
             Smb2RDMATransformId[] rdmaTransformIds = null,
-            SigningAlgorithm[] signingAlgorithms = null)
+            SigningAlgorithm[] signingAlgorithms = null,
+            bool requireRdmaTransform = true)
         {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Initial SMBD connection and open file " + fileName);
 
@@ -923,7 +924,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             status = smbdAdapter.SmbdNegotiate();
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD negotiate is {0}", status);
 
-            DialectRevision[] dialects = rdmaTransformIds == null
+            DialectRevision[] dialects = rdmaTransformIds == null || !requireRdmaTransform
                 ? null
                 : new[] { DialectRevision.Smb311 };
             status = smbdAdapter.Smb2EstablishSessionAndOpenFile(

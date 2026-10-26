@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
@@ -536,6 +537,116 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             Assert.AreEqual(offset, client.Requests.Single().Offset);
         }
 
+        [DataTestMethod]
+        [DataRow(DialectRevision.Smb30, false, true)]
+        [DataRow(DialectRevision.Smb302, false, true)]
+        [DataRow(DialectRevision.Smb311, false, true)]
+        [DataRow(DialectRevision.Smb30, true, false)]
+        [DataRow(DialectRevision.Smb302, true, false)]
+        [DataRow(DialectRevision.Smb311, true, true)]
+        public void RdmaWriteInitialization_BaselineKeepsLegacyDialectsWhileTransformsRequire311(
+            DialectRevision supportedDialect, bool transformSpecific, bool compatible)
+        {
+            var test = new Smb2OverRdmaChannel();
+            Configure(test, Properties(), (method, args) =>
+            {
+                if (args.OfType<string>().Any(s => s.Contains("The select DialectRevsion")))
+                {
+                    throw new BoundaryReachedException();
+                }
+            });
+            var client = new RdmaNegotiationClient(supportedDialect);
+            Set(Get(test, "smbdAdapter"), "client", client);
+            Action run = transformSpecific
+                ? test.Smb2OverRdmaChannel_ReadWriteMultipleBufferDescriptorList
+                : test.BVT_Smb2OverRdmaChannel_WriteLargeFile;
+            if (compatible)
+            {
+                Assert.ThrowsExactly<BoundaryReachedException>(run);
+                Assert.AreEqual(supportedDialect, client.SelectedDialect);
+            }
+            else
+            {
+                Assert.ThrowsExactly<AssertFailedException>(run);
+                Assert.AreEqual(DialectRevision.Smb2Unknown, client.SelectedDialect);
+            }
+            var expectedDialects = transformSpecific
+                ? new[] { DialectRevision.Smb311 }
+                : new[] { DialectRevision.Smb30, DialectRevision.Smb302, DialectRevision.Smb311 };
+            CollectionAssert.AreEqual(expectedDialects, client.Request.Dialects);
+            CollectionAssert.AreEqual(
+                new[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING },
+                client.Request.NegotiateContext_RDMA.Value.RDMATransformIds);
+            TestContext.WriteLine(
+                $"transformSpecific={transformSpecific}, server={supportedDialect}, "
+                + $"offered=[{string.Join(",", client.Request.Dialects)}], selected={client.SelectedDialect}");
+        }
+
+        [DataTestMethod]
+        [DataRow(8192u, 65536u, 65536u, 65536u, 8192u)]
+        [DataRow(65536u, 8192u, 65536u, 65536u, 8192u)]
+        [DataRow(65536u, 65536u, 8192u, 65536u, 8192u)]
+        [DataRow(65536u, 65536u, 65536u, 8192u, 8192u)]
+        [DataRow(65536u, 65536u, 65536u, 65536u, 65536u)]
+        public void InvalidationWrite_PositiveRequestBoundsRegistrationDescriptorAndRemainingBytes(
+            uint configured, uint maxRead, uint maxWrite, uint maxRdma, uint expected)
+        {
+            var properties = Properties();
+            properties["RdmaChannelDataSizeInByte"] = configured.ToString();
+            properties["DriverPlatform"] = "NonWindows";
+            var test = new InvalidationWriteScenario();
+            Configure(test, properties);
+            var client = new RdmaWriteClient { Smb2MaxReadSize = maxRead, Smb2MaxWriteSize = maxWrite };
+            SetConnection(client, new SmbdConnection { MaxReadWriteSize = maxRdma });
+            client.ServerConnection.MaxReadWriteSize = maxRdma;
+            Set(Get(test, "smbdAdapter"), "client", client);
+
+            Assert.ThrowsExactly<BoundaryReachedException>(
+                test.BVT_Smb2OverRdma_Smb302_Write_SMB2_CHANNEL_RDMA_V1_INVALIDATE);
+            Assert.AreEqual(expected, client.Registered.Length);
+            Assert.AreEqual(expected, client.MemoryWriteLength);
+            Assert.AreEqual(expected, client.Descriptor.Length);
+            Assert.AreEqual(expected, client.Request.RemainingBytes);
+            Assert.AreEqual(0u, client.Request.Length);
+            Assert.AreEqual(Channel_Values.CHANNEL_RDMA_V1_INVALIDATE, client.Request.Channel);
+            TestContext.WriteLine(
+                $"configured={configured}, SMB2read={maxRead}, SMB2write={maxWrite}, SMBD={maxRdma}, "
+                + $"registered={client.Registered.Length}, memoryWrite={client.MemoryWriteLength}, "
+                + $"descriptor={client.Descriptor.Length}, RemainingBytes={client.Request.RemainingBytes}");
+        }
+
+        [DataTestMethod]
+        [DataRow(0u, 65536u, 65536u, 65536u)]
+        [DataRow(65536u, 0u, 65536u, 65536u)]
+        [DataRow(65536u, 65536u, 0u, 65536u)]
+        [DataRow(65536u, 65536u, 65536u, 0u)]
+        public void InvalidationWrite_ZeroSizeFailsBeforeRegistration(
+            uint configured, uint maxRead, uint maxWrite, uint maxRdma)
+        {
+            var properties = Properties();
+            properties["RdmaChannelDataSizeInByte"] = configured.ToString();
+            properties["DriverPlatform"] = "NonWindows";
+            var test = new InvalidationWriteScenario();
+            Configure(test, properties);
+            var client = new RdmaWriteClient { Smb2MaxReadSize = maxRead, Smb2MaxWriteSize = maxWrite };
+            SetConnection(client, new SmbdConnection { MaxReadWriteSize = maxRdma });
+            client.ServerConnection.MaxReadWriteSize = maxRdma;
+            Set(Get(test, "smbdAdapter"), "client", client);
+            if (configured == 0)
+            {
+                Assert.ThrowsExactly<ArgumentOutOfRangeException>(
+                    test.BVT_Smb2OverRdma_Smb302_Write_SMB2_CHANNEL_RDMA_V1_INVALIDATE);
+            }
+            else
+            {
+                Assert.ThrowsExactly<InvalidOperationException>(
+                    test.BVT_Smb2OverRdma_Smb302_Write_SMB2_CHANNEL_RDMA_V1_INVALIDATE);
+            }
+            Assert.AreEqual(0, client.RegistrationCount);
+            Assert.AreEqual(0, client.MemoryWriteCount);
+            Assert.AreEqual(0, client.WriteRequestCount);
+        }
+
         private static SmbdDataTransferMessage Transfer(byte[] buffer, uint remaining, ushort grant) =>
             new SmbdDataTransferMessage
             {
@@ -592,12 +703,15 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             return client;
         }
 
-        private static void Configure(SmbdTestBase test, NameValueCollection properties)
+        private static void Configure(SmbdTestBase test, NameValueCollection properties,
+            Action<MethodInfo, object[]> log = null)
         {
-            var site = Site(properties);
+            var site = Site(properties, log);
             BaseSite.SetValue(null, site);
             typeof(SmbdTestBase).GetField("smbdAdapter", BindingFlags.Instance | BindingFlags.NonPublic)
                 .SetValue(test, new SmbdAdapter(site));
+            typeof(SmbdTestBase).GetField("fileNameList", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(test, new List<string>());
         }
 
         private static NameValueCollection Properties()
@@ -617,7 +731,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             return result;
         }
 
-        private static ITestSite Site(NameValueCollection properties)
+        private static ITestSite Site(NameValueCollection properties, Action<MethodInfo, object[]> log = null)
         {
             var assert = CallbackProxy.Create<IChecker>((m, a) =>
             {
@@ -634,7 +748,11 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                 "get_Properties" => properties,
                 "get_Assert" => assert,
                 "get_Assume" => assume,
-                "get_Log" => CallbackProxy.Create<ILogger>((_, _) => null),
+                "get_Log" => CallbackProxy.Create<ILogger>((method, args) =>
+                {
+                    log?.Invoke(method, args);
+                    return null;
+                }),
                 "get_TestProperties" => new Dictionary<string, object>
                 {
                     ["CurrentTestCaseName"] = typeof(Smb2MultiChannelOverRdma).FullName
@@ -681,6 +799,124 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
 
         private static void Set(object target, string name, object value) =>
             target.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).SetValue(target, value);
+
+        private sealed class BoundaryReachedException : Exception { }
+
+        private sealed class InvalidationWriteScenario : Smb2OverRdmaChannelRemoteInvalidation
+        {
+            protected override void EstablishConnectionAndOpenFile(
+                string fileName, DialectRevision[] negotiatedDialects = null)
+            {
+                CollectionAssert.AreEqual(new[] { DialectRevision.Smb302 }, negotiatedDialects);
+            }
+        }
+
+        private sealed class RdmaNegotiationClient : Smb2OverSmbdTestClient
+        {
+            private readonly DialectRevision supportedDialect;
+            public Smb2NegotiateRequestPacket Request { get; private set; }
+            public DialectRevision SelectedDialect { get; private set; }
+            public RdmaNegotiationClient(DialectRevision supportedDialect) : base(TimeSpan.Zero)
+            {
+                this.supportedDialect = supportedDialect;
+            }
+            public override NtStatus ConnectToServerOverRDMA(
+                string clientIp, string serverIp, int port, AddressFamily family,
+                uint inbound, uint outbound, uint readLimit, uint dataSize, NdspiVersion version = NdspiVersion.NDv2) =>
+                NtStatus.STATUS_SUCCESS;
+
+            public override NtStatus SmbdNegotiate(
+                SmbdVersion min, SmbdVersion max, ushort reserved, ushort requested, ushort receiveMax,
+                uint preferred, uint receiveSize, uint fragmentedSize, out SmbdNegotiateResponse response)
+            {
+                response = new SmbdNegotiateResponse();
+                return NtStatus.STATUS_SUCCESS;
+            }
+            public override void SendPacket(byte[] data)
+            {
+                var decoder = new Smb2Decoder(Smb2Role.Server, new Dictionary<ulong, Smb2CryptoInfo>());
+                Request = (Smb2NegotiateRequestPacket)decoder.DecodeSinglePacket(
+                    data, Smb2Role.Server, 0, 0, out _, out _);
+            }
+            public override T ExpectPacket<T>(ulong messageId)
+            {
+                bool compatible = Request.Dialects.Contains(supportedDialect);
+                SelectedDialect = compatible ? supportedDialect : DialectRevision.Smb2Unknown;
+                var response = new Smb2NegotiateResponsePacket { Buffer = Array.Empty<byte>() };
+                response.Header.Status = compatible ? Smb2Status.STATUS_SUCCESS : Smb2Status.STATUS_NOT_SUPPORTED;
+                response.Header.CreditRequestResponse = 64;
+                response.PayLoad.DialectRevision = SelectedDialect;
+                response.PayLoad.SecurityBufferOffset = response.BufferOffset;
+                response.PayLoad.MaxReadSize = response.PayLoad.MaxWriteSize = response.PayLoad.MaxTransactSize = 65536;
+                if (compatible && supportedDialect == DialectRevision.Smb311)
+                {
+                    var preauth = new SMB2_PREAUTH_INTEGRITY_CAPABILITIES
+                    {
+                        HashAlgorithmCount = 1,
+                        HashAlgorithms = new[] { PreauthIntegrityHashID.SHA_512 },
+                        Salt = Array.Empty<byte>()
+                    };
+                    preauth.Header.ContextType = SMB2_NEGOTIATE_CONTEXT_Type_Values.SMB2_PREAUTH_INTEGRITY_CAPABILITIES;
+                    preauth.Header.DataLength = (ushort)preauth.GetDataLength();
+                    response.NegotiateContext_PREAUTH = preauth;
+                    response.NegotiateContext_RDMA = Request.NegotiateContext_RDMA;
+                }
+                return (T)(object)response;
+            }
+        }
+
+        private sealed class RdmaWriteClient : Smb2OverSmbdTestClient
+        {
+            public SmbdBufferDescriptorV1 Registered { get; private set; }
+            public SmbdBufferDescriptorV1 Descriptor { get; private set; }
+            public WRITE_Request Request { get; private set; }
+            public uint MemoryWriteLength { get; private set; }
+            public int RegistrationCount { get; private set; }
+            public int MemoryWriteCount { get; private set; }
+            public int WriteRequestCount { get; private set; }
+            public RdmaWriteClient() : base(TimeSpan.Zero) { Smb2AvailableCredits = 64; }
+            public override NtStatus SmbdRegisterBuffer(
+                uint length, SmbdBufferReadWrite flag, bool reversed, out SmbdBufferDescriptorV1 descriptor)
+            {
+                if (flag == SmbdBufferReadWrite.RDMA_WRITE_PERMISSION_FOR_READ_FILE)
+                {
+                    throw new BoundaryReachedException();
+                }
+                Assert.AreEqual(SmbdBufferReadWrite.RDMA_READ_PERMISSION_FOR_WRITE_FILE, flag);
+                RegistrationCount++;
+                Registered = descriptor = new SmbdBufferDescriptorV1 { Length = length, Token = 1 };
+                return NtStatus.STATUS_SUCCESS;
+            }
+            public override NtStatus SmbdWriteRegisteredBuffer(byte[] data, SmbdBufferDescriptorV1 descriptor)
+            {
+                MemoryWriteLength = (uint)data.Length;
+                MemoryWriteCount++;
+                Assert.AreEqual(Registered.Length, descriptor.Length);
+                return NtStatus.STATUS_SUCCESS;
+            }
+            public override void SendPacket(byte[] data)
+            {
+                var header = TypeMarshal.ToStruct<Packet_Header>(data);
+                if (header.Command == Smb2Command.READ)
+                {
+                    throw new BoundaryReachedException();
+                }
+                Assert.AreEqual(Smb2Command.WRITE, header.Command);
+                WriteRequestCount++;
+                Request = TypeMarshal.ToStruct<WRITE_Request>(data.Skip(64).ToArray());
+                Descriptor = TypeMarshal.ToStruct<SmbdBufferDescriptorV1>(
+                    data.Skip(Request.WriteChannelInfoOffset).ToArray());
+            }
+            public override T ExpectPacket<T>(ulong messageId)
+            {
+                Assert.AreEqual(typeof(Smb2WriteResponsePacket), typeof(T));
+                var response = new Smb2WriteResponsePacket();
+                response.Header.Status = Smb2Status.STATUS_SUCCESS;
+                response.Header.CreditRequestResponse = 64;
+                response.PayLoad.Count = Request.RemainingBytes;
+                return (T)(object)response;
+            }
+        }
 
         private sealed class CapturingClient : Smb2OverSmbdTestClient
         {

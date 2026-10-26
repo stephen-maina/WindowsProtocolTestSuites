@@ -68,8 +68,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
             EstablishConnectionAndOpenFile(fileName, Smb302OnlyDialects);
 
-            uint writeSize = smbdAdapter.Smb2MaxWriteSize;
-            writeSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
+            uint writeSize = smbdAdapter.GetRdmaChannelDataSize();
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)writeSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
