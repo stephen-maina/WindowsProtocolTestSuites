@@ -2572,6 +2572,10 @@ the specification; implementation-specific applicability gates must be checked i
 `STATUS_INVALID_PARAMETER` regardless of `IsRDMATransformSupported`; the optional-feature probe does not gate
 this context-list validation. The single-context feature-specific tests retain their applicability gates.
 
+| Test name | Category | Scenario and pass criteria | Specification |
+|---|---|---|---|
+| `Smb2OverRdmaChannel_Read_ExactMaxReadWriteSize` | Smb2OverRdmaChannel, SmbdProtocolGaps | Verify SMB2 READ of exactly MaxReadWriteSize bytes over RDMA_V1 succeeds with correct content. Require STATUS_SUCCESS from every registered-buffer read before comparing the single READ with chunked READs; an untouched zero-filled buffer after a failed memory read must not count as verified content (MLNX-RDMA-READ-STATUS-01). | [MS-SMBD] 2.2.2 Negotiate Response Message; 3.1.4.5 RDMA Write to Peer Buffer; [MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request |
+
 ### Hardware-free implementation regressions
 
 These are local implementation tests, not additional SUT protocol scenarios. All belong to category **HardwareFree**

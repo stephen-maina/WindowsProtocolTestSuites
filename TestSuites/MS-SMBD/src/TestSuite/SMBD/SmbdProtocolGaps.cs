@@ -716,7 +716,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             BaseTestSite.Assert.AreEqual<int>(0, readData.Length, "READ response must carry no inline data for RDMA_V1.");
 
             byte[] data = new byte[length];
-            smbdAdapter.SmbdReadRegisteredBuffer(data, descriptor);
+            status = smbdAdapter.SmbdReadRegisteredBuffer(data, descriptor);
+            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Read registered buffer status is {0}.", status);
             return data;
         }
 

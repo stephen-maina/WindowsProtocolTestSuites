@@ -495,6 +495,47 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             Assert.AreEqual(0, client.Requests.Count);
         }
 
+        [DataTestMethod]
+        [DataRow(0ul, 16u, false)]
+        [DataRow(5ul, 3u, false)]
+        [DataRow(0ul, 16u, true)]
+        public void ReadRangeOverRdma_SuccessReturnsRegisteredContent(ulong offset, uint length, bool zeroContent)
+        {
+            byte[] content = Enumerable.Range(1, 16).Select(i => zeroContent ? (byte)0 : (byte)i).ToArray();
+            var client = new RdmaReadClient(content);
+            var test = new SmbdProtocolGaps();
+            Configure(test, Properties());
+            Set(Get(test, "smbdAdapter"), "client", client);
+
+            var result = (byte[])typeof(SmbdProtocolGaps).GetMethod(
+                "ReadRangeOverRdma", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(test, new object[] { offset, length });
+
+            CollectionAssert.AreEqual(content.Skip((int)offset).Take((int)length).ToArray(), result);
+            CollectionAssert.AreEqual(new[] { length }, client.MemoryReads.ToArray());
+            Assert.AreEqual(offset, client.Requests.Single().Offset);
+        }
+
+        [DataTestMethod]
+        [DataRow(0ul, NtStatus.STATUS_CONNECTION_DISCONNECTED)]
+        [DataRow(8ul, NtStatus.STATUS_INVALID_PARAMETER_2)]
+        [DataRow(8ul, NtStatus.STATUS_INTERNAL_ERROR)]
+        public void ReadRangeOverRdma_FailedMemoryReadRejectsUntouchedBuffer(ulong offset, NtStatus status)
+        {
+            var client = new RdmaReadClient(new byte[16]) { MemoryReadStatus = status };
+            var test = new SmbdProtocolGaps();
+            Configure(test, Properties());
+            Set(Get(test, "smbdAdapter"), "client", client);
+
+            var failure = Assert.ThrowsExactly<AssertFailedException>(() =>
+                Invoke(test, "ReadRangeOverRdma", offset, 8u));
+
+            StringAssert.Contains(failure.Message, status.ToString());
+            CollectionAssert.AreEqual(new[] { 8u }, client.MemoryReads.ToArray());
+            CollectionAssert.AreEqual(new byte[8], client.LastMemoryReadBuffer);
+            Assert.AreEqual(offset, client.Requests.Single().Offset);
+        }
+
         private static SmbdDataTransferMessage Transfer(byte[] buffer, uint remaining, ushort grant) =>
             new SmbdDataTransferMessage
             {
@@ -740,6 +781,8 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             public List<SmbdBufferDescriptorV1> Descriptors { get; } = new();
             public List<READ_Request> Requests { get; } = new();
             public List<uint> MemoryReads { get; } = new();
+            public NtStatus MemoryReadStatus { get; set; } = NtStatus.STATUS_SUCCESS;
+            public byte[] LastMemoryReadBuffer { get; private set; }
             public RdmaReadClient(byte[] content) : base(TimeSpan.Zero)
             {
                 this.content = content;
@@ -769,11 +812,18 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             public override T ExpectPacket<T>(ulong messageId)
             {
                 Assert.AreEqual(typeof(Smb2ReadResponsePacket), typeof(T));
-                return (T)(object)ReadResponse();
+                var response = ReadResponse();
+                response.PayLoad.DataRemaining = Requests.Last().Length;
+                return (T)(object)response;
             }
             public override NtStatus SmbdReadRegisteredBuffer(byte[] data, SmbdBufferDescriptorV1 descriptor)
             {
                 MemoryReads.Add((uint)data.Length);
+                LastMemoryReadBuffer = data;
+                if (MemoryReadStatus != NtStatus.STATUS_SUCCESS)
+                {
+                    return MemoryReadStatus;
+                }
                 Array.Copy(content, (long)Requests.Last().Offset, data, 0, data.Length);
                 return NtStatus.STATUS_SUCCESS;
             }
