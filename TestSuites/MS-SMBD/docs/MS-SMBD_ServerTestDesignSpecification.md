@@ -1503,7 +1503,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **Test ID**|  **SmbdDataTransfer_NegativeParameter_RemainingDataLength_Zero**| 
 |  **Priority**| P1| 
 |  **Description** | Verify the connection will be terminated if **RemainingDataLength** is zero and **Connection.FragmentReassemblyRemaining** is NOT equal to the received **DataLength**.| 
-|  **Prerequisites**| N/A| 
+|  **Prerequisites**| The configured moderate WRITE request must permit at least three fragments at the minimum 128-byte send size. The scenario caps its local send size from the request size, splits using the actual negotiated MaxSendSize, and verifies at least three fragments. The selected second or penultimate fragment must originally have nonzero RemainingDataLength before it is replaced with zero.|
 |  **Test Execution Steps**| Connect to server over RDMA.| 
 | | SMBD negotiate with peer.| 
 | | •   MaxSendSize = 1024| 
@@ -2596,6 +2596,9 @@ Packet-builder tests capture encoded requests instead of using a provider.
 | NegotiateCreditsAreNonzeroNotBoundedByRequest | Grants equal to and above the requested credit pass; a zero grant fails the actual checker. |
 | ReceiveOverflowProviderExpectationIsOptIn | Both Windows and non-Windows platforms mark the overflow scenario inconclusive before provider access when the opt-in is false. |
 | MissingOverflowExpectationRemainsDisabled | An absent property defaults to false; an explicit true value is parsed. |
+| DataTransferRead_ReturnedFailureStopsBeforeEmptyMessageRetry | The actual SmbdDataTransfer READ validator immediately fails returned disconnect, cancellation, and timeout statuses before interpreting a default empty message; exactly one receive occurs, credits remain unchanged, and no replenishment is sent. |
+| DataTransferRead_SuccessfulEmptyMessageStillAllowsReadCompletion | The actual READ validator still decodes a successful READ with or without an initial legitimate empty credit message. |
+| ZeroRemainingMutation_RequiresAnOriginallyNonfinalFragment | Use the SDK's actual fragment splitter and suite send helper. A 2048-byte request with MaxSendSize 1364 selects a valid final second fragment and must fail locally before sending; genuine non-final second and penultimate selections send a zero mutation while preserving the original source messages. |
 | ValidateReadResponse_ChecksEveryMessageBeforeReplenishment | Drive the actual validator with final, intermediate, and empty messages: reject zero grants consuming the last credit before posting/sending replenishment; accept nonzero last-credit grants and zero grants while credits remain. Valid sequences reassemble and decode an actual SMB2 READ response. |
 | AlternativeChannelInitialization_ForwardsConfiguredCap | The actual multi-channel initializer forwards configured 32768, 65536, and default 1048576 caps to its independent alternative client. |
 | AlternativeChannelRead_BoundsActualRegisteredAndEncodedLengths | Run the actual alternative READ loop and READ packet builder with controlled registered memory. Assert matching registration, descriptor, encoded READ, and memory-read lengths; contiguous offsets; and data equality for lower effective SMBD or SMB2 caps, tail chunks, the default, and empty input. |

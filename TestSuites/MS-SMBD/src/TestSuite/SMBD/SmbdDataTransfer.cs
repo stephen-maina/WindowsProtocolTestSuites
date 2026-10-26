@@ -976,7 +976,12 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         public void SmbdDataTransfer_NegativeParameter_RemainingDataLength_Zero()
         {
             // define data for test case
-            uint MAX_SEND_SIZE = SmbdTestConfig.MaxSendSize;
+            uint requestSize = smbdAdapter.TestConfig.ModerateFileSizeInByte;
+            BaseTestSite.Assume.IsTrue(
+                requestSize > 2 * (128 - SmbdDataTransferMessage.DEFAULT_DATA_OFFSET),
+                "ModerateFileSizeInByte must allow three fragments at the minimum 128-byte send size.");
+            uint MAX_SEND_SIZE = Math.Min(SmbdTestConfig.MaxSendSize,
+                (requestSize - 1) / 2 + (uint)SmbdDataTransferMessage.DEFAULT_DATA_OFFSET);
             uint MAX_FRAGMENT_SIZE = SmbdTestConfig.MaxFragmentedSize;
             uint MAX_RECEIVE_SIZE = SmbdTestConfig.MaxReceiveSize;
 
@@ -997,6 +1002,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             messages = SmbdClient.SplitData2Segments(smb2WriteRequest, smbdAdapter.ClientConnection.MaxSendSize
                 - (uint)SmbdDataTransferMessage.DEFAULT_DATA_OFFSET);
 
+            BaseTestSite.Assert.IsTrue(messages.Count >= 3, "The negative scenario requires at least three fragments.");
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send 2 SMBD Data Transfer messages, and set invalid RemainingDataLength in the second message.");
             SendWithInvalidRemainingDataLength(messages, 2, 0);
             #endregion
@@ -1014,6 +1020,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             messages = SmbdClient.SplitData2Segments(smb2WriteRequest, smbdAdapter.ClientConnection.MaxSendSize
                 - (uint)SmbdDataTransferMessage.DEFAULT_DATA_OFFSET);
 
+            BaseTestSite.Assert.IsTrue(messages.Count >= 3, "The negative scenario requires at least three fragments.");
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send several SMBD Data Transfer messages, and set invalid RemainingDataLength in last 2nd message.");
             SendWithInvalidRemainingDataLength(messages, messages.Count - 1, 0);
             #endregion
@@ -1599,6 +1606,10 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                         out transferPackage
                         );
 
+                    BaseTestSite.Assert.AreEqual(
+                        NtStatus.STATUS_SUCCESS, status,
+                        "Data transfer message should be received with status STATUS_SUCCESS.");
+
                     // WHAT: skip empty Data Transfer messages (DataLength 0 and RemainingDataLength 0) instead of validating them as read data.
                     // WHY: a peer may legally send an empty message purely to grant credits; the old code treated it as a malformed read
                     //      fragment and failed on ksmbd (Windows never sends them here, so the test only passed by accident).
@@ -1850,6 +1861,12 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             int remainingDataLength,
             bool isModify = false)
         {
+            if (!isModify && remainingDataLength == 0)
+            {
+                BaseTestSite.Assert.IsTrue(
+                    messages[messageNumber - 1].RemainingDataLength > 0,
+                    "A zero RemainingDataLength mutation must select an originally non-final fragment.");
+            }
             NtStatus status;
             for (int index = 0; index < messageNumber - 1; ++index)
             {

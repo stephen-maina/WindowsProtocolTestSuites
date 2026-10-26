@@ -272,6 +272,89 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
         }
 
         [DataTestMethod]
+        [DataRow(NtStatus.STATUS_CONNECTION_DISCONNECTED)]
+        [DataRow(NtStatus.STATUS_CANCELLED)]
+        [DataRow(NtStatus.STATUS_IO_TIMEOUT)]
+        public void DataTransferRead_ReturnedFailureStopsBeforeEmptyMessageRetry(NtStatus status)
+        {
+            var test = new SmbdDataTransfer();
+            Configure(test, Properties());
+            var client = new CreditClient(Array.Empty<SmbdDataTransferMessage>())
+            {
+                ReceiveStatus = status
+            };
+            SetConnection(client, new SmbdConnection { ReceiveCredits = 1 });
+            Set(Get(test, "smbdAdapter"), "client", client);
+
+            var failure = Assert.ThrowsExactly<AssertFailedException>(() => test.ValidateReadResponse(80));
+            StringAssert.Contains(failure.Message, status.ToString());
+            Assert.AreEqual(1, client.Received);
+            Assert.AreEqual(1u, client.ClientConnection.ReceiveCredits);
+            Assert.AreEqual(0, client.Posted);
+            Assert.AreEqual(0, client.Sent);
+        }
+
+        [DataTestMethod]
+        [DataRow(false)]
+        [DataRow(true)]
+        public void DataTransferRead_SuccessfulEmptyMessageStillAllowsReadCompletion(bool emptyFirst)
+        {
+            byte[] bytes = ReadResponse().ToBytes();
+            var messages = new List<SmbdDataTransferMessage>();
+            if (emptyFirst)
+            {
+                messages.Add(Transfer(Array.Empty<byte>(), 0, 1));
+            }
+            messages.Add(Transfer(bytes, 0, 1));
+            var test = new SmbdDataTransfer();
+            Configure(test, Properties());
+            var client = new CreditClient(messages) { PostLimit = 0 };
+            SetConnection(client, new SmbdConnection { ReceiveCredits = (uint)messages.Count });
+            Set(Get(test, "smbdAdapter"), "client", client);
+
+            test.ValidateReadResponse(bytes.Length);
+
+            Assert.AreEqual(messages.Count, client.Received);
+            Assert.AreEqual(1, client.Sent);
+        }
+
+        [DataTestMethod]
+        [DataRow(2048, 1364u, 2, false)]
+        [DataRow(2048, 1024u, 2, true)]
+        [DataRow(4096, 1364u, 3, true)]
+        public void ZeroRemainingMutation_RequiresAnOriginallyNonfinalFragment(
+            int requestSize, uint maxSendSize, int selectedMessage, bool nonfinal)
+        {
+            var messages = SmbdClient.SplitData2Segments(new byte[requestSize],
+                maxSendSize - (uint)SmbdDataTransferMessage.DEFAULT_DATA_OFFSET);
+            var test = new SmbdDataTransfer();
+            Configure(test, Properties());
+            var client = new CreditClient(Array.Empty<SmbdDataTransferMessage>())
+            {
+                StopAfterSends = selectedMessage
+            };
+            Set(Get(test, "smbdAdapter"), "client", client);
+            uint originalRemaining = messages[selectedMessage - 1].RemainingDataLength;
+            Action send = () => test.SendWithInvalidRemainingDataLength(messages, selectedMessage, 0);
+
+            if (nonfinal)
+            {
+                Assert.IsTrue(originalRemaining > 0);
+                Assert.ThrowsExactly<SendCapturedException>(send);
+                Assert.AreEqual(selectedMessage, client.Sent);
+                Assert.AreEqual(0u, client.LastRemaining);
+            }
+            else
+            {
+                Assert.AreEqual(0u, originalRemaining);
+                var failure = Assert.ThrowsExactly<AssertFailedException>(send);
+                StringAssert.Contains(failure.Message, "non-final");
+                Assert.AreEqual(0, client.Sent);
+            }
+            Assert.AreEqual(originalRemaining, messages[selectedMessage - 1].RemainingDataLength);
+        }
+
+        [DataTestMethod]
         [DataRow("final", 1u, (ushort)0, false)]
         [DataRow("final", 1u, (ushort)1, true)]
         [DataRow("final", 1u, (ushort)2, true)]
@@ -597,6 +680,10 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             public int Received { get; private set; }
             public int Posted { get; private set; }
             public int Sent { get; private set; }
+            public NtStatus ReceiveStatus { get; set; } = NtStatus.STATUS_SUCCESS;
+            public int PostLimit { get; set; } = int.MaxValue;
+            public int StopAfterSends { get; set; } = int.MaxValue;
+            public uint LastRemaining { get; private set; }
             public CreditClient(IEnumerable<SmbdDataTransferMessage> messages) : base(TimeSpan.Zero)
             {
                 this.messages = new Queue<SmbdDataTransferMessage>(messages);
@@ -605,14 +692,27 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             public override NtStatus SmbdReceiveDataTransferMessage(
                 TimeSpan timeout, out SmbdDataTransferMessage message)
             {
-                message = messages.Dequeue();
                 Received++;
+                if (ReceiveStatus != NtStatus.STATUS_SUCCESS)
+                {
+                    if (Received > 1)
+                    {
+                        throw new InvalidOperationException("A failed receive was retried as an empty message.");
+                    }
+                    message = new SmbdDataTransferMessage();
+                    return ReceiveStatus;
+                }
+                message = messages.Dequeue();
                 ClientConnection.ReceiveCredits--;
                 ClientConnection.SendCredits += message.CreditsGranted;
                 return NtStatus.STATUS_SUCCESS;
             }
             public override NtStatus SmbdPostReceive()
             {
+                if (Posted >= PostLimit)
+                {
+                    return NtStatus.STATUS_INSUFFICIENT_RESOURCES;
+                }
                 Posted++;
                 ClientConnection.ReceiveCredits++;
                 return NtStatus.STATUS_SUCCESS;
@@ -622,9 +722,16 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                 uint remaining, uint dataOffset, uint dataLength, byte[] padding, byte[] buffer)
             {
                 Sent++;
+                LastRemaining = remaining;
+                if (Sent == StopAfterSends)
+                {
+                    throw new SendCapturedException();
+                }
                 return NtStatus.STATUS_SUCCESS;
             }
         }
+
+        private sealed class SendCapturedException : Exception { }
 
         private sealed class RdmaReadClient : Smb2OverSmbdTestClient
         {
