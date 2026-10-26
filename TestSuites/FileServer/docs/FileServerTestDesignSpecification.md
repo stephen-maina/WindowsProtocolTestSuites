@@ -11738,3 +11738,35 @@ The test cases are designed with below assumptions, and these terms will be used
 ||3. Client expects STATUS = STATUS_SUCCESS.|
 ||4. Disconnect and logoff.|
 |**Cleanup**|N/A|
+
+## Managed SMB2 SDK negotiation regressions
+
+`src\SMB2\Tests\RdmaNegotiationTests.cs` exercises the public `Smb2Client.Negotiate`
+and `MultiProtocolNegotiate` response handling with serialized requests and scripted
+managed responses. Category: `ManagedRegression`. These tests do not establish a
+native RDMA connection or replace live SMB Direct interoperability testing.
+
+The RDMA rules follow [MS-SMB2 section 3.2.5.2](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/3b29f3af-86f9-4962-8cf3-43471cb59363)
+and [section 2.2.3.1.6](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/52b74a74-9838-4f51-b2b0-efeb23bd79d6).
+An accepted SMB 3.1.1 response can select only offered transforms and cannot
+increase their count; `NONE` has no exception to offer membership. An omitted
+context is not an error and leaves no selected transforms for the new negotiation.
+Lower dialects do not negotiate RDMA transforms. Reject malformed or unsolicited
+RDMA contexts before changing accepted state; preserve the accepted RDMA
+selection on a failed response.
+
+| Test method | Scenario and pass criteria |
+|---|---|
+| `Negotiate_OfferedSelection_AcceptsAllSelectedTransforms` | Accept the full offer and a valid subset, preserving the selected values. |
+| `Negotiate_ReusedClientWithoutResponseContext_ClearsPreviousSelection` | Reuse the client after a valid selection; clear it for absent SMB 3.1.1 contexts with or without a new offer, and for SMB 3.0.2/2.0.2. |
+| `Negotiate_OfferedNone_AcceptsNoneWithoutInventingAnException` | Accept explicitly offered `NONE` as the selected value. |
+| `Negotiate_InvalidRdmaResponse_RejectsWithoutChangingAcceptedSelection` | Reject excess count, unoffered IDs (including `NONE`), unknown IDs, unsolicited contexts, a response to an empty offer, short data, zero count, and inconsistent count/array shape; retain the previous selection. |
+| `Negotiate_LowerDialectWithRdmaContext_DoesNotSelectRdmaTransforms` | Ignore an inapplicable RDMA context on SMB 3.0.2 and clear the prior selection. |
+| `MultiProtocolNegotiate_ReusedClientSelectingSmb2002_ClearsPreviousSelection` | Clear the prior selection when multi-protocol negotiation finishes with SMB 2.0.2. |
+| `Negotiate_ErrorResponse_DoesNotAcceptRdmaSelection` | Return the failed status without accepting response transforms or replacing the previous selection. |
+
+Run from the repository root:
+
+```powershell
+dotnet test .\TestSuites\FileServer\src\SMB2\Tests\SMB2.Regression.Tests.csproj -c Release --filter "FullyQualifiedName~RdmaNegotiationTests"
+```

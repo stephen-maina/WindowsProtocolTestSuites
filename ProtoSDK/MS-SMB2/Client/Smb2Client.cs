@@ -1131,9 +1131,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
             gssToken = response.Buffer.Skip(response.PayLoad.SecurityBufferOffset - response.BufferOffset).Take(response.PayLoad.SecurityBufferLength).ToArray();
 
             // set dialect if ComNegotiate returns SMB 2.002 because we'll stop negotiation in this situation
-            if (selectedDialect == DialectRevision.Smb2002)
+            if (response.Header.Status == Smb2Status.STATUS_SUCCESS && selectedDialect == DialectRevision.Smb2002)
             {
                 dialect = selectedDialect;
+                this.selectedRdmaTransformIds = Array.Empty<Smb2RDMATransformId>();
             }
 
             return response.Header.Status;
@@ -1284,6 +1285,39 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
             selectedDialect = response.PayLoad.DialectRevision;
             gssToken = response.Buffer.Skip(response.PayLoad.SecurityBufferOffset - response.BufferOffset).Take(response.PayLoad.SecurityBufferLength).ToArray();
 
+            if (response.Header.Status != Smb2Status.STATUS_SUCCESS)
+            {
+                return response.Header.Status;
+            }
+
+            // Validate the response against this request before replacing accepted connection state.
+            var negotiatedRdmaTransformIds = Array.Empty<Smb2RDMATransformId>();
+            if (selectedDialect == DialectRevision.Smb311 && response.NegotiateContext_RDMA != null)
+            {
+                var rdmaContext = response.NegotiateContext_RDMA.Value;
+                var offeredRdmaContext = request.NegotiateContext_RDMA;
+                if (offeredRdmaContext == null)
+                {
+                    throw new InvalidOperationException("The server returned RDMA transform capabilities that were not offered.");
+                }
+                if (rdmaContext.TransformCount == 0 ||
+                    rdmaContext.RDMATransformIds == null ||
+                    rdmaContext.RDMATransformIds.Length != rdmaContext.TransformCount ||
+                    rdmaContext.Header.DataLength < rdmaContext.GetDataLength())
+                {
+                    throw new InvalidOperationException("The server returned malformed RDMA transform capabilities.");
+                }
+                if (rdmaContext.TransformCount > offeredRdmaContext.Value.TransformCount)
+                {
+                    throw new InvalidOperationException("The server returned more RDMA transforms than were offered.");
+                }
+                if (rdmaContext.RDMATransformIds.Any(id => !offeredRdmaContext.Value.RDMATransformIds.Contains(id)))
+                {
+                    throw new InvalidOperationException("The server selected an RDMA transform that was not offered.");
+                }
+                negotiatedRdmaTransformIds = rdmaContext.RDMATransformIds;
+            }
+
             dialect = response.PayLoad.DialectRevision;
             this.isSigningAlgorithmNegotiated = false;
 
@@ -1312,11 +1346,6 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
                     this.isSigningAlgorithmNegotiated = true;
                 }
 
-                if (response.NegotiateContext_RDMA != null)
-                {
-                    this.selectedRdmaTransformIds = response.NegotiateContext_RDMA.Value.RDMATransformIds ?? new Smb2RDMATransformId[0];
-                }
-
                 // In SMB 311, client use SMB2_ENCRYPTION_CAPABILITIES context to indicate whether it 
                 // support Encryption rather than SMB2_GLOBAL_CAP_ENCRYPTION as SMB 30/302
                 // For those client with dialect 311 but not support encryption cases (typically in encryption model cases), 
@@ -1331,6 +1360,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2
                 preauthContext.UpdateConnectionState(response);
             }
 
+            this.selectedRdmaTransformIds = negotiatedRdmaTransformIds;
             return response.Header.Status;
         }
 
