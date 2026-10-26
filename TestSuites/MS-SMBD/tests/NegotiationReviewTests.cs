@@ -487,6 +487,9 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                 }
             }
             result["Platform"] = "NonWindows";
+            // Hardware-free protocol fixtures must not start capture or contact a SUT.
+            result["Diagnostics.Enabled"] = "false";
+            result["SutLog.Enabled"] = "false";
             return result;
         }
 

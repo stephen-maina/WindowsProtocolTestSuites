@@ -301,6 +301,8 @@ adapter/test-suite assemblies and linked detector source, without connecting to 
 On Windows, this deliberately selects the managed Linux conditional paths; it does **not** validate native compilation
 or live Linux/Windows RDMA interoperability. The project links the detector's source and platform adapter to avoid pulling
 in the plugin's UI/PowerShell dependencies. Its fake PTF checker rejects unsupported assertion operations.
+The fixture sets `Diagnostics.Enabled=false` and `SutLog.Enabled=false` only in its synthetic configuration,
+preventing capture or remote SUT log collection without changing the deployed suite's diagnostics policy.
 
 Reuse `SmbdAdapter.GetRdmaChannelDataSize()` for the configured multiple-buffer-descriptor scenario: it caps
 `RdmaChannelDataSizeInByte` at both SMB2 negotiated READ/WRITE limits and SMBD MaxReadWriteSize.
