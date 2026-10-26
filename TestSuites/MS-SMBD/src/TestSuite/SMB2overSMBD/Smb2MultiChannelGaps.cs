@@ -108,30 +108,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             EstablishSession(client, cfg, Guid.NewGuid(), true);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send FSCTL_QUERY_NETWORK_INTERFACE_INFO over the RDMA connection.");
-            byte[] responseInput;
-            byte[] responseOutput;
-            Packet_Header header;
-            IOCTL_Response ioctl;
-            ulong messageId = GetClientField<ulong>(client, "messageId");
-            ulong sessionId = GetClientField<ulong>(client, "sessionId");
-            uint status = client.IoCtl(
-                1,
-                64,
-                Packet_Header_Flags_Values.FLAGS_SIGNED,
-                messageId,
-                sessionId,
-                client.TreeId,
-                CtlCode_Values.FSCTL_QUERY_NETWORK_INTERFACE_INFO,
-                new FILEID { Persistent = 0xffffffffffffffff, Volatile = 0xffffffffffffffff },
-                0,
-                new byte[0],
-                cfg.QueryNetworkInterfaceMaxOutputResponse,
-                IOCTL_Request_Flags_Values.SMB2_0_IOCTL_IS_FSCTL,
-                out responseInput,
-                out responseOutput,
-                out header,
-                out ioctl);
-            AfterRawResponse(client, header);
+            uint status = QueryNetworkInterfaceInfo(client, out byte[] responseInput, out byte[] responseOutput,
+                out Packet_Header header, out IOCTL_Response ioctl);
 
             if ((NtStatus)status == NtStatus.STATUS_NOT_SUPPORTED)
             {
@@ -503,6 +481,14 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
             return client;
         }
+
+        private uint QueryNetworkInterfaceInfo(
+            Smb2OverSmbdTestClient client,
+            out byte[] responseInput,
+            out byte[] responseOutput,
+            out Packet_Header header,
+            out IOCTL_Response ioctl) =>
+            client.Smb2QueryNetworkInterfaceInfo(out responseInput, out responseOutput, out header, out ioctl);
 
         private static NtStatus ConnectRdma(Smb2OverSmbdTestClient client, TestConfig cfg)
         {

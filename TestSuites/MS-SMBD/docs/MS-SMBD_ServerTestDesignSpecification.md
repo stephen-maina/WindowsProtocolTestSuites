@@ -2705,6 +2705,73 @@ full validation and the fresh review anchor; final-source/native acceptance is
 still blocked. Raw local TRX/logs are preparatory evidence only and must be
 retained by the parent with the durable task record before worktree disposal.
 
+### Raw network-interface query handoff (task 64747429)
+
+The parent programme (task 62719670, decision marker
+`MLNX-RDMA-PROTOCOL-CORRECTIONS-20261026-CONSUMER-DISPOSITIONS`) accepted the
+positive raw-query finding for PR17218745. This preparation starts from the
+explicit intermediate merge of owner source `3cf64d8edf385a478e4a65a138bce3a10f30941c`;
+it is not final source acceptance.
+
+* **RDMA-C45-QUERY:** raw and parsed network-interface queries must share
+  nonzero/range validation, negotiated `MaxTransactSize` bounding, credit
+  derivation/refill, post-ECHO MessageId selection, and exactly-once accounting.
+* **RDMA-C45-RAW:** preserve the raw response header, IOCTL body and buffers
+  needed by the positive response-format scenario. Keep the separate
+  one-credit session-binding negative paths unchanged.
+
+Preparation acceptance is executable RED/GREEN coverage of the scenario's
+actual query helper and the shared raw-response overload, using the existing
+`NegotiationReviewTests` packet-capture fixture. Cover single/multi-credit
+requests, negotiated clamps, zero/unrepresentable sizes, successful/error raw
+responses, refill before send, and the credit-denial no-IOCTL branch.
+
+Task 64747429 owns the raw-overload contract, consumer use, and regression
+evidence. Parent task 62719670 must propagate this shared adapter contract
+without losing final-owner changes, integrate accepted final source, rerun the
+three final managed projects, and obtain renewed full-source review before any
+publication. Native/live acceptance remains separate. A repeated accurate
+finding at this corrected boundary requires re-scope/escalation, not an
+unbounded patch loop.
+
+#### Preparation evidence and downstream obligations (2026-10-26)
+
+| HardwareFree regression | Scenario and pass criteria |
+| --- | --- |
+| MultichannelRawQuery_BoundsRequestAndAccountsOnce | Invoke the response-format scenario's actual query helper; inspect encoded output bound and charge, signed flags, sentinel FileId, consumed MessageIds and exactly-once credit accounting, including the 64-KiB edge and a huge configured value clamped by negotiation. |
+| MultichannelRawQuery_PreservesRawResponseOnSuccessOrError | Return the original status, header, IOCTL body and both raw buffers on success or an error; do not discard response-format evidence or parse the raw caller's bytes. |
+| MultichannelRawQuery_ZeroConfiguredSizeFailsBeforeSending / MultichannelRawQuery_InvalidEffectiveSizeFailsBeforeSending | Reject zero configured/effective limits and an unrepresentable charge before sending or consuming credits. |
+| MultichannelRawQuery_RefillsBeforeSelectingMessageId | Capture ECHO then IOCTL; the IOCTL uses the post-ECHO MessageId and two-credit charge, and final credit/MessageId accounting includes both exchanges exactly once. |
+| MultichannelRawQuery_DeniedCreditsNeverSendsIoctl | A one-credit ECHO grant cannot fund the two-credit query; fail without transmitting IOCTL. |
+| MultichannelParsedQuery_UsesSameBoundsAndAccountsOnce | The parsed overload returns the interface list from the shared raw response while preserving the same output bound and accounting. |
+| MultichannelBindingRawAccounting_RemainsSingleCredit | The unchanged binding-negative raw accounting helper consumes one MessageId/credit, without using query accounting. |
+
+The starting intermediate head was `bfa34b87195f84a5882ff28e7147467da7ec3c3c`.
+Existing IOCTL/zero-validation baseline: 4 passed. The original query block was
+first extracted unchanged into the actual scenario helper so the existing
+packet-capture fixture could invoke it without live session setup. After
+correcting test-fixture compilation errors, 16 executable cases produced 10
+failures and 6 passes before the behavior correction. Failures identified the
+unbounded cap, fixed charge, missing refill and missing local validation.
+After correction, these 16 cases plus 7 existing neighboring IOCTL cases
+passed (23/23). The fixture-compilation failure is retained separately, not
+counted as behavioral RED evidence.
+
+Reproduce from the repository root:
+`dotnet test TestSuites\MS-SMBD\tests\Smbd.UnitTests.csproj -p:OS=Unix -c Release --filter "FullyQualifiedName~MultichannelRawQuery|FullyQualifiedName~MultichannelParsedQuery|FullyQualifiedName~MultichannelBindingRawAccounting|FullyQualifiedName~IoctlPreservesNegotiatedLimitAndCreditCharge|FullyQualifiedName~ZeroConfiguredBuffersAreRejectedBeforeSending|FullyQualifiedName~ConfiguredIoctlOutputSizeReachesEncodedRequest"`.
+The measured run used SDK 10.0.402 with isolated artifacts; it exercised actual
+SMB packet construction and controlled responses, not provider/native session
+setup or a live server's format compliance. Inherited build warnings remain.
+
+Learning row: task 64747429, disposition Accurate; invariants
+RDMA-C45-QUERY/RDMA-C45-RAW now have consumer-path regressions. The shared
+`Smb2QueryNetworkInterfaceInfo` raw-response overload owns sizing, refill and
+accounting; callers must not add another `AfterRawResponse`. Parent 62719670
+owns preservation of this contract during accepted-final-owner integration,
+artifact retention, full validation, publication approval and the fresh
+review anchor. Local raw TRX/logs must be retained with the durable task record
+before worktree disposal. Final-source and native acceptance remain open.
+
 ## <a name="_Toc427489520"/>Appendix
 
 ### <a name="_Toc427489521"/>Glossary

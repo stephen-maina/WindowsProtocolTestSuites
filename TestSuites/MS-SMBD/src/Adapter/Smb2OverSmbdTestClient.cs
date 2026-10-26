@@ -460,6 +460,26 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
         public uint Smb2QueryNetworkInterfaceInfo(out NETWORK_INTERFACE_INFO_Response[] networkInterfaceInfos)
         {
+            uint status = Smb2QueryNetworkInterfaceInfo(out _, out byte[] responseOutput, out _, out _);
+            if ((NtStatus)status != NtStatus.STATUS_SUCCESS)
+            {
+                networkInterfaceInfos = null;
+                return status;
+            }
+            networkInterfaceInfos = Smb2Utility.UnmarshalNetworkInterfaceInfoResponse(responseOutput);
+            return status;
+        }
+
+        /// <summary>
+        /// Query network interfaces with the negotiated output bound and matching SMB2 credit accounting,
+        /// retaining the raw response for wire-format validation.
+        /// </summary>
+        public uint Smb2QueryNetworkInterfaceInfo(
+            out byte[] responseInput,
+            out byte[] responseOutput,
+            out Packet_Header responseHeader,
+            out IOCTL_Response responsePayload)
+        {
             if (QueryNetworkInterfaceMaxOutputResponse == 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(QueryNetworkInterfaceMaxOutputResponse),
@@ -473,13 +493,9 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             }
             ushort creditCharge = CalculateCreditCharge(maxOutputResponse);
             RequestCreditsFromSmb2Server(creditCharge);
-            byte[] responseInput;
-            byte[] responseOutput;
-            Packet_Header packetHeader;
-            IOCTL_Response ioCtlResponse;
 
             // IoCtl Query Network Interface INFO
-            this.IoCtl(
+            uint status = this.IoCtl(
                 creditCharge,
                 64,
                 SessionRequestFlags,
@@ -494,20 +510,11 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
                 IOCTL_Request_Flags_Values.SMB2_0_IOCTL_IS_FSCTL,
                 out responseInput,
                 out responseOutput,
-                out packetHeader,
-                out ioCtlResponse);
+                out responseHeader,
+                out responsePayload);
 
-            CalculateSmb2AvailableCredits(creditCharge, packetHeader.CreditRequestResponse);
-
-            if ((NtStatus)packetHeader.Status != NtStatus.STATUS_SUCCESS)
-            {
-                networkInterfaceInfos = null;
-                return packetHeader.Status;
-            }
-
-            // parse network interface information
-            networkInterfaceInfos = Smb2Utility.UnmarshalNetworkInterfaceInfoResponse(responseOutput);
-            return 0;
+            CalculateSmb2AvailableCredits(creditCharge, responseHeader.CreditRequestResponse);
+            return status;
         }
 
 

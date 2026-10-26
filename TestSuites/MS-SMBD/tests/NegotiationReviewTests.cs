@@ -918,6 +918,201 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             return test;
         }
 
+        [DataTestMethod]
+        [DataRow(131072u, 262144u, 131072u, (ushort)2)]
+        [DataRow(262144u, 131072u, 131072u, (ushort)2)]
+        [DataRow(32768u, 16384u, 16384u, (ushort)1)]
+        [DataRow(65536u, 65536u, 65536u, (ushort)1)]
+        [DataRow(65537u, 262144u, 65537u, (ushort)2)]
+        [DataRow(1u, 65536u, 1u, (ushort)1)]
+        [DataRow(uint.MaxValue, 65536u, 65536u, (ushort)1)]
+        public void MultichannelRawQuery_BoundsRequestAndAccountsOnce(
+            uint configured, uint negotiated, uint expected, ushort charge)
+        {
+            var client = new CapturingClient
+            {
+                QueryNetworkInterfaceMaxOutputResponse = configured,
+                Smb2MaxTransactSize = negotiated,
+                Smb2AvailableCredits = 64
+            };
+            InvokeMultichannelRawQuery(client, out _, out _, out _, out _);
+            var request = TypeMarshal.ToStruct<IOCTL_Request>(client.Sent.Skip(64).ToArray());
+            var header = TypeMarshal.ToStruct<Packet_Header>(client.Sent);
+            Assert.AreEqual(expected, request.MaxOutputResponse);
+            Assert.AreEqual(charge, header.CreditCharge);
+            Assert.AreEqual(CtlCode_Values.FSCTL_QUERY_NETWORK_INTERFACE_INFO, request.CtlCode);
+            Assert.AreEqual(Packet_Header_Flags_Values.FLAGS_SIGNED, header.Flags);
+            Assert.AreEqual(ulong.MaxValue, request.FileId.Persistent);
+            Assert.AreEqual(ulong.MaxValue, request.FileId.Volatile);
+            Assert.AreEqual((ushort)(65 - charge), client.Smb2AvailableCredits);
+            Assert.AreEqual((ulong)charge, (ulong)Get(client, "messageId"));
+            Assert.AreEqual(1, client.Packets.Count);
+            TestContext.WriteLine($"configured={configured}, negotiated={negotiated}, encoded={request.MaxOutputResponse}, charge={header.CreditCharge}");
+        }
+
+        [DataTestMethod]
+        [DataRow((uint)NtStatus.STATUS_SUCCESS)]
+        [DataRow((uint)NtStatus.STATUS_NOT_SUPPORTED)]
+        public void MultichannelRawQuery_PreservesRawResponseOnSuccessOrError(uint status)
+        {
+            byte[] input = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+            byte[] output = InterfaceOutput();
+            var client = new CapturingClient
+            {
+                IoctlStatus = status,
+                ResponseInput = input,
+                ResponseOutput = output,
+                Smb2AvailableCredits = 64
+            };
+            uint actual = InvokeMultichannelRawQuery(client,
+                out byte[] actualInput, out byte[] actualOutput, out Packet_Header header, out IOCTL_Response ioctl);
+            Assert.AreEqual(status, actual);
+            Assert.AreEqual(status, header.Status);
+            Assert.AreEqual(Smb2Command.IOCTL, header.Command);
+            Assert.AreEqual((uint)CtlCode_Values.FSCTL_QUERY_NETWORK_INTERFACE_INFO, ioctl.CtlCode);
+            Assert.AreEqual((uint)input.Length, ioctl.InputCount);
+            Assert.AreEqual((uint)output.Length, ioctl.OutputCount);
+            Assert.AreEqual(ioctl.InputOffset + ioctl.InputCount, ioctl.OutputOffset);
+            CollectionAssert.AreEqual(input, actualInput);
+            CollectionAssert.AreEqual(output, actualOutput);
+        }
+
+        [TestMethod]
+        public void MultichannelRawQuery_ZeroConfiguredSizeFailsBeforeSending()
+        {
+            var client = new CapturingClient { QueryNetworkInterfaceMaxOutputResponse = 0 };
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+                InvokeMultichannelRawQuery(client, out _, out _, out _, out _));
+            Assert.AreEqual(0, client.Packets.Count);
+            Assert.AreEqual(0ul, (ulong)Get(client, "messageId"));
+        }
+
+        [DataTestMethod]
+        [DataRow(65536u, 0u)]
+        [DataRow(uint.MaxValue, uint.MaxValue)]
+        public void MultichannelRawQuery_InvalidEffectiveSizeFailsBeforeSending(uint configured, uint negotiated)
+        {
+            var client = new CapturingClient
+            {
+                QueryNetworkInterfaceMaxOutputResponse = configured,
+                Smb2MaxTransactSize = negotiated
+            };
+            Assert.ThrowsExactly<InvalidOperationException>(() =>
+                InvokeMultichannelRawQuery(client, out _, out _, out _, out _));
+            Assert.AreEqual(0, client.Packets.Count);
+            Assert.AreEqual((ushort)1, client.Smb2AvailableCredits);
+        }
+
+        [TestMethod]
+        public void MultichannelRawQuery_RefillsBeforeSelectingMessageId()
+        {
+            var client = new CapturingClient
+            {
+                QueryNetworkInterfaceMaxOutputResponse = 131072,
+                Smb2MaxTransactSize = 262144,
+                Smb2AvailableCredits = 1,
+                EchoCreditGrant = 4
+            };
+            InvokeMultichannelRawQuery(client, out _, out _, out _, out _);
+            var headers = client.Packets.Select(p => TypeMarshal.ToStruct<Packet_Header>(p)).ToArray();
+            CollectionAssert.AreEqual(new[] { Smb2Command.ECHO, Smb2Command.IOCTL },
+                headers.Select(h => h.Command).ToArray());
+            CollectionAssert.AreEqual(new ulong[] { 0, 1 }, headers.Select(h => h.MessageId).ToArray());
+            CollectionAssert.AreEqual(new ushort[] { 1, 2 }, headers.Select(h => h.CreditCharge).ToArray());
+            Assert.AreEqual(3ul, (ulong)Get(client, "messageId"));
+            Assert.AreEqual((ushort)3, client.Smb2AvailableCredits);
+            CollectionAssert.AreEqual(new ulong[] { 0, 1 }, client.ExpectedMessageIds.ToArray());
+        }
+
+        [TestMethod]
+        public void MultichannelRawQuery_DeniedCreditsNeverSendsIoctl()
+        {
+            var client = new CapturingClient
+            {
+                QueryNetworkInterfaceMaxOutputResponse = 131072,
+                Smb2MaxTransactSize = 262144,
+                Smb2AvailableCredits = 1,
+                EchoCreditGrant = 1
+            };
+            Assert.ThrowsExactly<Exception>(() =>
+                InvokeMultichannelRawQuery(client, out _, out _, out _, out _));
+            Assert.AreEqual(1, client.Packets.Count);
+            Assert.AreEqual(Smb2Command.ECHO, TypeMarshal.ToStruct<Packet_Header>(client.Sent).Command);
+            Assert.AreEqual(1ul, (ulong)Get(client, "messageId"));
+            Assert.AreEqual((ushort)1, client.Smb2AvailableCredits);
+        }
+
+        [TestMethod]
+        public void MultichannelParsedQuery_UsesSameBoundsAndAccountsOnce()
+        {
+            var client = new CapturingClient
+            {
+                QueryNetworkInterfaceMaxOutputResponse = 262144,
+                Smb2MaxTransactSize = 131072,
+                Smb2AvailableCredits = 64,
+                IoctlStatus = (uint)NtStatus.STATUS_SUCCESS,
+                IoctlCreditGrant = 3,
+                ResponseOutput = InterfaceOutput()
+            };
+            Assert.AreEqual((uint)NtStatus.STATUS_SUCCESS, client.Smb2QueryNetworkInterfaceInfo(out var interfaces));
+            Assert.AreEqual(1, interfaces.Length);
+            Assert.AreEqual(7u, interfaces[0].IfIndex);
+            Assert.AreEqual(2ul, (ulong)Get(client, "messageId"));
+            Assert.AreEqual((ushort)65, client.Smb2AvailableCredits);
+            Assert.AreEqual(1, client.Packets.Count);
+        }
+
+        [TestMethod]
+        public void MultichannelBindingRawAccounting_RemainsSingleCredit()
+        {
+            var client = new CapturingClient { Smb2AvailableCredits = 7 };
+            typeof(Smb2MultiChannelGaps).GetMethod("AfterRawResponse", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { client, new Packet_Header { CreditRequestResponse = 3 } });
+            Assert.AreEqual(1ul, (ulong)Get(client, "messageId"));
+            Assert.AreEqual((ushort)9, client.Smb2AvailableCredits);
+            Assert.AreEqual(0, client.Packets.Count);
+        }
+
+        private static uint InvokeMultichannelRawQuery(
+            Smb2OverSmbdTestClient client,
+            out byte[] input, out byte[] output, out Packet_Header header, out IOCTL_Response ioctl)
+        {
+            object[] arguments = { client, null, null, null, null };
+            uint status;
+            try
+            {
+                status = (uint)typeof(Smb2MultiChannelGaps)
+                    .GetMethod("QueryNetworkInterfaceInfo", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(new Smb2MultiChannelGaps(), arguments);
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
+            input = (byte[])arguments[1];
+            output = (byte[])arguments[2];
+            header = (Packet_Header)arguments[3];
+            ioctl = (IOCTL_Response)arguments[4];
+            return status;
+        }
+
+        private static byte[] InterfaceOutput()
+        {
+            byte[] address = new byte[128];
+            address[0] = 2;
+            address[4] = 192;
+            address[6] = 2;
+            address[7] = 1;
+            return TypeMarshal.ToBytes(new NETWORK_INTERFACE_INFO_Response
+            {
+                IfIndex = 7,
+                Capability = NETWORK_INTERFACE_INFO_Response_Capabilities.RDMA_CAPABLE,
+                LinkSpeed = 1000000000,
+                AddressStorage = TypeMarshal.ToStruct<NETWORK_INTERFACE_INFO_Response_SockAddr_Storage>(address)
+            });
+        }
+
         private static SmbdDataTransferMessage Transfer(byte[] buffer, uint remaining, ushort grant) =>
             new SmbdDataTransferMessage
             {
@@ -1355,13 +1550,40 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
         private sealed class CapturingClient : Smb2OverSmbdTestClient
         {
             public byte[] Sent { get; private set; }
+            public List<byte[]> Packets { get; } = new();
+            public List<ulong> ExpectedMessageIds { get; } = new();
+            public uint IoctlStatus { get; set; } = (uint)NtStatus.STATUS_NOT_SUPPORTED;
+            public ushort IoctlCreditGrant { get; set; } = 1;
+            public ushort EchoCreditGrant { get; set; } = 4;
+            public byte[] ResponseInput { get; set; }
+            public byte[] ResponseOutput { get; set; }
             public CapturingClient() : base(TimeSpan.Zero) { }
-            public override void SendPacket(byte[] data) => Sent = data;
+            public override void SendPacket(byte[] data)
+            {
+                Sent = data;
+                Packets.Add(data);
+            }
             public override T ExpectPacket<T>(ulong messageId)
             {
+                ExpectedMessageIds.Add(messageId);
                 var response = (T)Activator.CreateInstance(typeof(T));
-                ((Smb2SinglePacket)(object)response).Header.Status = (uint)NtStatus.STATUS_NOT_SUPPORTED;
-                ((Smb2SinglePacket)(object)response).Header.CreditRequestResponse = 1;
+                var packet = (Smb2SinglePacket)(object)response;
+                packet.Header.MessageId = messageId;
+                packet.Header.Status = typeof(T) == typeof(Smb2EchoResponsePacket) ? 0 : IoctlStatus;
+                packet.Header.CreditRequestResponse =
+                    typeof(T) == typeof(Smb2EchoResponsePacket) ? EchoCreditGrant : IoctlCreditGrant;
+                if (packet is Smb2IOCtlResponsePacket ioctl)
+                {
+                    byte[] input = ResponseInput ?? Array.Empty<byte>();
+                    byte[] output = ResponseOutput ?? Array.Empty<byte>();
+                    ioctl.Header.Command = Smb2Command.IOCTL;
+                    ioctl.PayLoad.CtlCode = (uint)CtlCode_Values.FSCTL_QUERY_NETWORK_INTERFACE_INFO;
+                    ioctl.PayLoad.InputOffset = ioctl.BufferOffset;
+                    ioctl.PayLoad.InputCount = (uint)input.Length;
+                    ioctl.PayLoad.OutputOffset = ioctl.BufferOffset + (uint)input.Length;
+                    ioctl.PayLoad.OutputCount = (uint)output.Length;
+                    ioctl.Buffer = input.Concat(output).ToArray();
+                }
                 return response;
             }
         }

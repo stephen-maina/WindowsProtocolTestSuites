@@ -308,6 +308,11 @@ Reuse `SmbdAdapter.GetRdmaChannelDataSize()` for the configured multiple-buffer-
 `RdmaChannelDataSizeInByte` at both SMB2 negotiated READ/WRITE limits and SMBD MaxReadWriteSize.
 Other boundary tests retain their scenario-specific lengths. `QueryNetworkInterfaceMaxOutputResponse` controls the actual
 IOCTL output request, capped at SMB2 MaxTransactSize with matching SMB2 credit charge (not SMBD credits).
+`Smb2OverSmbdTestClient.Smb2QueryNetworkInterfaceInfo` has a raw-response overload
+returning both buffers, `Packet_Header` and `IOCTL_Response` for format assertions.
+The parsed overload delegates to it. Reuse this path for positive raw queries:
+it reserves credits before selecting the MessageId and accounts exactly once;
+do not call the one-credit binding-negative `AfterRawResponse` afterward.
 The multi-channel scenario creates its own main-channel client; its initializer must forward this setting explicitly.
 Its independent alternative-channel client must likewise receive `ClientMaxReadWriteSize` before negotiation.
 `Smb2MultiChannelOverRdma.ReadFileFromAlternativeChannel` is the actual post-session-setup READ loop: both registered
