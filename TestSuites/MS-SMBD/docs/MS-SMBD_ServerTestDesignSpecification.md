@@ -2567,6 +2567,11 @@ the specification; implementation-specific applicability gates must be checked i
 | `Smb2OverRdmaTransformEdge` (6) | Encryption transform on an unencrypted request and unknown `TransformType` → `STATUS_INVALID_PARAMETER`; READ with no negotiated transform; READ response crypto-transform fields for AES-GMAC and AES-CMAC | [MS-SMB2] 3.3.5.12, 3.3.5.13, 2.2.43, 2.2.43.1 |
 | `SmbdProtocolGaps` (9) | Reserved/Padding ignored; second Negotiate Request terminates; Data Transfer before negotiation rejected; credit cap and growth; fragmented READ response headers; exact `MaxReadWriteSize` READ/WRITE | [MS-SMBD] 2.2.1, 2.2.3, 3.1.4.5, 3.1.4.6, 3.1.5.3, 3.1.5.4, 3.1.5.6, 3.1.5.8, 3.1.5.9 |
 | `Smb2MultiChannelGaps` (7) | `FSCTL_QUERY_NETWORK_INTERFACE_INFO` over RDMA; session-bind negatives (`STATUS_INVALID_PARAMETER`, `STATUS_USER_SESSION_DELETED`, `STATUS_REQUEST_NOT_ACCEPTED`); RDMA failover; 8 concurrent connections; requests exceeding initial credits | [MS-SMB2] 3.3.5.5, 3.3.5.15.11, 3.3.7.1, 3.3.1.2, [MS-SMBD] 3.1.5.1, 3.1.5.9 |
+
+`Smb2OverRdmaNegotiateContext_RdmaTransform_TwoContexts_Fails` must verify
+`STATUS_INVALID_PARAMETER` regardless of `IsRDMATransformSupported`; the optional-feature probe does not gate
+this context-list validation. The single-context feature-specific tests retain their applicability gates.
+
 ### Hardware-free implementation regressions
 
 These are local implementation tests, not additional SUT protocol scenarios. All belong to category **HardwareFree**
