@@ -701,7 +701,7 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **Test Execution Steps**| Connect to server over RDMA.| 
 | | SMBD negotiate with peer.| 
 | | Establish SMB2 session and open file on **SMB 3.02**.|
-| | Before allocation and registration, bound the configured RDMA channel payload by negotiated SMB2 READ, SMB2 WRITE, and SMBD MaxReadWriteSize using GetRdmaChannelDataSize. Reject zero sizes before registration. Register that size for RDMA Read and use the same size in the descriptor and WRITE RemainingBytes.|
+| | Before allocation and registration, use GetRdmaChannelDataSize to respect negotiated SMB2 READ/WRITE limits and the fixture's conservative SMBD size cap. Reject zero sizes before registration. Register that size for RDMA Read and use the same size in the descriptor and WRITE RemainingBytes.|
 | | Write file content into registered buffer.| 
 | | Send SMB2 WRITE request using descriptor describes the registered buffer to server with Channel field set to **SMB2_CHANNEL_RDMA_V1_INVALIDATE**.| 
 | | Verify the SMB2 WRITE success.| 
@@ -719,13 +719,14 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **RemoteInvalidation**| | 
 |  **Test ID**|  **BVT_Smb2OverRdma_Smb302_Read_SMB2_CHANNEL_RDMA_V1_INVALIDATE**| 
 |  **Priority**| P0| 
-|  **Description** | Verify server responds with additional descriptor over RDMA to invalidate client’s memory window when receives SMB2 READ request with SMB2_CHANNEL_RDMA_V1_INVALIDATE on connection negotiated SMB3.02 or later dialect.| 
+|  **Description** | Exercise the positive SMB2_CHANNEL_RDMA_V1_INVALIDATE READ on an exactly SMB 3.02 connection.|
 |  **Prerequisites**| N/A| 
 |  **Test Execution Steps**| Create a file on server with random content for read| 
 | | Connect to server over RDMA.| 
 | | SMBD negotiate with peer.| 
-| | Establish SMB2 session and open file on **SMB 3.02** or later dialect.| 
-| | Register buffer and bind to a memory window for RDMA Write.| 
+| | Establish SMB2 session and open file on exactly **SMB 3.02**.|
+| | Bound the file size with GetRdmaChannelDataSize before allocation; reject zero configured or negotiated capacity. Seed the file with inline WRITEs bounded by SMB2 MaxWriteSize and the SMBD send/receive sizes, allowing for the WRITE header.|
+| | Retain ComputeReadPlan chunking; register each READ chunk for RDMA Write and match the descriptor, request Length, and registered-memory copy lengths.|
 | | Send SMB2 READ request to server using descriptor describes the registered buffer with Channel field set to **SMB2_CHANNEL_RDMA_V1_INVALIDATE**.| 
 | | Verify the SMB2 READ success.| 
 | | •   _Server responds with status success_| 
@@ -2469,12 +2470,12 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **RemoteInvalidation**| | 
 |  **Test ID**|  **Smb2OverRdma_Write_SMB2_CHANNEL_RDMA_V1**| 
 |  **Priority**| P0| 
-|  **Description** | Verify server still responds correctly when receives SMB2 WRITE request with SMB2_CHANNEL_RDMA_V1 on connection negotiated SMB3.02 or later dialect.| 
+|  **Description** | Verify plain SMB2_CHANNEL_RDMA_V1 WRITE and descriptor reuse on an exactly SMB 3.02 connection without negotiated RDMA transforms.|
 |  **Prerequisites**| N/A| 
 |  **Test Execution Steps**| Connect to server over RDMA.| 
 | | SMBD negotiate with peer.| 
 | | Establish SMB2 session and open file on the **SMB 3.02** dialect (no RDMA transforms are negotiated, so plain SMB2_CHANNEL_RDMA_V1 is the correct channel, [MS-SMB2] 3.2.4.7).| 
-| | Register buffer and bind to a memory window for RDMA Read.| 
+| | Bound the configured payload with GetRdmaChannelDataSize before allocation and registration. Reject zero configured or negotiated capacity; register for RDMA Read with matching memory-copy length, descriptor Length, and encoded WRITE RemainingBytes.|
 | | Write file content into registered buffer.| 
 | | Send SMB2 WRITE request to server using descriptor describes the registered buffer with Channel field set to **SMB2_CHANNEL_RDMA_V1**.| 
 | | Verify the SMB2 WRITE response success.| 
@@ -2490,13 +2491,13 @@ In this test suite, there is no requirement captured. So “Requirements covered
 |  **RemoteInvalidation**| | 
 |  **Test ID**|  **Smb2OverRdma_Read_SMB2_CHANNEL_RDMA_V1**| 
 |  **Priority**| P0| 
-|  **Description** | Verify server still responds correctly when receives SMB2 READ request with SMB2_CHANNEL_RDMA_V1 on connection negotiated SMB3.02 or later dialect.| 
+|  **Description** | Verify plain SMB2_CHANNEL_RDMA_V1 READ and descriptor reuse with SMB 3.0, 3.02, or 3.1.1; signing is optional and affects only the seeding WRITE channel.|
 |  **Prerequisites**| N/A| 
 |  **Test Execution Steps**|  _Create a file on server with random content for read_| 
 | | Connect to server over RDMA.| 
 | | SMBD negotiate with peer.| 
-| | Establish SMB2 session and open file on **SMB 3.02** or later dialect.| 
-| | Register buffer and bind to a memory window for RDMA Write.| 
+| | Offer **SMB 3.0, 3.02, and 3.1.1** with optional RDMA SIGNING/AES_CMAC capabilities. On 3.1.1 with SIGNING selected, use the signed RDMA transform for the seeding WRITE; otherwise use plain RDMA_V1. Transform-specific scenarios retain their separate 3.1.1-only gate.|
+| | Bound the file size with GetRdmaChannelDataSize before allocation or seeding; reject zero configured or negotiated capacity. Match seed registration/copy/descriptor/WRITE RemainingBytes, then match READ registration/descriptor/request Length/memory-copy lengths.|
 | | Send SMB2 READ request to server using descriptor describes the registered buffer with Channel field set to **SMB2_CHANNEL_RDMA_V1**.| 
 | | Verify the SMB2 READ success.| 
 | | •    _Server responds with status success_| 
@@ -2610,6 +2611,20 @@ Packet-builder tests capture encoded requests instead of using a provider.
 | RdmaWriteInitialization_BaselineKeepsLegacyDialectsWhileTransformsRequire311 | Invoke the actual baseline WRITE and transform-specific multi-descriptor scenarios through the adapter and real encoded SMB2 NEGOTIATE. Baseline offers 3.0/3.0.2/3.1.1 with optional signing; transform-specific initialization offers only 3.1.1. Script each server dialect and stop at the existing successful-negotiation log before authentication. |
 | InvalidationWrite_PositiveRequestBoundsRegistrationDescriptorAndRemainingBytes | Invoke the actual positive SMB 3.0.2 invalidation WRITE with negotiated state injected at the existing connection seam. Configured, SMB2 READ, SMB2 WRITE, and SMBD limits each bound registration, memory copy, descriptor Length, and encoded RemainingBytes; equality preserves the default size. Stop at the subsequent READ registration, before testing invalidation. |
 | InvalidationWrite_ZeroSizeFailsBeforeRegistration | Zero configured size or any zero negotiated cap rejects the actual positive invalidation WRITE before registration, memory copy, or packet transmission. Intentionally malformed negative-test payloads remain unchanged. |
+| PositiveRdmaGroup_BoundsActualEntryPacketsAndPreservesDialectFallback | Invoke all four actual positive RemoteInvalidation READ/WRITE entries through real NEGOTIATE, TREE_CONNECT, CREATE, READ, and WRITE packet paths, substituting authentication and provider memory only. Cover configured/equal sizes and configured 1 MiB with smaller SMB2 READ, SMB2 WRITE, or conservative SMBD caps. Assert seeded file size, registration permissions, memory-copy/descriptor/request lengths, actual data equality, and plain descriptor reuse. Plain READ succeeds with 3.0/3.02 and with 3.1.1 signing selected or declined; selected signing constructs the actual signed transform seed. Invalidation cases stop after the first positive READ memory copy, before descriptor-reuse/provider-disconnect assertions. |
+| PositiveRdmaGroup_ZeroPreconditionsStopBeforeRegistrationCopyOrDataRequest | For each of the four positive entries, zero configured size or zero SMB2 READ, SMB2 WRITE, or conservative SMBD capacity fails before registration, memory copy, seeded data, or READ/WRITE transmission. The two deliberately invalid SMB 3.0 channel scenarios are unchanged. |
+
+For these bounded single-buffer fixtures, `GetRdmaChannelDataSize` conservatively takes the minimum configured,
+SMB2 READ, SMB2 WRITE, and client SMBD sizes. SMB2 negotiated READ/WRITE request limits are mandatory:
+[MS-SMB2] 3.3.5.13 rejects RDMA WRITE RemainingBytes above Connection.MaxWriteSize, and 3.3.5.12 checks READ Length
+against Connection.MaxReadSize. The helper's SMBD cap is a fixture policy, **not** a claim that SMBD MaxReadWriteSize
+universally limits the total buffer of an SMB2 request: [MS-SMBD] 3.1.4.3 allows multiple registrations and 3.1.4.6 allows
+one or more RDMA operations for a buffer.
+
+The whole-group fixture overrides the existing client's authentication method with synthetic state; the production
+method body is unchanged and only made virtual. No SSPI, native registration, RDMA provider, or live SUT is exercised.
+The two invalidation entries retain their existing stale-token/disconnect TODO; the positive-prefix tests do not establish
+normative invalidation/disconnect behavior.
 
 Only genuine timeout exceptions are accepted by existing negative no-response scenarios. Provider, cancellation, and
 connection failures now fail those scenarios instead of being mistaken for successful no-response checks.

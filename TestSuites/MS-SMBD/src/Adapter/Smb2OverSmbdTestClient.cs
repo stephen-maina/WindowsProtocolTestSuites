@@ -390,7 +390,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             return status;
         }
 
-        public uint Smb2SessionSetup(
+        public virtual uint Smb2SessionSetup(
             SecurityPackageType securityPackageType,
             string domainName,
             string userName,

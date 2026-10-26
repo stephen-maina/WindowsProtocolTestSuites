@@ -138,8 +138,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             // of the expected success path for this SMB 3.0.2 scenario.
             EstablishConnectionAndOpenFile(fileName, Smb302OnlyDialects);
 
-            uint fileSize = smbdAdapter.Smb2MaxReadSize;
-            fileSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
+            uint fileSize = smbdAdapter.GetRdmaChannelDataSize();
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
             // SMB 3.0.2 cannot negotiate the SMB 3.1.1 RDMA Transform Capabilities
@@ -150,12 +149,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Write content to file using inline SMB2 WRITE.");
             WriteInlineContent(fileContent);
 
-            // A single RDMA READ covering the whole 1 MiB file can exceed the SMBD
-            // negotiated MaxReadWriteSize (separate from the SMB2 MaxReadSize),
-            // which causes the server to RDMA-write past the bounds of the
-            // registered buffer (observed as STATUS_ACCESS_VIOLATION / 0xC0000005).
-            // Chunk the READ per Smb2EffectiveMaxReadSize, the same way
-            // ValidateFileContent does.
+            // Retain the READ planning shared with ValidateFileContent. Its SMBD
+            // cap is this fixture's conservative single-buffer policy, not a
+            // universal limit on an SMB2 request served by multiple RDMA operations.
             uint sizePerRead;
             ComputeReadPlan(1, out sizePerRead, out _);
 
@@ -270,8 +266,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 negotiatedDialects: new DialectRevision[] { DialectRevision.Smb302 });
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, connectStatus, "Status of SMB2 establish session and open file is {0}", connectStatus);
 
-            uint writeSize = smbdAdapter.Smb2MaxWriteSize;
-            writeSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
+            uint writeSize = smbdAdapter.GetRdmaChannelDataSize();
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)writeSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
@@ -312,7 +307,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
         [TestMethod]
         [TestCategory("Smb2OverRdmaChannel")]
         // Spec: [MS-SMB2] 3.3.5.12 - READ with Channel = SMB2_CHANNEL_RDMA_V1: data MUST go via [MS-SMBD] 3.1.4.5, not in the response;
-        // the descriptor (no invalidation requested) remains usable for a second READ. The seeding WRITE uses RDMA_TRANSFORM per 3.3.5.13.
+        // the descriptor (no invalidation requested) remains usable for a second READ. The seeding WRITE uses the selected transform, if any.
         [TestProperty("SpecSection", "[MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request; [MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request; [MS-SMBD] 3.1.4.5 RDMA Write to Peer Buffer")]
         [TestProperty("SpecCompliance", "Conformant")]
         public void Smb2OverRdma_Read_SMB2_CHANNEL_RDMA_V1()
@@ -320,8 +315,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             bool transformSelected = EstablishSignedRdmaConnectionAndOpenFile(fileName);
             Channel_Values seedChannel = transformSelected ? Channel_Values.CHANNEL_RDMA_TRANSFORM : Channel_Values.CHANNEL_RDMA_V1;
 
-            uint fileSize = smbdAdapter.Smb2MaxReadSize;
-            fileSize = smbdAdapter.TestConfig.RdmaChannelDataSizeInByte; // from ptfconfig, not defined by the specifications
+            uint fileSize = smbdAdapter.GetRdmaChannelDataSize();
             byte[] fileContent = Smb2Utility.CreateRandomByteArray((int)fileSize);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Register memory and get buffer descriptor for SMB2 WRITE");
@@ -540,7 +534,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
         private bool EstablishSignedRdmaConnectionAndOpenFile(string fileName)
         {
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Establish SMB 3.1.1 connection over RDMA with RDMA signing and open file " + fileName);
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Establish SMB 3.x connection over RDMA with optional RDMA signing and open file " + fileName);
 
             NtStatus status = smbdAdapter.ConnectToServerOverRDMA();
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMBD connection is {0}", status);
@@ -550,6 +544,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
             DialectRevision[] dialects =
             {
+                DialectRevision.Smb30,
+                DialectRevision.Smb302,
                 DialectRevision.Smb311
             };
             Smb2RDMATransformId[] rdmaTransformIds =
