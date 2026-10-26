@@ -209,6 +209,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         int CreateCompletionQueue(uint entrySize, out INativeRdmaCompletionQueue completionQueue);
         int CreateConnector(out INativeRdmaConnector connector);
         int RegisterMemory(uint bufferSize, out ulong memoryHandler);
+        int RegisterMemory(uint bufferSize, RdmaReadWriteFlag flag, out ulong memoryHandler);
         int DeregisterMemory(ulong memoryHandler);
         int CreateMemoryWindow(ulong invalidateResult, out INativeRdmaMemoryWindow memoryWindow);
 

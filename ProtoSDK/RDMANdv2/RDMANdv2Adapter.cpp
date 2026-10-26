@@ -122,6 +122,31 @@ HRESULT RdmaAdapter::CreateCompletionQueue(
 
 HRESULT RdmaAdapter::RegisterMemory(unsigned __int32 bufferSize, [Out]unsigned __int64% memoryHandler)
 {
+    return RegisterMemory(bufferSize, RdmaOperationReadWriteFlag::ReadAndWrite, memoryHandler);
+}
+
+HRESULT RdmaAdapter::RegisterMemory(
+    unsigned __int32 bufferSize,
+    RdmaOperationReadWriteFlag flag,
+    [Out]unsigned __int64% memoryHandler)
+{
+    memoryHandler = 0;
+    ULONG accessFlags = ND_MR_FLAG_ALLOW_LOCAL_WRITE;
+    switch (flag)
+    {
+    case RdmaOperationReadWriteFlag::Read:
+        accessFlags |= ND_MR_FLAG_ALLOW_REMOTE_READ;
+        break;
+    case RdmaOperationReadWriteFlag::Write:
+        accessFlags |= ND_MR_FLAG_ALLOW_REMOTE_WRITE;
+        break;
+    case RdmaOperationReadWriteFlag::ReadAndWrite:
+        accessFlags |= ND_MR_FLAG_ALLOW_REMOTE_READ | ND_MR_FLAG_ALLOW_REMOTE_WRITE;
+        break;
+    default:
+        return E_INVALIDARG;
+    }
+
     IND2MemoryRegion *pMemoryRegion = NULL;
     HRESULT result = _adapter->CreateMemoryRegion(
         IID_IND2MemoryRegion,
@@ -153,9 +178,7 @@ HRESULT RdmaAdapter::RegisterMemory(unsigned __int32 bufferSize, [Out]unsigned _
     result = pMemoryRegion->Register(
         buffer,
         registeredLength,
-        ND_MR_FLAG_ALLOW_LOCAL_WRITE |
-            ND_MR_FLAG_ALLOW_REMOTE_READ |
-            ND_MR_FLAG_ALLOW_REMOTE_WRITE,
+        accessFlags,
         _pOverlapped);
 
     if (result == ND_PENDING)

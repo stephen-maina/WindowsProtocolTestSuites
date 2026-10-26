@@ -362,6 +362,11 @@ public:
         unsigned __int32 bufferSize,
         [Out]unsigned __int64% memoryHandler);
 
+    HRESULT RegisterMemory(
+        unsigned __int32 bufferSize,
+        RdmaOperationReadWriteFlag flag,
+        [Out]unsigned __int64% memoryHandler);
+
     HRESULT DeregisterMemory(unsigned __int64 memoryHandler);
 
     HRESULT CreateMemoryWindow([Out]unsigned __int64 invalidateResult, [Out]RdmaMemoryWindow^% memoryWindow);

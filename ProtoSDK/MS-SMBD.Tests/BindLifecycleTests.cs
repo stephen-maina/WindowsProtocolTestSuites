@@ -50,6 +50,83 @@ namespace Smbd.Endpoint.Tests
             }
         }
 
+        [DataTestMethod]
+        [DataRow(RdmaReadWriteFlag.Read)]
+        [DataRow(RdmaReadWriteFlag.Write)]
+        [DataRow(RdmaReadWriteFlag.ReadAndWrite)]
+        public void MemoryRegionFallbackPreservesPermissionsOnFirstAndCachedRegistration(RdmaReadWriteFlag flag)
+        {
+            using var fixture = new Fixture();
+            fixture.Native.WindowStatus = NtStatus.STATUS_NOT_SUPPORTED;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                RdmaReadWriteFlag requested = attempt == 0 ? flag
+                    : (RdmaReadWriteFlag)(((int)flag + 1) % 3);
+                Assert.AreEqual(NtStatus.STATUS_SUCCESS,
+                    fixture.Endpoint.RegisterMemoryWindow(16, (uint)requested, false, out fixture.Descriptor));
+                Assert.AreEqual(requested, fixture.Native.RegisteredPermissions,
+                    "The published MR token must not grant permissions beyond this call's request.");
+                Assert.AreEqual(88u, fixture.Descriptor.Token);
+                Assert.AreEqual(1, fixture.Native.WindowCreations, "Cached fallback must skip window creation.");
+                Assert.IsFalse(fixture.Native.BindSubmitted.IsSet);
+                fixture.Endpoint.DeregisterMemoryWindow(fixture.Descriptor);
+                Assert.AreEqual(0, fixture.Native.OwnedMemoryCount);
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(RdmaReadWriteFlag.Read)]
+        [DataRow(RdmaReadWriteFlag.Write)]
+        [DataRow(RdmaReadWriteFlag.ReadAndWrite)]
+        public void MemoryWindowRegistrationAndBindUseTheSamePermissions(RdmaReadWriteFlag flag)
+        {
+            using var fixture = new Fixture();
+            var call = Task.Run(() => fixture.Endpoint.RegisterMemoryWindow(16, (uint)flag, false, out fixture.Descriptor));
+            Assert.IsTrue(fixture.Native.BindSubmitted.Wait(3000));
+            fixture.Native.CompleteBind(NtStatus.STATUS_SUCCESS);
+            Assert.AreEqual(NtStatus.STATUS_SUCCESS, call.GetAwaiter().GetResult());
+            Assert.AreEqual(flag, fixture.Native.RegisteredPermissions);
+            Assert.AreEqual(flag, fixture.Native.BoundPermissions);
+            Assert.AreEqual(77u, fixture.Descriptor.Token);
+        }
+
+        [DataTestMethod]
+        [DataRow(RdmaReadWriteFlag.Read, false)]
+        [DataRow(RdmaReadWriteFlag.Write, false)]
+        [DataRow(RdmaReadWriteFlag.ReadAndWrite, false)]
+        [DataRow(RdmaReadWriteFlag.Read, true)]
+        [DataRow(RdmaReadWriteFlag.Write, true)]
+        [DataRow(RdmaReadWriteFlag.ReadAndWrite, true)]
+        public void RejectedPermissionRegistrationDoesNotPublishAToken(RdmaReadWriteFlag flag, bool cached)
+        {
+            using var fixture = new Fixture();
+            fixture.Native.WindowStatus = NtStatus.STATUS_NOT_SUPPORTED;
+            if (cached)
+            {
+                Assert.AreEqual(NtStatus.STATUS_SUCCESS,
+                    fixture.Endpoint.RegisterMemoryWindow(16, (uint)flag, false, out fixture.Descriptor));
+                fixture.Endpoint.DeregisterMemoryWindow(fixture.Descriptor);
+            }
+            fixture.Native.RegisterStatus = NtStatus.STATUS_ACCESS_DENIED;
+            Assert.AreEqual(NtStatus.STATUS_ACCESS_DENIED,
+                fixture.Endpoint.RegisterMemoryWindow(16, (uint)flag, false, out fixture.Descriptor));
+            Assert.AreEqual(flag, fixture.Native.RegisteredPermissions);
+            Assert.AreEqual(0u, fixture.Descriptor.Token);
+            Assert.AreEqual(0, fixture.PublishedWindows);
+            Assert.AreEqual(0, fixture.Native.OwnedMemoryCount);
+            Assert.IsFalse(fixture.Native.BindSubmitted.IsSet);
+        }
+
+        [TestMethod]
+        public void InvalidRemotePermissionsAreRejectedBeforeAllocation()
+        {
+            using var fixture = new Fixture();
+            Assert.AreEqual(NtStatus.STATUS_INVALID_PARAMETER,
+                fixture.Endpoint.RegisterMemoryWindow(16, uint.MaxValue, false, out fixture.Descriptor));
+            Assert.AreEqual(0, fixture.Native.Registrations);
+            Assert.AreEqual(0, fixture.PublishedWindows);
+        }
+
         [TestMethod]
         public void FailedBindCompletionAccountsOnceAndCleansOnce()
         {
@@ -712,6 +789,9 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
     internal int OwnedMemoryCount => ownedMemory.Count;
     internal int Deregistrations;
     internal int Registrations;
+    internal int WindowCreations;
+    internal RdmaReadWriteFlag RegisteredPermissions;
+    internal RdmaReadWriteFlag BoundPermissions;
     internal int Drained;
     internal void CompleteBind(NtStatus status) => Complete(100, status);
     internal void Complete(ulong id, NtStatus status)
@@ -737,12 +817,16 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
         bool reverse, out RdmaBufferDescriptor descriptor, out ulong resultHandler)
     {
         descriptor = new RdmaBufferDescriptor { Length = 16 };
+        BoundPermissions = flag;
         resultHandler = 100;
         BindSubmitted.Set();
         return (int)SubmitStatus;
     }
     public int RegisterMemory(uint size, out ulong handler)
+        => RegisterMemory(size, RdmaReadWriteFlag.ReadAndWrite, out handler);
+    public int RegisterMemory(uint size, RdmaReadWriteFlag flag, out ulong handler)
     {
+        RegisteredPermissions = flag;
         handler = 0;
         int registration = Interlocked.Increment(ref Registrations);
         bool overlap = EnterMemoryOperation();
@@ -779,6 +863,7 @@ internal sealed class NativeDouble : INativeRdmaService, INativeRdmaAdapter, INa
     }
     public int CreateMemoryWindow(ulong result, out INativeRdmaMemoryWindow window)
     {
+        Interlocked.Increment(ref WindowCreations);
         OnCreateMemoryWindow?.Invoke();
         window = WindowStatus == NtStatus.STATUS_SUCCESS ? Window : null;
         return (int)WindowStatus;

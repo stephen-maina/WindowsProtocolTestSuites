@@ -50,6 +50,7 @@ unsigned __int64 RdmaCompletionQueue::GetResult(
     requestResult = gcnew RdmaNetworkDirectResult();
     requestResult->Status = result.Status;
     requestResult->BytesTransferred = result.BytesTransferred;
+    requestResult->RequestType = static_cast<int>(result.RequestType);
 
     return count;
 }

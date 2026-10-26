@@ -167,6 +167,12 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             return adapter.RegisterMemory(bufferSize, out memoryHandler);
         }
 
+        public int RegisterMemory(uint bufferSize, RdmaReadWriteFlag flag, out ulong memoryHandler)
+        {
+            // NDv1 exposes remote access only through the permission-restricted Bind.
+            return adapter.RegisterMemory(bufferSize, out memoryHandler);
+        }
+
         public int DeregisterMemory(ulong memoryHandler)
         {
             return adapter.DeregisterMemory(memoryHandler);
@@ -479,6 +485,21 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         public int RegisterMemory(uint bufferSize, out ulong memoryHandler)
         {
             return adapter.RegisterMemory(bufferSize, out memoryHandler);
+        }
+
+        public int RegisterMemory(uint bufferSize, RdmaReadWriteFlag flag, out ulong memoryHandler)
+        {
+            V2.RdmaOperationReadWriteFlag nativeFlag;
+            switch (flag)
+            {
+                case RdmaReadWriteFlag.Read: nativeFlag = V2.RdmaOperationReadWriteFlag.Read; break;
+                case RdmaReadWriteFlag.Write: nativeFlag = V2.RdmaOperationReadWriteFlag.Write; break;
+                case RdmaReadWriteFlag.ReadAndWrite: nativeFlag = V2.RdmaOperationReadWriteFlag.ReadAndWrite; break;
+                default:
+                    memoryHandler = 0;
+                    return unchecked((int)NtStatus.STATUS_INVALID_PARAMETER);
+            }
+            return adapter.RegisterMemory(bufferSize, nativeFlag, out memoryHandler);
         }
 
         public int DeregisterMemory(ulong memoryHandler)

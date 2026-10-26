@@ -164,6 +164,12 @@ The base RDP connectivity protocol. Other RDP protocols (RDPEGFX, RDPEDYC, etc.)
 - Test output records the loaded endpoint assembly location, MVID, SHA256,
   runtime and portable-PDB source document checksums for source/binary identity;
   those identities do not establish independent acceptance or native behavior.
+- Registration regressions cover Read, Write and ReadAndWrite permissions on
+  initial and cached MR fallback, normal Bind, and rejected registration with
+  no token publication. NDv2 registers the MR with only the requested remote
+  permissions before either path can publish a token ([MS-SMBD] 3.1.4.3).
+  NDv1 retains Bind-based permissions and cannot publish an MR fallback token.
+  Existing size-only native registration callers retain read/write access.
 - Reuse this project for deterministic endpoint lifecycle regressions, not
   protocol conformance scenarios. It does **not** load either C++/CLI wrapper or
   qualify NDv1/NDv2 provider behavior. Native builds and live RDMA-provider

@@ -950,6 +950,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         private NtStatus RegisterMemoryWindowWindows(uint size, uint flag, bool reversed, out RdmaBufferDescriptor bufferDescriptor)
         {
             bufferDescriptor = new RdmaBufferDescriptor();
+            if (flag > (uint)RdmaReadWriteFlag.ReadAndWrite)
+            {
+                return NtStatus.STATUS_INVALID_PARAMETER;
+            }
             lock (locker)
             {
                 if (!isConnected)
@@ -965,7 +969,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
             // register the buffer
             SmbdMemoryWindow memoryWindow = new SmbdMemoryWindow();
             memoryWindow.IsValid = true;
-            NtStatus status = RegisterNativeMemory(size, out memoryWindow.MemoryHandlerId);
+            NtStatus status = RegisterNativeMemory(size, out memoryWindow.MemoryHandlerId, (RdmaReadWriteFlag)flag);
             LogEvent(string.Format(
                 "RegisterMemoryWindow: RegisterMemory returned {0}, memoryHandlerId=0x{1:X}",
                 status, memoryWindow.MemoryHandlerId));
@@ -999,10 +1003,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 {
                     // Fallback for providers that do not implement memory
                     // windows (e.g. Intel irdma / E810): advertise the
-                    // registered memory region directly. The MR is registered
-                    // with remote read and write permission, so SMB2
-                    // READ/WRITE over RDMA still works; the remote access
-                    // simply cannot be revoked per operation and stays valid
+                    // registered memory region directly, restricted to this
+                    // call's requested remote permissions. Access remains valid
                     // until the buffer is deregistered.
                     memoryWindowSupported = false;
                     return BuildMemoryRegionDescriptor(memoryWindow.MemoryHandlerId, reversed, out bufferDescriptor);
@@ -1232,11 +1234,12 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 
         // Each endpoint owns its native adapter. Both ND versions share one OVERLAPPED
         // across Register/Deregister and their waits. Never acquire locker inside this gate.
-        private NtStatus RegisterNativeMemory(uint size, out ulong memoryHandler)
+        private NtStatus RegisterNativeMemory(
+            uint size, out ulong memoryHandler, RdmaReadWriteFlag flag = RdmaReadWriteFlag.ReadAndWrite)
         {
             lock (memoryOperationLocker)
             {
-                return (NtStatus)rdmaAdapter.RegisterMemory(size, out memoryHandler);
+                return (NtStatus)rdmaAdapter.RegisterMemory(size, flag, out memoryHandler);
             }
         }
 
