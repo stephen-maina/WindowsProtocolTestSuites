@@ -26,6 +26,41 @@ public sealed class NetshTraceCaptureProviderTests
     private const long Mebibyte = 1024L * 1024L;
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
 
+    [DataTestMethod]
+    [DataRow("timeout")]
+    [DataRow("denied")]
+    [DataRow("unparseable")]
+    [DataRow("foreign")]
+    [DataRow("prefix")]
+    [DataRow("cancelled")]
+    public async Task StartAsync_IndeterminateRecovery_PreservesUnresolvedWriterWithoutStopping(string status)
+    {
+        using NetshProviderTestContext context = NetshProviderTestContext.Create();
+        var runner = new FakeProcessCommandRunner();
+        runner.Enqueue(NoSession());
+        runner.Enqueue(status == "cancelled"
+            ? ProcessCommandResult.Cancelled(true) : ProcessCommandResult.TimedOut(true));
+        runner.Enqueue(status switch
+        {
+            "timeout" => ProcessCommandResult.TimedOut(true),
+            "denied" => ProcessCommandResult.PermissionDenied(),
+            "foreign" => Completed(stdout: RunningStatus(
+                ExpectedSessionName(context.Request.Identity), Path.Combine(Path.GetDirectoryName(context.OutputPath)!, "foreign.etl"))),
+            "prefix" => Completed(stdout: RunningStatus(
+                ExpectedSessionName(context.Request.Identity), context.OutputPath + ".foreign")),
+            _ => Completed(stdout: "Unknown localized state."),
+        });
+        CaptureProviderStartResult result =
+            await CreateProvider(runner).StartAsync(context.Request, default);
+
+        Assert.IsFalse(result.IsStarted);
+        Assert.IsFalse(result.WriterResolved);
+        Assert.AreEqual(status == "cancelled" ? CaptureProviderFailureCode.Cancelled
+            : CaptureProviderFailureCode.StartTimeout, result.FailureCode);
+        Assert.IsNull(result.Handle);
+        Assert.IsFalse(runner.Commands.Any(command => command.Arguments.Contains("stop")));
+    }
+
     [TestMethod]
     public async Task StartReadyStopAsync_UsesDirectNamedNetshCommandsAndBoundedArguments()
     {
@@ -279,6 +314,7 @@ public sealed class NetshTraceCaptureProviderTests
         Assert.IsFalse(result.IsStarted);
         Assert.AreEqual(CaptureProviderFailureCode.StartTimeout, result.FailureCode);
         Assert.AreEqual(3, runner.Commands.Count);
+        Assert.IsTrue(result.WriterResolved, "Explicit no-session status proves absence.");
         Assert.IsTrue(runner.ReturnedResults[1].SpawnedProcessTerminated);
         Assert.IsFalse(
             runner.Commands.Any(
@@ -481,8 +517,13 @@ public sealed class NetshTraceCaptureProviderTests
         await runner.StopObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
         CaptureProviderStopResult repeated =
             await provider.RequestStopAsync(start.Handle!, CancellationToken.None);
+        File.WriteAllText(context.OutputPath, "synthetic closed ETL");
+        CaptureProviderFinalizationResult finalized =
+            await provider.WaitForFinalizationAsync(start.Handle!, default);
 
         Assert.AreEqual(CaptureProviderStopStatus.AlreadyStopped, repeated.Status);
+        Assert.AreEqual(CaptureProviderFinalizationStatus.Finalized, finalized.Status);
+        Assert.IsFalse(finalized.CollectionComplete);
         ObservedCommand stop = runner.Commands.Single(
             command => command.Arguments.Contains("stop"));
         AssertCommand(

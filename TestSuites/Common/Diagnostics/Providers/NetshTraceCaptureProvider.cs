@@ -220,13 +220,14 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
             return CaptureProviderStartResult.Started(handle);
         }
 
-        if (startFailure == CaptureProviderFailureCode.StartTimeout)
+        if (startFailure is CaptureProviderFailureCode.StartTimeout or CaptureProviderFailureCode.Cancelled)
         {
-            return await ResolveTimedOutStartAsync(
+            return await ResolveInterruptedStartAsync(
                 request,
                 sessionName,
                 outputPath,
-                cancellationToken).ConfigureAwait(false);
+                startFailure,
+                CancellationToken.None).ConfigureAwait(false);
         }
 
         return CaptureProviderStartResult.Failed(
@@ -394,7 +395,8 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
                 "application/octet-stream");
             return CaptureProviderFinalizationResult.Finalized(
                 "The closed, nonempty capture ETL was finalized.",
-                new[] { artifact });
+                new[] { artifact },
+                collectionComplete: !state.MaximumDurationReached);
         }
         catch (Exception exception)
             when (exception is IOException
@@ -476,21 +478,29 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
         return true;
     }
 
-    private async Task<CaptureProviderStartResult> ResolveTimedOutStartAsync(
+    private async Task<CaptureProviderStartResult> ResolveInterruptedStartAsync(
         CaptureProviderStartRequest request,
         string sessionName,
         string outputPath,
+        CaptureProviderFailureCode interruptedFailure,
         CancellationToken cancellationToken)
     {
         ProcessCommandResult status = await RunStatusAsync(
             sessionName,
             startCommandTimeout,
             cancellationToken).ConfigureAwait(false);
-        if (!StatusProvesExpectedSession(status, sessionName, outputPath))
+        if (StatusShowsNoActiveSession(status))
         {
             return CaptureProviderStartResult.Failed(
-                CaptureProviderFailureCode.StartTimeout,
-                "Capture start timed out without proving an owned running session.");
+                interruptedFailure,
+                "The interrupted capture start left no named session.");
+        }
+
+        if (!StatusProvesExpectedSession(status, sessionName, outputPath))
+        {
+            return CaptureProviderStartResult.Unresolved(
+                interruptedFailure,
+                "The interrupted capture start could not prove writer absence or ownership.");
         }
 
         CaptureProviderSessionHandle handle = CaptureProviderSessionHandle.Create(
@@ -511,19 +521,20 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
         if (cleanup.WriterResolved)
         {
             return CaptureProviderStartResult.Failed(
-                CaptureProviderFailureCode.StartTimeout,
-                "Capture start timed out and the proven named session was cleaned up.");
+                interruptedFailure,
+                "The interrupted capture start's proven named session was cleaned up.");
         }
 
         return CaptureProviderStartResult.FailedWithOwnedHandle(
             handle,
-            CaptureProviderFailureCode.StartTimeout,
-            "Capture start timed out and the proven named session still requires cleanup.");
+            interruptedFailure,
+            "The interrupted capture start's proven named session still requires cleanup.");
     }
 
     private async Task<CaptureProviderStopResult> StopOwnedSessionAsync(
         OwnedSession state,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool maximumDurationReached = false)
     {
         try
         {
@@ -546,6 +557,7 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
                     "The owned named capture session is already stopped.");
             }
 
+            state.MaximumDurationReached |= maximumDurationReached;
             ProcessCommandResult stop = await commandRunner.RunAsync(
                 CreateStartInfo(
                     "trace",
@@ -592,7 +604,7 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
                     state.MaximumDuration,
                     state.DurationCancellation.Token)
                 .ConfigureAwait(false);
-            await StopOwnedSessionAsync(state, CancellationToken.None)
+            await StopOwnedSessionAsync(state, CancellationToken.None, maximumDurationReached: true)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -707,7 +719,26 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
         string outputPath)
     {
         return StatusShowsRunningSession(result, sessionName) &&
-            ContainsStatusValue(result, outputPath);
+            (ContainsStatusPath(result.StandardOutput, outputPath) ||
+             ContainsStatusPath(result.StandardError, outputPath));
+    }
+
+    private static bool ContainsStatusPath(string text, string expectedPath)
+    {
+        foreach (string line in text.Split('\r', '\n'))
+        {
+            string value = line.Trim().Trim('"');
+            if (value.EndsWith(expectedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                int start = value.Length - expectedPath.Length;
+                if (start == 0 || char.IsWhiteSpace(value[start - 1]) || value[start - 1] == '"')
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static bool IsSuccessful(ProcessCommandResult result)
@@ -791,6 +822,8 @@ public sealed class NetshTraceCaptureProvider : ICaptureProvider
             Volatile.Read(ref maximumDurationCoordinationFailed) != 0;
 
         public int StopCompleted;
+
+        public bool MaximumDurationReached { get; set; }
 
         public void MarkMaximumDurationCoordinationFailed()
         {

@@ -214,6 +214,15 @@ public sealed class Mlx5SnifferCaptureProvider : ICaptureProvider
                 start.ExitCode != 0 ||
                 !Contains(start, RunningText))
             {
+                if (start.Status is ProcessCommandStatus.TimedOut or ProcessCommandStatus.Cancelled)
+                {
+                    // Retain admission without granting stop authority over an unproven writer.
+                    started = true;
+                    return CaptureProviderStartResult.Unresolved(
+                        Classify(start, CaptureProviderFailureCode.StartFailed),
+                        "The interrupted sniffer start did not prove writer absence or ownership.");
+                }
+
                 return CaptureProviderStartResult.Failed(
                     Classify(start, CaptureProviderFailureCode.StartFailed),
                     "The sniffer could not be started.");
@@ -374,7 +383,8 @@ public sealed class Mlx5SnifferCaptureProvider : ICaptureProvider
             return Task.FromResult(
                 CaptureProviderFinalizationResult.Finalized(
                     "The stopped, nonempty sniffer pcap was finalized.",
-                    artifacts));
+                    artifacts,
+                    collectionComplete: !state.MaximumDurationReached));
         }
         catch (Exception exception)
             when (exception is IOException
@@ -420,7 +430,8 @@ public sealed class Mlx5SnifferCaptureProvider : ICaptureProvider
 
     private async Task<CaptureProviderStopResult> StopOwnedAsync(
         OwnedSession state,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool maximumDurationReached = false)
     {
         try
         {
@@ -443,6 +454,7 @@ public sealed class Mlx5SnifferCaptureProvider : ICaptureProvider
                     "The owned sniffer is already stopped.");
             }
 
+            state.MaximumDurationReached |= maximumDurationReached;
             ProcessCommandResult stop = await commandRunner.RunAsync(
                 CreateStartInfo("-Sniffer", "-Name", state.AdapterName, "-stop"),
                 commandTimeout,
@@ -476,7 +488,7 @@ public sealed class Mlx5SnifferCaptureProvider : ICaptureProvider
                     state.MaximumDuration,
                     state.DurationCancellation.Token)
                 .ConfigureAwait(false);
-            await StopOwnedAsync(state, CancellationToken.None)
+            await StopOwnedAsync(state, CancellationToken.None, maximumDurationReached: true)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -687,6 +699,8 @@ public sealed class Mlx5SnifferCaptureProvider : ICaptureProvider
         public SemaphoreSlim StopGate { get; } = new(1, 1);
 
         public Task? DurationTask { get; set; }
+
+        public bool MaximumDurationReached { get; set; }
 
         public int StopCompleted;
     }

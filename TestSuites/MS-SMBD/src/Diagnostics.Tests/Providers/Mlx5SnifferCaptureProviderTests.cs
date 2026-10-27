@@ -24,6 +24,31 @@ public sealed class Mlx5SnifferCaptureProviderTests
     private const string ToolPath = @"C:\Tools\Mlx5Cmd.exe";
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
 
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task StartAsync_IndeterminateNativeStart_BlocksReuseWithoutClaimingOwnership(bool cancelled)
+    {
+        using var context = SnifferContext.Create("192.168.10.12");
+        var runner = new FakeSnifferRunner(context.OutputPath)
+        {
+            CommandHandler = (info, _) => info.ArgumentList.Contains("-start")
+                ? Task.FromResult(cancelled ? ProcessCommandResult.Cancelled(true)
+                    : ProcessCommandResult.TimedOut(true)) : null,
+        };
+        Mlx5SnifferCaptureProvider provider = CreateProvider(runner);
+        CaptureProviderStartResult result = await provider.StartAsync(context.Request, default);
+        int commands = runner.Commands.Count;
+        CaptureProviderStartResult retry = await provider.StartAsync(context.Request, default);
+
+        Assert.IsFalse(result.IsStarted);
+        Assert.IsFalse(result.WriterResolved);
+        Assert.IsNull(result.Handle);
+        Assert.AreEqual(CaptureProviderFailureCode.CaptureBusy, retry.FailureCode);
+        Assert.AreEqual(commands, runner.Commands.Count);
+        Assert.IsFalse(runner.Commands.Any(command => command.EndsWith("-stop")));
+    }
+
     [TestMethod]
     public async Task StartStopFinalize_SequentialInvocations_ReusesAdapterWithAddressableWriters()
     {
@@ -43,6 +68,7 @@ public sealed class Mlx5SnifferCaptureProviderTests
         Assert.IsTrue(next.IsStarted, next.Detail);
         Assert.AreEqual(CaptureProviderStopStatus.Stopped, stopped.Status);
         Assert.AreEqual(CaptureProviderFinalizationStatus.Finalized, finalized.Status);
+        Assert.IsTrue(finalized.CollectionComplete);
         Assert.AreEqual(new FileInfo(second.OutputPath).Length, finalized.Artifacts.Single().ByteCount);
         Assert.AreEqual(2, runner.Commands.Count(command => command.Contains("-start")));
         Assert.AreEqual(2, runner.Commands.Count(command => command.EndsWith("-stop")));
@@ -223,8 +249,12 @@ public sealed class Mlx5SnifferCaptureProviderTests
         {
             await provider.RequestStopAsync(next.Handle!, default);
         }
+        CaptureProviderFinalizationResult finalized =
+            await provider.WaitForFinalizationAsync(next.Handle!, default);
 
         Assert.IsTrue(next.IsStarted);
+        Assert.AreEqual(CaptureProviderFinalizationStatus.Finalized, finalized.Status);
+        Assert.IsFalse(finalized.CollectionComplete);
         CollectionAssert.AreEqual(
             new[] { first.Request.MaxDuration, second.Request.MaxDuration }, durations);
         Assert.IsTrue(stoppedByDuration, "The second writer must stop without explicit cleanup.");

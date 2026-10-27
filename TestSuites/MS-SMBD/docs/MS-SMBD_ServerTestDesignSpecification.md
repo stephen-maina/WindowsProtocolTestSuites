@@ -56,6 +56,9 @@ These are synthetic `Diagnostics.Tests` checks, not normative MS-SMBD wire test 
 |---|---|---|
 | `CompleteAsync_AuxiliaryPartialStart_PreservesWriterUntilCleanup` | Managed provider lifetime | A partial auxiliary handle is stopped; a canceled, unaddressable auxiliary leaves an unresolved writer while primary cleanup still runs. |
 | `Dispose_FinalizedCapture_ReportsCollectionCompletenessIndependently` | Managed evidence lifecycle | Closed artifacts finalize successfully, but incomplete capture yields `Partial` collection without manufacturing a protocol result. |
+| `StartAsync_IndeterminateRecovery_PreservesUnresolvedWriterWithoutStopping` | Managed netsh ownership | Timeout, denied, unparseable, foreign and canceled recovery cannot claim writer absence or stop a session with an unproven output path. Explicit no-session and proven-owned recovery retain their existing cases. |
+| `StartAsync_IndeterminateNativeStart_BlocksReuseWithoutClaimingOwnership` | Managed sniffer admission | A timed-out or canceled native start retains unresolved admission without granting stop authority or starting another writer. |
+| Maximum-duration and sequential-invocation provider cases | Managed collection completeness | Both providers finalize duration-limited files as incomplete collection; ordinary stopped/reused captures remain complete. All native calls are faked. |
 
 The existing lifecycle and composite-provider regressions also preserve the original protocol error ledger and independently attempt both provider stops.
 
