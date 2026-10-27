@@ -36,7 +36,7 @@ public sealed class FileServerLifecycleTests
     public async Task Cleanup_ActualMstestPtfLifecycle_FinalizesWithoutMaskingFailure(string fixture, string scenario)
     {
         string root = Environment.GetEnvironmentVariable("WPTS_CONSUMER_EVIDENCE")
-            ?? Path.Combine(Environment.CurrentDirectory, ".test-scratch", "fileserver-evidence");
+            ?? Path.Combine(Path.GetTempPath(), "wpts-fileserver-lifecycle");
         string caseRoot = Path.Combine(root, fixture + "-" + scenario + "-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(caseRoot);
         var start = new ProcessStartInfo("dotnet")
