@@ -139,6 +139,32 @@ The base RDP connectivity protocol. Other RDP protocols (RDPEGFX, RDPEDYC, etc.)
 - `ProtoSDK/RDMA/` — C++/CLI wrapper around the NetworkDirect DDK (`ndspi.h`) for Windows
 - `ProtoSDK/RdmaLinux/` — C# Linux RDMA adapter (added recently for Linux interop testing)
 
+**SMB2 response handling over SMBD:**
+- Reuse `TestSuites/MS-SMBD/src/Adapter/Smb2OverSmbdTestClient.cs` rather than
+  casting a raw response before checking its status. `DecodeSmb2Responses`
+  decodes one complete upper-layer message without accounting; `ReceiveSmb2Response`
+  additionally retains compound response members and accepts a remaining timeout.
+- `ResponseEnvelope` exposes the packet, MessageId, full 64-bit AsyncId and
+  interim/unsolicited classification. `TryAcceptResponse` correlates a request,
+  consumes each interim grant once, and leaves final accounting to the caller.
+  Distinct repeated pending responses are legal. Keep pipeline requests pending
+  until the matching final response; do not charge or advance MessageId again.
+  Async finals must grant zero credits; synchronous final grants remain legal.
+- Existing synchronous helpers retain their final charge/grant and MessageId
+  accounting, including command-typed SMB2 ERROR responses. `ExpectPacket<T>`
+  delegates TCP to its existing implementation, preserves oplock notifications,
+  and waits for the correlated final response over RDMA. The adapter receive
+  loop and `SmbdClient.ReceiveMessage` pass remaining budgets, not a new timeout
+  for each interim response or transport fragment.
+- `NegotiatedServerCapabilities` caches the actual NEGOTIATE response using
+  `NEGOTIATE_Response_Capabilities_Values`, not the client's offered flags.
+- `SmbdClient.ReceivedDataTransferCount` is a monotonic count of successful
+  nonempty Data Transfer receives; credit-only messages do not increment it.
+  Envelope `TransportFragmentCount` captures its delta for a complete upper-layer
+  message. Compound members share that message's count: it is not a per-command
+  fragmentation measurement. Raw-message consumers use the counter themselves.
+  These observations do not change transport-credit ownership.
+
 **Deterministic Windows endpoint regressions:**
 - `ProtoSDK/MS-SMBD.Tests/Smbd.Endpoint.Tests.csproj` source-links the production
   endpoint, native-service contracts and `SyncFilterQueue<T>`, replacing only

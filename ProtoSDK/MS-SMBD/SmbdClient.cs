@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net.Sockets;
+using System.Threading;
 
 namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 {
@@ -32,6 +34,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         #endregion
 
         private SmbdLogEvent logEvent;
+        private long receivedDataTransferCount;
 
         /// <summary>
         /// constructor
@@ -57,6 +60,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
 
         public int ReceiveEntryInQueue { get { return Connection.Endpoint.ReceiveRequestsCount; } }
         public int ReceivePostedCount { get { return Connection.Endpoint.ReceivePostedCount; } }
+        /// <summary>Successful nonempty Data Transfer receives; excludes credit-only messages.</summary>
+        public long ReceivedDataTransferCount => Interlocked.Read(ref receivedDataTransferCount);
         #endregion
 
         /// <summary>
@@ -325,7 +330,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         /// </summary>
         /// <param name="dataTransferMessage">Received SMBDirect data transfer message</param>
         /// <returns></returns>
-        public NtStatus ReceiveDataTransferMessage(TimeSpan timeout, out SmbdDataTransferMessage dataTransferMessage)
+        public virtual NtStatus ReceiveDataTransferMessage(TimeSpan timeout, out SmbdDataTransferMessage dataTransferMessage)
         {
             dataTransferMessage = new SmbdDataTransferMessage();
 
@@ -366,6 +371,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
                 Connection.SendCredits += dataTransferMessage.CreditsGranted;
             }
 
+            if (dataTransferMessage.DataLength > 0)
+            {
+                Interlocked.Increment(ref receivedDataTransferCount);
+            }
             return NtStatus.STATUS_SUCCESS;
         }
 
@@ -501,10 +510,17 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd
         {
             uint offset = 0;
             bool isFirst = true;
+            var watch = Stopwatch.StartNew();
             while (true)
             {
+                TimeSpan remaining = timeout - watch.Elapsed;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    message = null;
+                    return NtStatus.STATUS_IO_TIMEOUT;
+                }
                 SmbdDataTransferMessage transferPackage;
-                NtStatus ret = ReceiveDataTransferMessage(timeout, out transferPackage);
+                NtStatus ret = ReceiveDataTransferMessage(remaining, out transferPackage);
                 if (ret != NtStatus.STATUS_SUCCESS)
                 {
                     message = null;

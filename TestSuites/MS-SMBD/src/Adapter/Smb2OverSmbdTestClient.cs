@@ -9,7 +9,9 @@ using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using Microsoft.Protocols.TestTools.StackSdk.Security.SspiService;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 
 namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
@@ -48,6 +50,8 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         /// SMBD Client
         /// </summary>
         private SmbdClient smbdClient;
+        private readonly Queue<ResponseEnvelope> decodedResponses = new Queue<ResponseEnvelope>();
+        private readonly Queue<ResponseEnvelope> unsolicitedResponses = new Queue<ResponseEnvelope>();
 
         #endregion
 
@@ -64,6 +68,8 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         public uint Smb2MaxReadSize { get; set; }
         public uint Smb2MaxWriteSize { get; set; }
         public uint Smb2MaxTransactSize { get; set; } = 65536;
+        public NEGOTIATE_Response_Capabilities_Values NegotiatedServerCapabilities { get; private set; }
+        public long ReceivedDataTransferCount => smbdClient.ReceivedDataTransferCount;
 
         // To store available credits for sending Smb2 request messages
         public ushort Smb2AvailableCredits { get; set; }
@@ -127,58 +133,149 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             }
         }
 
-        protected virtual NtStatus ReceiveSmbdMessage(out byte[] message)
+        protected virtual NtStatus ReceiveSmbdMessage(TimeSpan timeout, out byte[] message)
         {
-            return smbdClient.ReceiveMessage(smb2ConnectionTimeout, out message);
+            return smbdClient.ReceiveMessage(timeout, out message);
         }
 
-        // Override ExpectPacket
-        public override T ExpectPacket<T>(ulong messageId)
+        /// <summary>A decoded response before request correlation or SMB2 credit accounting.</summary>
+        public sealed class ResponseEnvelope
         {
-            if (this.decoder.TransportType == Smb2TransportType.Rdma)
-            {
-                byte[] smb2Response = null;
-                while (smb2Response == null
-                    || smb2Response.Length == 0)
-                {
-                    NtStatus ret = ReceiveSmbdMessage(out smb2Response);
-                    if (ret != NtStatus.STATUS_SUCCESS)
-                    {
-                        string message = string.Format(
-                            "SMBD ReceiveMessage failed with status {0} (0x{1:X8}) while waiting for the SMB2 response.",
-                            ret, (uint)ret);
-                        if (ret == NtStatus.STATUS_IO_TIMEOUT || ret == NtStatus.STATUS_TIMEOUT)
-                        {
-                            throw new TimeoutException(message);
-                        }
-                        throw new InvalidOperationException(message);
-                    }
-                }
+            internal ResponseEnvelope(Smb2SinglePacket packet) { Packet = packet; }
+            internal bool Consumed { get; set; }
+            public Smb2SinglePacket Packet { get; }
+            public ulong MessageId => Packet.Header.MessageId;
+            public ulong AsyncId => ((ulong)Packet.Header.TreeId << 32) | Packet.Header.ProcessId;
+            public bool IsAsync => Packet.Header.Flags.HasFlag(Packet_Header_Flags_Values.FLAGS_ASYNC_COMMAND);
+            public bool IsInterim => Packet.Header.Status == Smb2Status.STATUS_PENDING;
+            public bool IsUnsolicited => MessageId == ulong.MaxValue;
+            public long TransportFragmentCount { get; internal set; }
+        }
 
-                //SmbdClient.ReceiveSmbdMessage(response.Length, response);
-                object endpoint = new object();
-                int consumedLength;
-                int expectedLength;
-                //byte[] smb2Response = response.Skip((int)transferHeaderSize).ToArray();
-                StackPacket[] stackPackets;
-                try
+        /// <summary>Decode one complete upper-layer message without consuming SMB2 credits.</summary>
+        public IReadOnlyList<ResponseEnvelope> DecodeSmb2Responses(byte[] message)
+        {
+            StackPacket[] packets;
+            try
+            {
+                packets = decoder.Smb2DecodePacketCallback(new object(), message, out int consumed, out _);
+                if (packets == null || packets.Length == 0 || consumed != message.Length)
                 {
-                    stackPackets = decoder.Smb2DecodePacketCallback(endpoint, smb2Response, out consumedLength, out expectedLength);
+                    throw new InvalidOperationException("Incomplete SMB2 upper-layer message.");
                 }
-                catch (Exception ex)
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(string.Format(
+                    "Failed to decode SMB2 response ({0} bytes): {1}. First bytes: {2}",
+                    message.Length, ex.Message,
+                    BitConverter.ToString(message, 0, Math.Min(message.Length, 96))), ex);
+            }
+            var responses = new List<ResponseEnvelope>();
+            foreach (var packet in packets)
+            {
+                if (packet is Smb2CompoundPacket compound)
                 {
-                    // Diagnostics only: record the raw response so an undecodable reply can be analysed.
-                    throw new InvalidOperationException(string.Format(
-                        "Failed to decode SMB2 response ({0} bytes): {1}. First bytes: {2}",
-                        smb2Response.Length,
-                        ex.Message,
-                        BitConverter.ToString(smb2Response, 0, Math.Min(smb2Response.Length, 96))), ex);
+                    responses.AddRange(compound.Packets.Select(single => new ResponseEnvelope(single)));
                 }
-                return (T)stackPackets[0];
+                else if (packet is Smb2SinglePacket single)
+                {
+                    responses.Add(new ResponseEnvelope(single));
+                }
+                else throw new InvalidOperationException("Expected an SMB2 response.");
+            }
+            return responses.AsReadOnly();
+        }
+
+        /// <summary>Receive without completing a request; callers supply the remaining overall budget.</summary>
+        public ResponseEnvelope ReceiveSmb2Response(TimeSpan timeout)
+        {
+            if (timeout <= TimeSpan.Zero) throw new TimeoutException("SMB2 response deadline expired.");
+            var watch = Stopwatch.StartNew();
+            while (decodedResponses.Count == 0)
+            {
+                TimeSpan remaining = timeout - watch.Elapsed;
+                if (remaining <= TimeSpan.Zero) throw new TimeoutException("SMB2 response deadline expired.");
+                long before = ReceivedDataTransferCount;
+                NtStatus ret = ReceiveSmbdMessage(remaining, out byte[] message);
+                if (ret != NtStatus.STATUS_SUCCESS)
+                {
+                    string detail = string.Format(
+                        "SMBD ReceiveMessage failed with status {0} (0x{1:X8}) while waiting for the SMB2 response.",
+                        ret, (uint)ret);
+                    if (ret == NtStatus.STATUS_IO_TIMEOUT || ret == NtStatus.STATUS_TIMEOUT)
+                        throw new TimeoutException(detail);
+                    throw new InvalidOperationException(detail);
+                }
+                if (message == null || message.Length == 0) continue;
+                long fragments = ReceivedDataTransferCount - before;
+                foreach (var response in DecodeSmb2Responses(message))
+                {
+                    response.TransportFragmentCount = fragments;
+                    decodedResponses.Enqueue(response);
+                }
+            }
+            return decodedResponses.Dequeue();
+        }
+
+        /// <summary>
+        /// Correlate one response and consume only its interim grant. Final charge/grant accounting
+        /// remains with the existing synchronous helper or the already-charged pipeline caller.
+        /// </summary>
+        public bool TryAcceptResponse(ResponseEnvelope response, ulong expectedMessageId, ref ulong? asyncId)
+        {
+            if (response.Consumed || response.IsUnsolicited || response.MessageId != expectedMessageId) return false;
+            if (response.IsInterim)
+            {
+                if (!response.IsAsync || response.AsyncId == 0 ||
+                    (asyncId.HasValue && asyncId.Value != response.AsyncId)) return false;
+                asyncId = response.AsyncId;
+                Smb2AvailableCredits = checked((ushort)(Smb2AvailableCredits + response.Packet.Header.CreditRequestResponse));
             }
             else
             {
-                return base.ExpectPacket<T>(messageId);
+                if (asyncId.HasValue
+                    ? !response.IsAsync || response.AsyncId != asyncId.Value
+                    : response.IsAsync) return false;
+                if (response.IsAsync && response.Packet.Header.CreditRequestResponse != 0)
+                    throw new InvalidOperationException("An asynchronous final SMB2 response must grant zero credits.");
+            }
+            response.Consumed = true;
+            return true;
+        }
+
+        public override T ExpectPacket<T>(ulong messageId)
+        {
+            if (decoder.TransportType != Smb2TransportType.Rdma) return base.ExpectPacket<T>(messageId);
+            foreach (var notification in unsolicitedResponses.ToArray())
+            {
+                if (notification.Packet is T expected)
+                {
+                    // Retain notifications of other types for their own explicit receive.
+                    var retained = unsolicitedResponses.Where(item => item != notification).ToArray();
+                    unsolicitedResponses.Clear();
+                    foreach (var item in retained) unsolicitedResponses.Enqueue(item);
+                    return expected;
+                }
+            }
+            var watch = Stopwatch.StartNew();
+            ulong? asyncId = null;
+            while (true)
+            {
+                var response = ReceiveSmb2Response(smb2ConnectionTimeout - watch.Elapsed);
+                if (response.IsUnsolicited)
+                {
+                    if (response.Packet.Header.Command != Smb2Command.OPLOCK_BREAK) continue;
+                    if (response.Packet is T notification) return notification;
+                    unsolicitedResponses.Enqueue(response);
+                    continue;
+                }
+                if (!TryAcceptResponse(response, messageId, ref asyncId) || response.IsInterim) continue;
+                // The SDK retains command type and .Error for a final SMB2 ERROR body.
+                if (response.Packet is T final) return final;
+                throw new InvalidOperationException(string.Format(
+                    "Unexpected final SMB2 response {0}, status 0x{1:X8}, MessageId {2}.",
+                    response.Packet.Header.Command, response.Packet.Header.Status, response.MessageId));
             }
         }
 
@@ -200,6 +297,9 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         {
             this.decoder.TransportType = Smb2TransportType.Rdma;
             messageId = 0;
+            decodedResponses.Clear();
+            unsolicitedResponses.Clear();
+            NegotiatedServerCapabilities = 0;
 
             // WHAT: drop all per-session crypto state before a new RDMA connection is made.
             // WHY: GenerateCryptoKeys keys cryptoInfoTable by SessionId and treats an existing entry as re-authentication,
@@ -336,6 +436,15 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
 
         #region SMB2 functional method
 
+        public new virtual void ConnectOverTCP(IPAddress serverIp, IPAddress clientIp, ushort serverPort = 445)
+        {
+            decoder.TransportType = Smb2TransportType.Tcp;
+            decodedResponses.Clear();
+            unsolicitedResponses.Clear();
+            NegotiatedServerCapabilities = 0;
+            base.ConnectOverTCP(serverIp, clientIp, serverPort);
+        }
+
         public uint Smb2Negotiate(DialectRevision[] requestDialects, out DialectRevision selectedDialect, Smb2RDMATransformId[] smb2RDMATransformIds = null, EncryptionAlgorithm[] encryptionAlgs = null, bool addDefaultEncryption = true, SigningAlgorithm[] signingAlgorithms = null)
         {
             return Smb2Negotiate(requestDialects, Guid.NewGuid(), out selectedDialect, smb2RDMATransformIds, encryptionAlgs, addDefaultEncryption, signingAlgorithms);
@@ -385,6 +494,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             this.Smb2MaxReadSize = negotiateResponse.MaxReadSize;
             this.Smb2MaxWriteSize = negotiateResponse.MaxWriteSize;
             this.Smb2MaxTransactSize = negotiateResponse.MaxTransactSize;
+            this.NegotiatedServerCapabilities = negotiateResponse.Capabilities;
 
             CalculateSmb2AvailableCredits(1, packetHeader.CreditRequestResponse);
             return status;
@@ -1032,7 +1142,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
             }
         }
 
-        public void SignByteArray(byte[] original, out byte[] nonce, out byte[] signature, Smb2Command smb2Command)
+        public virtual void SignByteArray(byte[] original, out byte[] nonce, out byte[] signature, Smb2Command smb2Command)
         {
             Smb2Crypto.SignByteArray(cryptoInfoTable[sessionId], original, out nonce, out signature, Smb2Role.Client, smb2Command, messageId);
         }
