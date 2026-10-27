@@ -48,6 +48,17 @@
     * [Glossary](#_Toc427489521)
     * [Reference](#_Toc427489522)
 
+## Managed diagnostics infrastructure regressions
+
+These are synthetic `Diagnostics.Tests` checks, not normative MS-SMBD wire test cases. They require no SUT or native capture.
+
+| Test | Category | Scenario and pass criteria |
+|---|---|---|
+| `CompleteAsync_AuxiliaryPartialStart_PreservesWriterUntilCleanup` | Managed provider lifetime | A partial auxiliary handle is stopped; a canceled, unaddressable auxiliary leaves an unresolved writer while primary cleanup still runs. |
+| `Dispose_FinalizedCapture_ReportsCollectionCompletenessIndependently` | Managed evidence lifecycle | Closed artifacts finalize successfully, but incomplete capture yields `Partial` collection without manufacturing a protocol result. |
+
+The existing lifecycle and composite-provider regressions also preserve the original protocol error ledger and independently attempt both provider stops.
+
 ## <a name="_Toc427489479"/>Introduction
 This document provides information about how MS-SMBD test suite is designed to test MS-SMBD technical document usability and accuracy. It gives the analysis of MS-SMBD technical document content, and describes test assumptions, scope and constraints of the test suite. It also specifies test approach, test scenarios, detail test cases, test suite architecture and adapter design.
 
