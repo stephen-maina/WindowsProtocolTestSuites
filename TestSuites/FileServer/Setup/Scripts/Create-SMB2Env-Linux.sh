@@ -9,8 +9,9 @@
 #                                  [--min-protocol SMB2_02] [--enable-durable] [--password <pw>]
 #
 #   --second-user <name>  creates a second, non-admin local account (matches Common.NonAdminUserName, e.g. nonadmin),
-#                     gives it --password and lets it access every share. Needed by the *DifferentDurableOwner and
-#                     TreeMgmt tests that connect as a different user.
+#                     gives it --password and lets it access every share. Establishes the second-user connection
+#                     prerequisite for applicable tests; it does not change different-owner reconnect assertions.
+#                     Requires setfacl and an ACL-capable filesystem; grants named-user/default ACLs, not force user.
 #   --enable-durable  (ksmbd) sets "smb2 leases = yes" and "durable handles = yes" in [global]; both default to no.
 #
 # Shares created (same names as the Windows script):
@@ -51,6 +52,7 @@ id "$USER_NAME" >/dev/null 2>&1 || { echo "Local user '$USER_NAME' does not exis
 
 VALID_USERS=$USER_NAME
 if [ -n "$SECOND_USER" ]; then
+    command -v setfacl >/dev/null 2>&1 || { echo "--second-user requires setfacl (the acl package)." >&2; exit 1; }
     id "$SECOND_USER" >/dev/null 2>&1 || useradd -M -s /usr/sbin/nologin "$SECOND_USER"
     VALID_USERS="$USER_NAME,$SECOND_USER"
 fi
@@ -73,15 +75,23 @@ END="# END WPTS-SMB2-ENV"
 
 echo "Server: $SERVER  Config: $CONF  Root: $ROOT  User: $USER_NAME"
 
+prepare_share_directory() {
+    local directory=$1
+    mkdir -p "$directory"
+    chown "$USER_NAME" "$directory"
+    chmod 0770 "$directory"
+    if [ -n "$SECOND_USER" ]; then
+        # Both identities need inherited access; the creating user's ownership stays distinct.
+        setfacl -m "u:$SECOND_USER:rwx,m::rwx,d:u::rwx,d:u:$USER_NAME:rwx,d:u:$SECOND_USER:rwx,d:g::rwx,d:m::rwx,d:o::---" "$directory"
+    fi
+}
+
 for d in FileShare SMBBasic DifferentFromSMBBasic ShareForceLevel2 SMBEncrypted SMBCompressed SMBReFSShare; do
-    mkdir -p "$ROOT/$d"
-    chown "$USER_NAME" "$ROOT/$d"
-    chmod 0770 "$ROOT/$d"
+    prepare_share_directory "$ROOT/$d"
 done
 
 # Same layout as Create-SMB2Env.ps1: SMBBasic\symboliclink -> FileShare and SMBBasic\sub\symboliclink2 -> FileShare.
-mkdir -p "$ROOT/SMBBasic/sub"
-chown "$USER_NAME" "$ROOT/SMBBasic/sub"
+prepare_share_directory "$ROOT/SMBBasic/sub"
 ln -sfn "$ROOT/FileShare" "$ROOT/SMBBasic/symboliclink"
 ln -sfn "$ROOT/FileShare" "$ROOT/SMBBasic/sub/symboliclink2"
 

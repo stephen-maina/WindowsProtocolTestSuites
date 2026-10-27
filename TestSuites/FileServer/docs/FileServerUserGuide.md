@@ -3549,7 +3549,11 @@ You can also review test results in the following ways:
 sudo ./Create-SMB2Env-Linux.sh --user administrator [--server auto|ksmbd|samba] [--root /srv/smb] [--min-protocol SMB2_02] [--enable-durable] [--password <pw>] [--second-user nonadmin]
 ```
 
-`--second-user <name>` creates a second non-admin local account (set `Common.NonAdminUserName` to the same name), registers it with `--password` and adds it to `valid users` of every share; the `*_WithDifferentDurableOwner` and TreeMgmt tests fail with `STATUS_LOGON_FAILURE` without it. `--enable-durable` (ksmbd only) sets `smb2 leases = yes` and `durable handles = yes` in `[global]`; both default to off in ksmbd, and without them the leasing, durable-handle, replay and AppInstanceId tests fail. Also set `IsLeasingSupported`/`IsDirectoryLeasingSupported` to true. Set `IsPerShareEncryptionSupported` to `false` (default `true`) for a SUT with only a global encryption switch such as ksmbd: the per-share encryption tests become inconclusive and the other encryption tests use the basic share. If the two client NICs and the SUT sit on different subnets, add a second IP in the SUT's subnet to the client and the SUT, and use these for `ClientNic1IPAddress`/`ClientNic2IPAddress`/`SutAlternativeIPAddress`.
+`--second-user <name>` creates a second non-admin local account (set `Common.NonAdminUserName` to the same name), registers it with `--password` and adds it to `valid users` of every share. It also grants named-user access/default ACLs on the seven share directories and `SMBBasic/sub`, retaining distinct Unix identities and owners (no `force user`). This option requires `setfacl` (typically the `acl` package) and an ACL-capable filesystem; the script fails if the tool or ACL application fails. Both users must be able to traverse the selected root and its parent directories. Default ACLs apply to newly created descendants, subject to the creating application's requested mode; pre-existing descendants are not recursively modified. This establishes the connection prerequisite for applicable second-user tests, not permission to reconnect another user's durable handle: different-owner reconnect assertions remain unchanged.
+
+`--enable-durable` (ksmbd only) sets `smb2 leases = yes` and `durable handles = yes` in `[global]`; both default to off in ksmbd, and without them the leasing, durable-handle, replay and AppInstanceId tests fail. Also set `IsLeasingSupported`/`IsDirectoryLeasingSupported` to true. If the two client NICs and the SUT sit on different subnets, add a second IP in the SUT's subnet to the client and the SUT, and use these for `ClientNic1IPAddress`/`ClientNic2IPAddress`/`SutAlternativeIPAddress`.
+
+Set `IsPerShareEncryptionSupported` to `false` (default `true`) for a SUT with only a global encryption switch such as ksmbd: the per-share encryption tests become inconclusive and the other encryption tests use the basic share.
 
 It creates FileShare, SMBBasic (with the symbolic links), SameWithSMBBasic, DifferentFromSMBBasic, ShareForceLevel2, SMBEncrypted, SMBCompressed and SMBReFSShare, writes them to a managed block in `ksmbd.conf` / `smb.conf` (safe to re-run), and reloads the server. Limits: ksmbd cannot require encryption per share (only the global `smb3 encryption`), and neither ksmbd nor Samba implements SMB2 compression, so SMBEncrypted/SMBCompressed will not report SHAREFLAG_ENCRYPT_DATA/SHAREFLAG_COMPRESS_DATA there. Set `BasicFileShare` to `SMBBasic` in the ptfconfig.
 
@@ -3574,6 +3578,16 @@ If you want to create a Test Suite to customize a testing environment and test c
 
 
 ## <a name="9"/> 9 Debugging Test Cases
+
+The optional `src\Batch\SutDebug\Run-FileServerWithSutLogs.ps1` helper returns the completed `dotnet test` exit code, including nonzero failures. Later optional evidence collection/parsing or capture-cleanup failures produce warnings without changing that test outcome. A test-launch failure still fails the helper and attempts cleanup of a successfully started capture. Use pktmon exclusively during this debug run: the helper resets existing driver capture/filter state. With `Invoke-SutSsh.ps1 -Sudo`, pass the complete command normally; pipelines and redirections execute inside `sudo sh -c`, without requiring the caller to add a shell wrapper. Existing sudo policy must permit that shell; this helper does not change policy.
+
+Focused, synthetic regressions (Python standard library, existing Bash and PowerShell runtimes; no SUT, accounts or credentials needed) run from the repository root:
+
+```
+python -B -m unittest discover -s TestSuites\FileServer\src\Batch\SutDebug\Tests -p test_*.py -v
+```
+
+Set `WPTS_TEST_BASH` / `WPTS_TEST_PWSH` to existing executable paths if discovery selects the wrong runtime. Test-owned files are isolated under `SutDebug\Tests\.test-output`. These mocked checks do not replace Linux ACL/SMB integration or native Windows pktmon acceptance. The adjacent `support-corrections.handoff.json` records invariants and deferred integration gates.
 
 You can use the Visual Studio solution (.sln) file included with the  **File Server Protocol Family Test Suite** to debug the test cases that you run against your own protocol implementations. The **FileServer.sln** file is located [here](https://github.com/microsoft/WindowsProtocolTestSuites/tree/main/TestSuites/FileServer/src).
 

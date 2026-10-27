@@ -9,11 +9,12 @@
     from MS-SMBD_ServerTestSuite.deployment.ptfconfig so no secret is stored in the script. Windows OpenSSH has no
     sshpass, so the password is handed to ssh through SSH_ASKPASS from a process-local environment variable.
     Failure to connect is not an error for the debugging workflow: the script prints the reason and exits non-zero.
+    With -Sudo, the complete command (including redirections and pipelines) runs inside sudo sh -c.
 
 .EXAMPLE
     .\Invoke-SutSsh.ps1 -Command "uname -r; systemctl is-active ksmbd"
     .\Invoke-SutSsh.ps1 -Sudo -Command "dmesg -T | grep -i ksmbd | tail -40"
-    .\Invoke-SutSsh.ps1 -Sudo -Command "sh -c 'echo rdma > /sys/class/ksmbd-control/debug'"   # toggles ksmbd rdma debug
+    .\Invoke-SutSsh.ps1 -Sudo -Command "echo rdma > /sys/class/ksmbd-control/debug"   # toggles ksmbd rdma debug
 #>
 param(
     [Parameter(Mandatory)][string]$Command,
@@ -45,7 +46,9 @@ $password = $props['SutPassword']
 
 if ($Sudo) {
     # -S reads the password from stdin; -p '' hides the prompt. Lab use only.
-    $Command = "echo '$password' | sudo -S -p '' $Command"
+    $quotedCommand = "'" + $Command.Replace("'", "'\''") + "'"
+    $quotedPassword = "'" + $password.Replace("'", "'\''") + "'"
+    $Command = "printf '%s\n' $quotedPassword | sudo -S -p '' sh -c $quotedCommand"
 }
 
 $askpass = Join-Path $env:TEMP ('sut-askpass-{0}.cmd' -f $PID)

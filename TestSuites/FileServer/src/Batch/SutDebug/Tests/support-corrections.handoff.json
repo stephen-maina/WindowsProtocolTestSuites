@@ -1,0 +1,99 @@
+{
+  "task": 64747454,
+  "owner_pr": 17218781,
+  "purpose": "Repair accepted SUPPORT-F1/F2/F3 without changing protocol test assertions or touching live SUTs.",
+  "starting_source": "01ad6e001061d071a8c6d331ccd7b4eb0783a2b6",
+  "stage": "locally-validated-awaiting-owner-integration",
+  "publication": "Forbidden until the coordinator verifies current remote source and authorizes integration.",
+  "authority": "Accepted historical support review; this versioned handoff and executable regressions retain the actionable requirements independently of session artifacts.",
+  "invariants": {
+    "SUPPORT-F1": "The optional second account needs Unix access and inherited access for new descendants without collapsing authenticated users or file owners. Do not use force user.",
+    "SUPPORT-F2": "A completed dotnet test exit status is authoritative even when optional collection, parsing or capture cleanup fails.",
+    "SUPPORT-F3": "With -Sudo, the complete operator-supplied shell command, including pipelines and redirections, executes inside sudo sh -c. Shell quoting must preserve literal command and synthetic password characters."
+  },
+  "tasks": [
+    {
+      "id": "fleet-support-local-repairs",
+      "status": "done",
+      "acceptance": "Demonstrate regressions against the immutable source, implement surgical corrections, pass the same synthetic tests, document behavior and retain a tested local commit.",
+      "dependencies": [],
+      "downstream": "Coordinator revalidates current owner identity and integrates only the tested local delta."
+    },
+    {
+      "id": "owner52-config-read-isolation-propagation",
+      "status": "deferred",
+      "acceptance": "Propagate the existing owner49 per-read configuration correction rather than reimplementing it.",
+      "dependencies": [],
+      "downstream": "This PR81 change does not touch shared diagnostics configuration or evidence storage."
+    },
+    {
+      "id": "owner81-source-reconciliation-and-integration",
+      "status": "deferred",
+      "acceptance": "Reconcile current owner head and review/integrate the tested local delta without overwriting existing changes; only then obtain source-bound CI.",
+      "dependencies": ["fleet-support-local-repairs"],
+      "downstream": "Coordinator owns all cloud, public and pipeline actions; this repair author has no such authority."
+    },
+    {
+      "id": "owner81-native-acceptance",
+      "status": "deferred",
+      "acceptance": "An authorized operator validates actual filesystem ACL inheritance, SMB identities/ownership and unchanged different-owner reconnect assertions, plus pktmon ownership/cleanup and existing sudo authorization.",
+      "dependencies": ["fleet-support-local-repairs"],
+      "downstream": "No synthetic result establishes these live boundaries."
+    }
+  ],
+  "regression_runner": "python -m unittest discover -s TestSuites\\FileServer\\src\\Batch\\SutDebug\\Tests -p test_*.py -v",
+  "test_boundary": "Only tracked script source, local synthetic files, mocked native commands, mocked Unix permission operations and an in-process fake sudo. No deployment configuration, live credentials, SSH, WinRM, pktmon, account or service mutations.",
+  "baseline": "The four historical PowerShell debug helpers parse without errors; no existing standalone debug-helper regression runner was present.",
+  "decisions": [
+    "Use narrow named-user access/default ACLs rather than a forced Unix identity or broadly shared group.",
+    "Use Python's existing standard-library unittest runner to exercise both Bash and PowerShell without installing a package; existing nearby Pester test conventions were inspected.",
+    "Retain the SSH helper's existing authentication handoff; correct only complete-command and literal-argument quoting.",
+    "Preserve unrelated dirty/paused diagnostics work and every existing owner branch."
+  ],
+  "risks": [
+    "Native Linux ACL enforcement, SMB-server integration and Windows pktmon remain live acceptance gates.",
+    "Optional parser coverage, global pktmon exclusivity and existing authentication transport policy are not broadened by these fixes.",
+    "No current remote identity, CI or public publication claim is made."
+  ],
+  "measured_validation": {
+    "frozen_suite": "test_support_corrections.py; 16 unittest methods with parameterized outcome cases",
+    "historical_source": "01ad6e001061d071a8c6d331ccd7b4eb0783a2b6",
+    "historical_result": "exit 1; 14 failed assertions/subcases, no harness errors or skips",
+    "repaired_result": "exit 0; all 16 methods passed, no errors or skips",
+    "syntax": "Bash -n passed; both changed PowerShell scripts parsed with zero errors; git diff --check passed",
+    "receipt": "fleet-support-local-frozen-comparison-20261027.json (coordinator session evidence)",
+    "independence": "Maintainer-controlled local execution, not independent CI or live acceptance.",
+    "scope": "No .NET, browser or protocol-wire behavior changed; no new normative protocol test or Test Design Specification entry."
+  },
+  "existing_F4_correction": {
+    "owner49_commit": "6d982f3d7eb767b08f76a680b49474b70bb6cc02",
+    "owner52_existing_candidate": "e761c9bea69022004a17e7b729980196f074fb28",
+    "candidate_parent": "dbf5a8637f6bf168623a1d444d2968f273030f4e",
+    "verified": "Reader, ConfigurationReadIsolationTests and TestEffectiveConfigurationSource are byte-equivalent between those correction heads. The candidate already propagates the per-read error-isolation fix; do not reinvent it or apply both commits.",
+    "publication": "Candidate existence is not proof of publication; reconcile owner52 current source before later integration."
+  },
+  "continuation": "The coordinator must reconcile current owner source, review the exact local commit delta, integrate deliberately, and run source-bound CI plus approved live acceptance. Final SHA and raw evidence are retained in fleet-support-local-repairs-20261027.json; this handoff cannot self-reference its own commit. Keep the unpushed task worktree until publication/cleanup is authorized.",
+  "learning_log": [
+    {
+      "finding": "SUPPORT-F1",
+      "mechanism": "SMB valid users does not grant Unix path access; primary-only ownership/mode excluded the second identity.",
+      "regression": "LinuxShareAccessTests: named access/default entries, distinct primary ownership, no-second-user neighbor, ACL failure, repeatability and missing-tool no-account-mutation.",
+      "correction": "Create-SMB2Env-Linux.sh prepares all seven share directories plus SMBBasic/sub with narrow named-user/default ACLs and a conditional setfacl preflight.",
+      "downstream": "Preserve actual user owners and durable-handle denial oracles. Default ACL inheritance remains constrained by creation modes; existing descendants and parent traversal need operator validation."
+    },
+    {
+      "finding": "SUPPORT-F2",
+      "mechanism": "Later native commands overwrite LASTEXITCODE, and unprotected optional evidence/cleanup exceptions replace completed test outcomes.",
+      "regression": "WrapperOutcomeTests: actual synthetic child exit0/23, parsed summary Test/Outcome/SutLines, evidence/cleanup failures, failed capture start, launch failure and inherited native-error preference.",
+      "correction": "Run-FileServerWithSutLogs.ps1 snapshots the completed dotnet status immediately, restores scoped preference, cleans up positively started capture in finally and explicitly exits with the saved status.",
+      "downstream": "No future evidence command may become test-verdict authority. Exclusive pktmon access is still a documented operator requirement."
+    },
+    {
+      "finding": "SUPPORT-F3",
+      "mechanism": "The remote parent shell parsed redirections and variable expansion before sudo elevated the intended command.",
+      "regression": "SudoShellQuotingTests: complete elevated pipeline/redirection, literal quotes/newlines/empty output, synthetic injection-shaped password with no sentinel mutation, command exit29 and unchanged non-sudo neighbor.",
+      "correction": "Invoke-SutSsh.ps1 POSIX-quotes both literal arguments and invokes sudo sh -c for the complete command; authentication handoff and sudo policy remain otherwise unchanged.",
+      "downstream": "Do not split redirections outside the elevated shell or broaden sudo policy to make a test pass. Never execute these fixtures with real credentials."
+    }
+  ]
+}
