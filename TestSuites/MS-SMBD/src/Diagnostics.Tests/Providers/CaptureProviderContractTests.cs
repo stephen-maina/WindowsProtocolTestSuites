@@ -28,6 +28,37 @@ public sealed class CaptureProviderContractTests
     [DataTestMethod]
     [DataRow(false)]
     [DataRow(true)]
+    public async Task CompleteAsync_AuxiliaryPartialStart_PreservesWriterUntilCleanup(bool throws)
+    {
+        using ProviderTestContext context = ProviderTestContext.Create();
+        var primary = new DeterministicCaptureProvider();
+        var auxiliary = new DeterministicCaptureProvider
+        {
+            StartAsyncHandler = (request, _) => throws
+                ? throw new OperationCanceledException()
+                : Task.FromResult(CaptureProviderStartResult.FailedWithOwnedHandle(
+                    CaptureProviderSessionHandle.Create(
+                        "deterministic", request.Identity.InvocationId, "partial"),
+                    CaptureProviderFailureCode.StartTimeout, "Partial start.")),
+        };
+        var composite = new AuxiliaryCaptureProvider(primary, auxiliary);
+        CaptureProviderStartResult start = await composite.StartAsync(context.Request, default);
+        CaptureProviderStopResult stop = await composite.RequestStopAsync(start.Handle!, default);
+
+        Assert.IsTrue(start.IsStarted);
+        Assert.AreEqual(1, primary.Calls.Count(call => call == "Stop"));
+        Assert.AreEqual(throws ? 0 : 1, auxiliary.Calls.Count(call => call == "Stop"));
+        Assert.AreEqual(!throws, stop.WriterResolved);
+        if (throws)
+        {
+            Assert.AreEqual(CaptureProviderFinalizationStatus.Failed,
+                (await composite.WaitForFinalizationAsync(start.Handle!, default)).Status);
+        }
+    }
+
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     public async Task CompleteAsync_AuxiliaryUnresolvedOrThrowing_AlwaysStopsPrimaryAndAbandonsWriter(bool throws)
     {
             using ProviderTestContext context = ProviderTestContext.Create();

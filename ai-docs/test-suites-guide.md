@@ -334,6 +334,8 @@ MS-SMBD integrates the bridge in `TestSuites\MS-SMBD\src\TestSuite\SmbdTestBase.
 
 `DiagnosticsInvocationLifecycle` restores the complete error ledger into the manifest, including the original protocol primary and sequence/timestamps. `AuxiliaryCaptureProvider` treats an unavailable auxiliary as optional, not a started writer as optional: unresolved, throwing or pending auxiliary stop must still attempt primary cleanup and retain failure/unresolved-writer evidence. Both stops are initiated independently; the orchestrator bounds their combined wait. Managed regressions in `Diagnostics.Tests\Lifecycle` and `Diagnostics.Tests\Providers` exercise these persistence and composite-ownership boundaries without a SUT.
 
+Partial auxiliary starts retain their handles for cleanup; an indeterminate start without a handle remains unresolved and never authorizes stopping an unowned session. `CaptureProviderStartResult.Unresolved` expresses this distinction. Finalized artifacts and complete collection are separate: providers can return `Finalized(..., collectionComplete: false)`, propagated through orchestration and composite providers to a `Partial` manifest collection with `CollectionGap`, without inventing a protocol failure. These are diagnostics evidence policies, not SMB wire requirements.
+
 ---
 
 ## BranchCache Test Suite

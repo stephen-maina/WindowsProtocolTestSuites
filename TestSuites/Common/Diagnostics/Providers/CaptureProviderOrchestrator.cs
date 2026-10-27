@@ -35,7 +35,8 @@ public sealed class CaptureProviderCompletionResult
         bool writerResolved,
         string? stopDetail,
         string? finalizationDetail,
-        IReadOnlyList<ArtifactRecord>? artifacts)
+        IReadOnlyList<ArtifactRecord>? artifacts,
+        bool collectionComplete = true)
     {
         State = state;
         StopStatus = stopStatus;
@@ -45,6 +46,7 @@ public sealed class CaptureProviderCompletionResult
         StopDetail = stopDetail;
         FinalizationDetail = finalizationDetail;
         Artifacts = artifacts ?? Array.Empty<ArtifactRecord>();
+        CollectionComplete = collectionComplete;
     }
 
     public CaptureProviderLifecycleState State { get; }
@@ -62,6 +64,8 @@ public sealed class CaptureProviderCompletionResult
     public string? FinalizationDetail { get; }
 
     public IReadOnlyList<ArtifactRecord> Artifacts { get; }
+
+    public bool CollectionComplete { get; }
 }
 
 public sealed class CaptureProviderOrchestrator
@@ -878,7 +882,8 @@ public sealed class CaptureProviderSession
             writerResolved: true,
             stop.Detail,
             finalization.Detail,
-            finalization.Artifacts);
+            finalization.Artifacts,
+            finalization.CollectionComplete);
     }
 
     private CaptureProviderCompletionResult Failure(
@@ -946,7 +951,8 @@ public sealed class CaptureProviderSession
         bool writerResolved,
         string? stopDetail = null,
         string? finalizationDetail = null,
-        IReadOnlyList<ArtifactRecord>? artifacts = null)
+        IReadOnlyList<ArtifactRecord>? artifacts = null,
+        bool collectionComplete = true)
     {
         SetState(terminalState);
         return new CaptureProviderCompletionResult(
@@ -957,7 +963,8 @@ public sealed class CaptureProviderSession
             writerResolved,
             stopDetail,
             finalizationDetail,
-            artifacts);
+            artifacts,
+            collectionComplete);
     }
 
     private void SetState(CaptureProviderLifecycleState value)

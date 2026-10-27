@@ -54,6 +54,7 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
 
         var session = new AuxiliarySession();
         sessions[primaryResult.Handle.SessionId] = session;
+        bool startAttempted = false;
         try
         {
             CaptureProviderProbeResult probe = await auxiliary
@@ -61,10 +62,13 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
                 .ConfigureAwait(false);
             if (probe.IsAvailable)
             {
+                startAttempted = true;
                 CaptureProviderStartResult started = await auxiliary
                     .StartAsync(request, cancellationToken)
                     .ConfigureAwait(false);
-                session.Handle = started.IsStarted ? started.Handle : null;
+                session.Handle = started.Handle;
+                session.UnresolvedWithoutHandle =
+                    !started.WriterResolved && started.Handle is null;
                 session.Note = started.IsStarted
                     ? null
                     : $"{auxiliary.ProviderId} start failed: {started.FailureCode}";
@@ -75,8 +79,9 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
                     $"{auxiliary.ProviderId} unavailable: {probe.FailureCode}";
             }
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception)
         {
+            session.UnresolvedWithoutHandle = startAttempted;
             session.Note = $"{auxiliary.ProviderId} start threw {exception.GetType().Name}";
         }
 
@@ -134,7 +139,12 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
             CancellationToken.None);
         if (auxiliaryStop is null)
         {
-            return await primaryStop.ConfigureAwait(false);
+            CaptureProviderStopResult stopped = await primaryStop.ConfigureAwait(false);
+            return sessions.TryGetValue(handle.SessionId, out AuxiliarySession? pending) &&
+                pending.UnresolvedWithoutHandle
+                ? CaptureProviderStopResult.Failed(false, CaptureProviderFailureCode.StopFailed,
+                    "An auxiliary start may have left an unaddressable writer.")
+                : stopped;
         }
 
         await Task.WhenAll(primaryStop, auxiliaryStop).ConfigureAwait(false);
@@ -162,6 +172,14 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
         CaptureProviderFinalizationResult result = await primary
             .WaitForFinalizationAsync(handle, cancellationToken)
             .ConfigureAwait(false);
+
+        if (sessions.TryGetValue(handle.SessionId, out AuxiliarySession? pending) &&
+            pending.UnresolvedWithoutHandle)
+        {
+            return CaptureProviderFinalizationResult.Failed(
+                CaptureProviderFailureCode.FinalizationFailed,
+                "An auxiliary writer is unresolved.", result.Artifacts);
+        }
 
         if (!TryGetAuxiliaryHandle(handle, out CaptureProviderSessionHandle? aux) ||
             !sessions.TryGetValue(handle.SessionId, out AuxiliarySession? session))
@@ -195,7 +213,8 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
         artifacts.AddRange(extra.Artifacts);
         return CaptureProviderFinalizationResult.Finalized(
             result.Detail,
-            artifacts);
+            artifacts,
+            result.CollectionComplete && extra.CollectionComplete);
     }
 
     private bool TryGetAuxiliaryHandle(
@@ -232,5 +251,7 @@ public sealed class AuxiliaryCaptureProvider : ICaptureProvider
         public string? Note { get; set; }
 
         public CaptureProviderStopResult? StopResult { get; set; }
+
+        public bool UnresolvedWithoutHandle { get; set; }
     }
 }

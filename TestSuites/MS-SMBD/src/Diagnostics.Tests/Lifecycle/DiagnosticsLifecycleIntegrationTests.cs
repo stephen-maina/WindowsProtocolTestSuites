@@ -28,6 +28,31 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Tests.Lifecycle;
 [TestClass]
 public sealed class DiagnosticsLifecycleIntegrationTests
 {
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Dispose_FinalizedCapture_ReportsCollectionCompletenessIndependently(bool complete)
+    {
+        using LifecycleFixture fixture = LifecycleFixture.Create();
+        fixture.Provider.WaitForFinalizationAsyncHandler = (_, _) =>
+            Task.FromResult(CaptureProviderFinalizationResult.Finalized(
+                "Closed capture.",
+                new[] { WriteProviderArtifact(fixture.ArtifactInvocation!, "capture.etl",
+                    "synthetic capture", "application/octet-stream") },
+                collectionComplete: complete));
+        using DiagnosticsInvocationLifecycle lifecycle = fixture.Start();
+        lifecycle.MarkCleanupCompleted();
+        lifecycle.Dispose();
+
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(fixture.ManifestPath));
+        Assert.AreEqual(complete ? "Complete" : "Partial",
+            manifest.RootElement.GetProperty("collectionStatus").GetString());
+        Assert.AreEqual("Complete",
+            manifest.RootElement.GetProperty("finalizationStatus").GetString());
+        Assert.AreEqual("Pending", manifest.RootElement.GetProperty("protocolResult").GetString());
+        Assert.AreEqual(0, manifest.RootElement.GetProperty("unresolvedWriters").GetArrayLength());
+    }
+
     [TestMethod]
     public void Start_MissingOrDisabledEnabledProperty_HasNoRuntimeSideEffects()
     {

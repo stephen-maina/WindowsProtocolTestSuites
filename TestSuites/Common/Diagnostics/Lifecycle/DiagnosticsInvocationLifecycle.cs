@@ -492,13 +492,15 @@ public sealed class DiagnosticsInvocationLifecycle : IDisposable
             completion.FinalizationStatus == CaptureProviderFinalizationStatus.Finalized;
         CollectionStatus status = unsupported || usableArtifactCount == 0
             ? CollectionStatus.Unavailable
-            : finalized
+            : finalized && completion.CollectionComplete
                 ? CollectionStatus.Complete
                 : CollectionStatus.Partial;
         EvidenceReasonCode reasonCode = unsupported
             ? EvidenceReasonCode.ProviderUnsupported
             : usableArtifactCount == 0
                 ? EvidenceReasonCode.UnexpectedEmptyEvidence
+                : !completion.CollectionComplete
+                    ? EvidenceReasonCode.CollectionGap
                 : finalized
                     ? EvidenceReasonCode.None
                     : EvidenceReasonCode.CleanupFailed;

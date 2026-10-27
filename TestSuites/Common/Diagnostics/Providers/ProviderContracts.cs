@@ -343,6 +343,18 @@ public sealed class CaptureProviderStartResult
             ProviderContractValidation.RequireFailure(failureCode, nameof(failureCode)),
             ProviderContractValidation.RequireText(detail, nameof(detail)));
     }
+
+    public static CaptureProviderStartResult Unresolved(
+        CaptureProviderFailureCode failureCode,
+        string detail)
+    {
+        return new CaptureProviderStartResult(
+            isStarted: false,
+            handle: null,
+            writerResolved: false,
+            ProviderContractValidation.RequireFailure(failureCode, nameof(failureCode)),
+            ProviderContractValidation.RequireText(detail, nameof(detail)));
+    }
 }
 
 public sealed class CaptureProviderReadinessResult
@@ -537,9 +549,11 @@ public sealed class CaptureProviderFinalizationResult
         CaptureProviderFinalizationStatus status,
         CaptureProviderFailureCode failureCode,
         string detail,
-        IEnumerable<ArtifactRecord> artifacts)
+        IEnumerable<ArtifactRecord> artifacts,
+        bool collectionComplete = true)
     {
         Status = status;
+        CollectionComplete = collectionComplete;
         FailureCode = failureCode;
         Detail = detail;
         ArgumentNullException.ThrowIfNull(artifacts);
@@ -566,6 +580,8 @@ public sealed class CaptureProviderFinalizationResult
 
     public CaptureProviderFinalizationStatus Status { get; }
 
+    public bool CollectionComplete { get; }
+
     public CaptureProviderFailureCode FailureCode { get; }
 
     public string Detail { get; }
@@ -581,11 +597,20 @@ public sealed class CaptureProviderFinalizationResult
         string evidence,
         IEnumerable<ArtifactRecord> artifacts)
     {
+        return Finalized(evidence, artifacts, collectionComplete: true);
+    }
+
+    public static CaptureProviderFinalizationResult Finalized(
+        string evidence,
+        IEnumerable<ArtifactRecord> artifacts,
+        bool collectionComplete)
+    {
         return new CaptureProviderFinalizationResult(
             CaptureProviderFinalizationStatus.Finalized,
             CaptureProviderFailureCode.None,
             ProviderContractValidation.RequireText(evidence, nameof(evidence)),
-            artifacts);
+            artifacts,
+            collectionComplete);
     }
 
     public static CaptureProviderFinalizationResult Failed(
