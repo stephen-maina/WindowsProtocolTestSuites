@@ -2603,6 +2603,31 @@ the specification; implementation-specific applicability gates must be checked i
 `STATUS_INVALID_PARAMETER` regardless of `IsRDMATransformSupported`; the optional-feature probe does not gate
 this context-list validation. The single-context feature-specific tests retain their applicability gates.
 
+Only the three session-binding negatives and channel failover require the actual negotiated server
+`GLOBAL_CAP_MULTI_CHANNEL` capability on their dependent connections. The query keeps its permitted
+`STATUS_NOT_SUPPORTED` result handling; the eight independent connections and single-connection
+credit workload do not require multichannel capability.
+
+The credit workload records SMBD and SMB2 windows separately. Its bounded request count must exceed
+the larger observed SMBD send window at negotiation/workload start; windows at or above the existing
+128-request fixture budget are Inconclusive, not passing coverage. READs are sent only while both
+credit layers permit them, matched by MessageId/AsyncId, and removed only on final responses.
+Passing coverage additionally requires measured peak concurrency above one and a final whole-file
+READ whose own observed transport-frame count exceeds the recorded receive window. Interim frames
+never satisfy final fragmentation. A server need not grant extra SMB2 concurrency to satisfy this fixture;
+unreachable fixture sizes/windows are Inconclusive. Final measured coverage is evaluated after completed
+traffic is drained and normal file/session cleanup.
+The eight-worker native timeout/shutdown contract remains a separate unresolved validation gate.
+
+The managed `Pipeline_*` regressions invoke the actual pipeline, shared decoder and correlator with
+encoded responses. They verify nonzero MessageId correlation, high-half AsyncId, interim retention,
+unmatched-response rejection, a two-credit request's single precharge/advance and final-error accounting.
+A simulated passive transport counter distinguishes seven interim frames from two final frames; it is
+not native provider evidence. A one-SMB2-credit server can drain requests successfully without being
+forced to grant extra concurrency; that result remains insufficient measured concurrency coverage.
+`Multichannel*`, `CreditWorkload*` and `CreditCoverage_*` regressions cover actual negotiated capability
+gates and feasible/unreachable or insufficiently observed fixture coverage.
+
 | Test name | Category | Scenario and pass criteria | Specification |
 |---|---|---|---|
 | `Smb2OverRdmaChannel_Read_ExactMaxReadWriteSize` | Smb2OverRdmaChannel, SmbdProtocolGaps | Verify SMB2 READ of exactly MaxReadWriteSize bytes over RDMA_V1 succeeds with correct content. Require STATUS_SUCCESS from every registered-buffer read before comparing the single READ with chunked READs; an untouched zero-filled buffer after a failed memory read must not count as verified content (MLNX-RDMA-READ-STATUS-01). | [MS-SMBD] 2.2.2 Negotiate Response Message; 3.1.4.5 RDMA Write to Peer Buffer; [MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request |

@@ -782,6 +782,155 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
         }
 
         [DataTestMethod]
+        [DataRow(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_MULTI_CHANNEL, true)]
+        [DataRow(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_LARGE_MTU, false)]
+        [DataRow((NEGOTIATE_Response_Capabilities_Values)0, false)]
+        public void MultichannelCapability_UsesActualNegotiateResponse(NEGOTIATE_Response_Capabilities_Values capabilities, bool supported)
+        {
+            var properties = Properties();
+            var test = new Smb2MultiChannelGaps();
+            Configure(test, properties);
+            var client = new RdmaNegotiationClient(DialectRevision.Smb30) { ResponseCapabilities = capabilities };
+            InvokeMultichannelHelper("ConnectAndNegotiate", client, new TestConfig(Site(properties)), Guid.NewGuid());
+            Action check = () => InvokeMultichannelHelper("RequireMultichannel", client);
+            if (supported)
+            {
+                check();
+            }
+            else
+            {
+                Assert.ThrowsExactly<AssertInconclusiveException>(check);
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(1u)]
+        [DataRow(8u)]
+        [DataRow(42u)]
+        [DataRow(127u)]
+        public void CreditWorkload_ExceedsObservedWindowWithinFixtureBudget(uint initialCredits)
+        {
+            int total = (int)InvokeMultichannelHelper("CreditWorkloadSize", initialCredits);
+            Assert.IsTrue((uint)total > initialCredits);
+            Assert.IsTrue(total <= 128);
+        }
+
+        [DataTestMethod]
+        [DataRow(128u)]
+        [DataRow(255u)]
+        [DataRow(uint.MaxValue)]
+        public void CreditWorkload_UnreachableWindowIsInconclusiveNotFalseCoverage(uint initialCredits)
+        {
+            Assert.ThrowsExactly<AssertInconclusiveException>(
+                () => InvokeMultichannelHelper("CreditWorkloadSize", initialCredits));
+        }
+
+        [DataTestMethod]
+        [DataRow(8u, 24, 2, 4L, 3u, true)]
+        [DataRow(8u, 24, 1, 4L, 3u, false)]
+        [DataRow(24u, 24, 2, 4L, 3u, false)]
+        [DataRow(8u, 24, 2, 3L, 3u, false)]
+        [DataRow(8u, 24, 2, 4L, 0u, false)]
+        public void CreditCoverage_RequiresMeasuredTurnoverConcurrencyAndFinalOnlyFragments(
+            uint sendWindow, int completed, int peak, long fragments, uint receiveWindow, bool covered)
+        {
+            Action verify = () => InvokeMultichannelHelper(
+                "RequireCreditCoverage", sendWindow, completed, peak, fragments, receiveWindow);
+            if (covered)
+            {
+                verify();
+            }
+            else
+            {
+                Assert.ThrowsExactly<AssertInconclusiveException>(verify);
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow(NtStatus.STATUS_SUCCESS, false)]
+        [DataRow(NtStatus.STATUS_SUCCESS, true)]
+        [DataRow(NtStatus.STATUS_ACCESS_DENIED, false)]
+        public void Pipeline_CorrelatesPendingAndAccountsPrechargedRequestOnce(NtStatus finalStatus, bool unknownFirst)
+        {
+            var test = new Smb2MultiChannelGaps();
+            Configure(test, Properties());
+            byte[] content = Enumerable.Range(0, 131072).Select(i => (byte)i).ToArray();
+            var client = new PipelineClient(content)
+            {
+                Smb2AvailableCredits = 8,
+                FinalStatus = finalStatus,
+                UnknownFirst = unknownFirst
+            };
+            SetConnection(client, new SmbdConnection { SendCredits = 3, MaxSendSize = 1364 });
+            typeof(Smb2OverSmbdTestClient).GetField("messageId", BindingFlags.NonPublic | BindingFlags.Instance)
+                .SetValue(client, 4ul);
+            object result = null;
+            Action run = () => result = InvokePipeline(test, client, content, content.Length, 1);
+            if (finalStatus == NtStatus.STATUS_SUCCESS)
+            {
+                run();
+                Assert.AreEqual(1, (int)result.GetType().GetField("Completed").GetValue(result));
+                Assert.AreEqual(2L, (long)result.GetType().GetField("FinalFragments").GetValue(result));
+            }
+            else
+            {
+                StringAssert.Contains(Assert.ThrowsExactly<AssertFailedException>(run).Message, "STATUS_ACCESS_DENIED");
+            }
+            Assert.AreEqual((ushort)11, client.Smb2AvailableCredits);
+            Assert.AreEqual(6ul, (ulong)Get(client, "messageId"));
+            Assert.AreEqual(4ul, client.Requests.Single().MessageId);
+            Assert.AreEqual((ushort)2, client.Requests.Single().CreditCharge);
+            Assert.AreEqual((ushort)6, client.CreditsAtSend.Single());
+        }
+
+        [TestMethod]
+        public void Pipeline_OneSmb2CreditDrainsWithoutDemandingUnsupportedConcurrency()
+        {
+            var test = new Smb2MultiChannelGaps();
+            Configure(test, Properties());
+            byte[] content = new byte[512];
+            var client = new PipelineClient(content) { Smb2AvailableCredits = 1, SendInterim = false };
+            SetConnection(client, new SmbdConnection { SendCredits = 3, MaxSendSize = 1364 });
+            object result = InvokePipeline(test, client, content, 512, 3);
+
+            Assert.AreEqual(3, (int)result.GetType().GetField("Completed").GetValue(result));
+            Assert.AreEqual(1, (int)result.GetType().GetField("PeakOutstanding").GetValue(result));
+            Assert.AreEqual((ushort)1, client.Smb2AvailableCredits);
+            Assert.IsTrue(client.CreditsAtSend.All(c => c == 0));
+            Assert.ThrowsExactly<AssertInconclusiveException>(() =>
+                InvokeMultichannelHelper("RequireCreditCoverage", 1u, 3, 1, 2L, 1u));
+        }
+
+        private static object InvokePipeline(
+            Smb2MultiChannelGaps test, Smb2OverSmbdTestClient client, byte[] content, int chunk, int total)
+        {
+            try
+            {
+                return typeof(Smb2MultiChannelGaps).GetMethod("PipelinedReads", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(test, new object[] { client, content, chunk, total });
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
+        }
+
+        private static object InvokeMultichannelHelper(string method, params object[] arguments)
+        {
+            try
+            {
+                return typeof(Smb2MultiChannelGaps).GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)
+                    .Invoke(null, arguments);
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+                throw;
+            }
+        }
+
+        [DataTestMethod]
         [DataRow(DialectRevision.Smb30, false, true)]
         [DataRow(DialectRevision.Smb302, false, true)]
         [DataRow(DialectRevision.Smb311, false, true)]
@@ -2105,6 +2254,92 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                 EncodedSignature = TypeMarshal.ToStruct<SMB2_RDMA_CRYPTO_TRANSFORM>(
                     data.Skip(request.WriteChannelInfoOffset + TypeMarshal.ToBytes(transform).Length).ToArray()).Signature;
                 throw new BoundaryReachedException();
+            }
+        }
+
+        private sealed class PipelineClient : Smb2OverSmbdTestClient
+        {
+            private readonly byte[] content;
+            private readonly Queue<(byte[] Bytes, long Fragments)> messages = new();
+            public bool SendInterim { get; set; } = true;
+            public bool UnknownFirst { get; set; }
+            public NtStatus FinalStatus { get; set; } = NtStatus.STATUS_SUCCESS;
+            public List<Packet_Header> Requests { get; } = new();
+            public List<ushort> CreditsAtSend { get; } = new();
+
+            public PipelineClient(byte[] content) : base(TimeSpan.FromSeconds(1))
+            {
+                this.content = content;
+                Decoder.TransportType = Smb2TransportType.Rdma;
+            }
+
+            public override void SendPacket(byte[] data)
+            {
+                Assert.IsTrue(ClientConnection.SendCredits > 0);
+                ClientConnection.SendCredits--;
+                var header = TypeMarshal.ToStruct<Packet_Header>(data);
+                var request = TypeMarshal.ToStruct<READ_Request>(data.Skip(64).ToArray());
+                Assert.AreEqual((ushort)Math.Max(1L, (request.Length + 65535L) / 65536), header.CreditCharge);
+                Requests.Add(header);
+                CreditsAtSend.Add(Smb2AvailableCredits);
+                if (UnknownFirst)
+                {
+                    messages.Enqueue((ErrorBytes(header.MessageId + 100, NtStatus.STATUS_PENDING, 1000), 3));
+                }
+                if (SendInterim)
+                {
+                    messages.Enqueue((ErrorBytes(header.MessageId, NtStatus.STATUS_PENDING, 5), 7));
+                }
+                if (FinalStatus != NtStatus.STATUS_SUCCESS)
+                {
+                    messages.Enqueue((ErrorBytes(header.MessageId, FinalStatus, 0), 2));
+                    return;
+                }
+                var response = ReadResponse();
+                response.Header.MessageId = header.MessageId;
+                response.Header.CreditRequestResponse = SendInterim ? (ushort)0 : (ushort)1;
+                if (SendInterim)
+                {
+                    response.Header.Flags |= Packet_Header_Flags_Values.FLAGS_ASYNC_COMMAND;
+                    response.Header.TreeId = 0x80000001;
+                    response.Header.ProcessId = 7;
+                }
+                response.Buffer = content.Skip((int)request.Offset).Take((int)request.Length).ToArray();
+                response.PayLoad.DataLength = (uint)response.Buffer.Length;
+                messages.Enqueue((response.ToBytes(), 2));
+            }
+
+            protected override NtStatus ReceiveSmbdMessage(TimeSpan timeout, out byte[] message)
+            {
+                Assert.IsTrue(timeout > TimeSpan.Zero);
+                if (messages.Count == 0)
+                {
+                    throw new TimeoutException("Queued pipeline final response missing.");
+                }
+                var next = messages.Dequeue();
+                message = next.Bytes;
+                ClientConnection.SendCredits++;
+                // Simulate the transport's passive receipt only; decoder/classifier/accounting remain production code.
+                var transport = (SmbdClient)Get(this, "smbdClient");
+                typeof(SmbdClient).GetField("receivedDataTransferCount", BindingFlags.NonPublic | BindingFlags.Instance)
+                    .SetValue(transport, transport.ReceivedDataTransferCount + next.Fragments);
+                return NtStatus.STATUS_SUCCESS;
+            }
+
+            private static byte[] ErrorBytes(ulong messageId, NtStatus status, ushort grant)
+            {
+                var packet = new Smb2ErrorResponsePacket();
+                packet.Header.Command = Smb2Command.READ;
+                packet.Header.MessageId = messageId;
+                packet.Header.Status = (uint)status;
+                packet.Header.CreditRequestResponse = grant;
+                packet.Header.Flags = Packet_Header_Flags_Values.FLAGS_SERVER_TO_REDIR | Packet_Header_Flags_Values.FLAGS_ASYNC_COMMAND;
+                packet.Header.TreeId = 0x80000001;
+                packet.Header.ProcessId = 7;
+                packet.PayLoad.StructureSize = 9;
+                packet.PayLoad.ByteCount = 1;
+                packet.PayLoad.ErrorData = new byte[1];
+                return packet.ToBytes();
             }
         }
 

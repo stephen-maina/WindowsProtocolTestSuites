@@ -12,6 +12,7 @@ using Microsoft.Protocols.TestTools.StackSdk.Security.SspiService;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Reflection;
@@ -211,10 +212,12 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             Guid clientId = Guid.NewGuid();
             Smb2OverSmbdTestClient main = NewClient(cfg);
             EstablishSession(main, cfg, clientId, false);
+            RequireMultichannel(main);
             ulong mainSessionId = GetClientField<ulong>(main, "sessionId");
 
             Smb2OverSmbdTestClient second = NewClient(cfg);
             ConnectAndNegotiate(second, cfg, clientId);
+            RequireMultichannel(second);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Bind session 0x" + mainSessionId.ToString("X") + " on the second RDMA connection without signing.");
             uint status = SendBindRequest(second, cfg, mainSessionId, Packet_Header_Flags_Values.NONE);
@@ -243,10 +246,12 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             Guid clientId = Guid.NewGuid();
             Smb2OverSmbdTestClient main = NewClient(cfg);
             EstablishSession(main, cfg, clientId, false);
+            RequireMultichannel(main);
             ulong mainSessionId = GetClientField<ulong>(main, "sessionId");
 
             Smb2OverSmbdTestClient second = NewClient(cfg);
             ConnectAndNegotiate(second, cfg, clientId);
+            RequireMultichannel(second);
 
             ulong unknownSessionId = mainSessionId ^ 0x5A5A5A5A5A5A5A5AUL;
             if (unknownSessionId == 0 || unknownSessionId == mainSessionId)
@@ -280,6 +285,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             TestConfig cfg = SmbdTestConfig;
             Smb2OverSmbdTestClient main = NewClient(cfg);
             EstablishSession(main, cfg, Guid.NewGuid(), false);
+            RequireMultichannel(main);
             ulong mainSessionId = GetClientField<ulong>(main, "sessionId");
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Bind session 0x" + mainSessionId.ToString("X") + " again on the connection that already owns it.");
@@ -315,6 +321,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             Guid clientId = Guid.NewGuid();
             Smb2OverSmbdTestClient channelA = NewClient(cfg);
             EstablishSession(channelA, cfg, clientId, true);
+            RequireMultichannel(channelA);
 
             string fileName = CreateRandomFileName();
             Require(channelA.Smb2Create(fileName), "SMB2 CREATE on channel A");
@@ -326,6 +333,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Bind a second RDMA channel (B) to the session.");
             Smb2OverSmbdTestClient channelB = NewClient(cfg);
             ConnectAndNegotiate(channelB, cfg, clientId);
+            RequireMultichannel(channelB);
             uint bindStatus = channelB.Smb2AlternativeChannelSessionSetup(channelA, cfg.DomainName, cfg.UserName, cfg.Password, cfg.ServerName);
             if ((NtStatus)bindStatus == NtStatus.STATUS_REQUEST_NOT_ACCEPTED || (NtStatus)bindStatus == NtStatus.STATUS_NOT_SUPPORTED)
             {
@@ -439,9 +447,21 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             Require(client.Smb2Create(CreateRandomFileName()), "SMB2 create");
 
             // Spans many SMBD messages in both directions (MaxSendSize is small) and is capped by the negotiated sizes.
-            int fileSize = (int)Math.Min(cfg.ModerateFileSizeInByte, Math.Min(client.Smb2MaxWriteSize, client.Smb2MaxReadSize));
             const int chunk = 512;
-            fileSize = Math.Max(chunk, fileSize / chunk * chunk);
+            uint messageHeaderSize = (uint)Smb2OverSmbdTestClient.WRITE_REQUEST_HEADER_SIZE;
+            if (client.ClientConnection.MaxFragmentedSize <= messageHeaderSize)
+            {
+                BaseTestSite.Assert.Inconclusive("Negotiated MaxFragmentedSize cannot carry this inline WRITE fixture.");
+            }
+            uint fixtureLimit = Math.Min(client.Smb2MaxWriteSize, client.Smb2MaxReadSize);
+            fixtureLimit = Math.Min(fixtureLimit, client.ClientConnection.MaxFragmentedSize - messageHeaderSize);
+            fixtureLimit = Math.Min(fixtureLimit, int.MaxValue);
+            int fileSize = (int)Math.Min(cfg.ModerateFileSizeInByte, fixtureLimit);
+            fileSize = fileSize / chunk * chunk;
+            if (fileSize < chunk)
+            {
+                BaseTestSite.Assert.Inconclusive("Negotiated/configured sizes cannot carry a {0}-byte READ chunk.", chunk);
+            }
             byte[] content = MakePattern(fileSize, 'a');
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Write " + fileSize + " bytes in one fragmented SMB2 WRITE.");
@@ -449,19 +469,23 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             Require(client.Smb2Write(0, content, out writeResponse), "fragmented SMB2 WRITE");
             BaseTestSite.Assert.AreEqual<uint>((uint)fileSize, writeResponse.Count, "WRITE count");
 
-            int total = (int)Math.Min(128, Math.Max(24, initialSendCredits * 3));
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Pipeline " + total + " SMB2 READ requests (initial SMBD send credits: " + initialSendCredits + ").");
-            PipelinedReads(client, content, chunk, total);
+            uint workloadSendWindow = Math.Max(initialSendCredits, client.ClientConnection.SendCredits);
+            uint workloadReceiveWindow = client.ClientConnection.ReceiveCredits;
+            int total = CreditWorkloadSize(workloadSendWindow);
+            BaseTestSite.Log.Add(LogEntryKind.TestStep,
+                "Pipeline {0} READs: SMBD negotiate send window={1}, post-WRITE send window={2}, receive window={3}, SMB2 credits={4}.",
+                total, initialSendCredits, client.ClientConnection.SendCredits, workloadReceiveWindow, client.Smb2AvailableCredits);
+            ReadTraffic traffic = PipelinedReads(client, content, chunk, total);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Read the whole file back in one fragmented READ response.");
-            byte[] readData;
-            READ_Response readResponse;
-            Require(client.Smb2Read(0, (uint)fileSize, out readData, out readResponse), "fragmented SMB2 READ");
-            BaseTestSite.Assert.IsTrue(SmbdUtilities.CompareByteArray(content, readData), "Fragmented READ data matches the written data");
+            uint receiveWindow = Math.Max(workloadReceiveWindow, client.ClientConnection.ReceiveCredits);
+            ReadTraffic finalRead = PipelinedReads(client, content, fileSize, 1);
 
             Require(client.Smb2CloseFile(), "SMB2 CLOSE");
             Require(client.Smb2TreeDisconnect(), "SMB2 TREE_DISCONNECT");
             Require(client.Smb2LogOff(), "SMB2 LOGOFF");
+            RequireCreditCoverage(workloadSendWindow, traffic.Completed, traffic.PeakOutstanding,
+                finalRead.FinalFragments, receiveWindow);
         }
 
         #endregion
@@ -536,6 +560,38 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             if (treeConnect)
             {
                 Require(client.Smb2TreeConnect(cfg.ServerName, cfg.ShareFolder), "SMB2 tree connect");
+            }
+        }
+
+        private static void RequireMultichannel(Smb2OverSmbdTestClient client)
+        {
+            if (!client.NegotiatedServerCapabilities.HasFlag(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_MULTI_CHANNEL))
+            {
+                throw new AssertInconclusiveException(
+                    "The negotiated server capabilities do not enable multichannel; this binding/failover branch is not applicable.");
+            }
+        }
+
+        private static int CreditWorkloadSize(uint initialCredits)
+        {
+            const int requestBudget = 128;
+            if (initialCredits >= requestBudget)
+            {
+                throw new AssertInconclusiveException(
+                    $"The observed SMBD send window ({initialCredits}) cannot be exceeded within the {requestBudget}-request fixture budget.");
+            }
+            return (int)Math.Min(requestBudget, Math.Max(24ul, (ulong)initialCredits * 3));
+        }
+
+        private static void RequireCreditCoverage(
+            uint sendWindow, int completed, int peakOutstanding, long finalFragments, uint receiveWindow)
+        {
+            if ((ulong)completed <= sendWindow || peakOutstanding < 2 || receiveWindow == 0 || finalFragments <= receiveWindow)
+            {
+                throw new AssertInconclusiveException(
+                    $"Credit coverage not reached: completed={completed}, observed send window={sendWindow}, " +
+                    $"peak outstanding={peakOutstanding}, final READ fragments={finalFragments}, observed receive window={receiveWindow}. " +
+                    "This fixture does not require the server to grant additional SMB2 concurrency or smaller transport windows.");
             }
         }
 
@@ -681,30 +737,51 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
         }
 
+        private sealed class PendingRead
+        {
+            public int ChunkIndex;
+            public ulong? AsyncId;
+            public TimeSpan Deadline;
+        }
+
+        private sealed class ReadTraffic
+        {
+            public int Completed;
+            public int PeakOutstanding;
+            public long FinalFragments;
+        }
+
         /// <summary>
-        /// Send <paramref name="total"/> SMB2 READ requests of <paramref name="chunk"/> bytes, keeping several outstanding while SMBD
-        /// send credits and SMB2 credits allow it. Sending stops while the SMBD client has only its last send credit so that the
-        /// client never blocks inside a send and discards a response; responses are matched by MessageId.
+        /// Pipeline READs within both credit layers; retain each request through interim responses.
+        /// Reserve the last SMBD send credit while requests are outstanding to avoid a receive inside SEND.
         /// </summary>
-        private void PipelinedReads(Smb2OverSmbdTestClient client, byte[] content, int chunk, int total)
+        private ReadTraffic PipelinedReads(Smb2OverSmbdTestClient client, byte[] content, int chunk, int total)
         {
             int chunkCount = content.Length / chunk;
-            Dictionary<ulong, int> pending = new Dictionary<ulong, int>();
-            int sent = 0;
-            int completed = 0;
-            int maxOutstanding = 0;
-
-            while (completed < total)
+            ushort charge = checked((ushort)Math.Max(1L, (chunk + 65535L) / 65536));
+            if (client.ClientConnection.MaxSendSize <
+                new Smb2ReadRequestPacket().BufferOffset + SmbdDataTransferMessage.DEFAULT_DATA_OFFSET)
             {
-                bool smb2Credit = client.Smb2AvailableCredits > 0;
-                bool smbdCredit = client.ClientConnection.SendCredits > 1 || pending.Count == 0;
+                BaseTestSite.Assert.Inconclusive(
+                    "This pipeline fixture needs each payload-free READ request to fit one SMBD send message.");
+            }
+            Dictionary<ulong, PendingRead> pending = new Dictionary<ulong, PendingRead>();
+            ReadTraffic traffic = new ReadTraffic();
+            Stopwatch watch = Stopwatch.StartNew();
+            int sent = 0;
+
+            while (traffic.Completed < total)
+            {
+                bool smb2Credit = client.Smb2AvailableCredits >= charge;
+                bool smbdCredit = client.ClientConnection.SendCredits > 1 ||
+                    (pending.Count == 0 && client.ClientConnection.SendCredits > 0);
                 if (sent < total && smb2Credit && smbdCredit)
                 {
                     int chunkIndex = sent % chunkCount;
                     ulong messageId = GetClientField<ulong>(client, "messageId");
 
                     Smb2ReadRequestPacket request = new Smb2ReadRequestPacket();
-                    request.Header.CreditCharge = 1;
+                    request.Header.CreditCharge = charge;
                     request.Header.Command = Smb2Command.READ;
                     request.Header.CreditRequestResponse = 64;
                     request.Header.Flags = Packet_Header_Flags_Values.FLAGS_SIGNED;
@@ -719,36 +796,60 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     request.PayLoad.RemainingBytes = 0;
                     request.PayLoad.Flags = READ_Request_Flags_Values.ZERO;
 
-                    SetClientField<ulong>(client, "messageId", messageId + 1);
-                    client.Smb2AvailableCredits--;
-                    pending.Add(messageId, chunkIndex);
+                    SetClientField<ulong>(client, "messageId", messageId + charge);
+                    client.Smb2AvailableCredits -= charge;
+                    pending.Add(messageId, new PendingRead
+                    {
+                        ChunkIndex = chunkIndex,
+                        Deadline = watch.Elapsed + SmbdTestConfig.Smb2ConnectionTimeout
+                    });
                     client.SendPacket(request);
                     sent++;
-                    maxOutstanding = Math.Max(maxOutstanding, pending.Count);
+                    traffic.PeakOutstanding = Math.Max(traffic.PeakOutstanding, pending.Count);
                 }
                 else
                 {
                     if (pending.Count == 0)
                     {
-                        BaseTestSite.Assert.Fail("No outstanding request and no SMB2 credit left after {0} of {1} requests.", completed, total);
+                        BaseTestSite.Assert.Inconclusive(
+                            "No outstanding request and insufficient SMB2/SMBD credits after {0} of {1} requests; cannot reach this fixture's coverage.",
+                            traffic.Completed, total);
                     }
 
-                    Smb2ReadResponsePacket response = client.ExpectPacket<Smb2ReadResponsePacket>(0);
-                    int chunkIndex;
-                    BaseTestSite.Assert.IsTrue(pending.TryGetValue(response.Header.MessageId, out chunkIndex), "Response MessageId {0} matches an outstanding request", response.Header.MessageId);
-                    pending.Remove(response.Header.MessageId);
-                    client.Smb2AvailableCredits += response.Header.CreditRequestResponse;
+                    TimeSpan remaining = pending.Values.Min(p => p.Deadline) - watch.Elapsed;
+                    BaseTestSite.Assert.IsTrue(remaining > TimeSpan.Zero, "A pipelined READ did not finish before its original deadline.");
+                    var envelope = client.ReceiveSmb2Response(remaining);
+                    if (!pending.TryGetValue(envelope.MessageId, out PendingRead outstanding) ||
+                        !client.TryAcceptResponse(envelope, envelope.MessageId, ref outstanding.AsyncId))
+                    {
+                        continue;
+                    }
+                    if (envelope.IsInterim)
+                    {
+                        continue;
+                    }
+                    pending.Remove(envelope.MessageId);
+                    client.Smb2AvailableCredits = checked((ushort)(
+                        client.Smb2AvailableCredits + envelope.Packet.Header.CreditRequestResponse));
 
-                    BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, (NtStatus)response.Header.Status, "Status of pipelined READ {0} is {1}", completed, (NtStatus)response.Header.Status);
-                    BaseTestSite.Assert.AreEqual<uint>((uint)chunk, response.PayLoad.DataLength, "DataLength of pipelined READ {0}", completed);
+                    BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, (NtStatus)envelope.Packet.Header.Status,
+                        "Status of pipelined READ {0} is {1}", traffic.Completed, (NtStatus)envelope.Packet.Header.Status);
+                    BaseTestSite.Assert.IsTrue(envelope.Packet is Smb2ReadResponsePacket, "Final response is an SMB2 READ.");
+                    Smb2ReadResponsePacket response = (Smb2ReadResponsePacket)envelope.Packet;
+                    BaseTestSite.Assert.AreEqual<uint>((uint)chunk, response.PayLoad.DataLength, "DataLength of pipelined READ {0}", traffic.Completed);
+                    int chunkIndex = outstanding.ChunkIndex;
                     byte[] data = response.Buffer.Skip((int)response.PayLoad.DataOffset - (int)response.BufferOffset).Take((int)response.PayLoad.DataLength).ToArray();
                     byte[] expected = content.Skip(chunkIndex * chunk).Take(chunk).ToArray();
-                    BaseTestSite.Assert.IsTrue(SmbdUtilities.CompareByteArray(expected, data), "Data of pipelined READ {0} (chunk {1})", completed, chunkIndex);
-                    completed++;
+                    BaseTestSite.Assert.IsTrue(SmbdUtilities.CompareByteArray(expected, data), "Data of pipelined READ {0} (chunk {1})", traffic.Completed, chunkIndex);
+                    traffic.FinalFragments = envelope.TransportFragmentCount;
+                    traffic.Completed++;
                 }
             }
 
-            BaseTestSite.Log.Add(LogEntryKind.Debug, "Completed " + completed + " pipelined READs, peak outstanding " + maxOutstanding + ".");
+            BaseTestSite.Log.Add(LogEntryKind.Debug,
+                "Completed {0} pipelined READs, peak outstanding {1}, last final READ fragments {2}.",
+                traffic.Completed, traffic.PeakOutstanding, traffic.FinalFragments);
+            return traffic;
         }
 
         #endregion
