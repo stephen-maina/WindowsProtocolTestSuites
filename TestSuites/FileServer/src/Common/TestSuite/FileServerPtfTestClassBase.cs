@@ -3,6 +3,7 @@
 
 using Microsoft.Protocols.TestSuites.Diagnostics.Ptf;
 using Microsoft.Protocols.TestTools;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.IO;
 
@@ -11,17 +12,19 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.TestSuite
     /// <summary>
     /// WHAT: PtfTestClassBase that also runs the shared per-test diagnostics (packet capture, SUT log window).
     /// WHY: FSA and the model-based suites (FSAModel, SMB2Model) derive from PtfTestClassBase, not CommonTestBase,
-    /// and their generated classes cannot be edited. Every one of them calls InitializeTestManager at the start of
-    /// TestInitialize and CleanupTestManager at the end of TestCleanup, so those virtual methods are the hook.
+    /// and their generated cleanup can fail before reaching CleanupTestManager. The MSTest boundary wraps the
+    /// PTF dispatcher so diagnostics close even after failed acquisition or adapter reset.
     /// SPEC: Not protocol behaviour; debugging aid only.
     /// </summary>
     public abstract class FileServerPtfTestClassBase : PtfTestClassBase
     {
         private PtfTestDiagnostics diagnostics;
+        private bool cleanupManagerCompleted;
 
         public override void InitializeTestManager()
         {
             base.InitializeTestManager();
+            cleanupManagerCompleted = false;
             diagnostics = PtfTestDiagnostics.Begin(
                 BaseTestSite,
                 FileServerDiagnosticsSuite.Definition,
@@ -35,15 +38,36 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.TestSuite
 
         public override void CleanupTestManager()
         {
+            base.CleanupTestManager();
+            cleanupManagerCompleted = true;
+        }
+
+        [TestCleanup]
+        public new void BaseTestCleanup()
+        {
+            bool cleanupCompleted = false;
             try
             {
-                diagnostics?.End(true);
-                diagnostics?.Dispose();
-                diagnostics = null;
+                base.BaseTestCleanup();
+                cleanupCompleted = true;
             }
             finally
             {
-                base.CleanupTestManager();
+                PtfTestDiagnostics current = diagnostics;
+                diagnostics = null;
+                try
+                {
+                    current?.End(cleanupCompleted && cleanupManagerCompleted);
+                }
+                catch (Exception)
+                {
+                    // Diagnostics must not replace the PTF setup, test or cleanup exception.
+                }
+                finally
+                {
+                    try { current?.Dispose(); }
+                    catch (Exception) { }
+                }
             }
         }
     }

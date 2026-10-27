@@ -1,5 +1,18 @@
 ﻿# File Server Protocol Family Server Test Design Specification 
 
+## Managed diagnostics lifecycle regressions
+
+`Diagnostics.Tests\FileServerLifecycleTests.Cleanup_ActualMstestPtfLifecycle_FinalizesWithoutMaskingFailure`
+is a managed infrastructure test, not an SMB/FSA normative wire test. Fourteen synthetic child-process cases use
+the actual PTF 2.7.0 and MSTest 3.9.1 dispatcher through the FSA, FSAModel-shaped and SMB2Model shims.
+They cover adapter acquisition/setup/reset failure, protocol plus reset failure, ordinary protocol failure,
+normal cleanup, repeated manager cleanup and disabled diagnostics. No SUT, credentials or native capture is used.
+
+Pass criteria: preserve the child/TRX outcome and original failure; dispatch adapter reset/cleanup once; dispose
+diagnostics before class cleanup even when generated cleanup throws; finalize the provisional manifest with truthful
+cleanup status; create no diagnostics artifact root when disabled. A failed setup may still have successful cleanup.
+The framework boundary, rather than a trailing generated `CleanupTestManager` call, owns guaranteed disposal.
+
 ## Content
 
 * [  Test Environment](#1)

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\..\AssemblyInfo\SharedAssemblyInfo.cs" Link="SharedAssemblyInfo.cs" />
+    <Compile Include="..\Common\TestSuite\FileServerPtfTestClassBase.cs" Link="Consumer\FileServerPtfTestClassBase.cs" />
+    <Compile Include="..\Common\TestSuite\FileServerDiagnosticsSuite.cs" Link="Consumer\FileServerDiagnosticsSuite.cs" />
+    <Compile Include="..\FSA\TestSuite\PtfTestClassBase.cs" Link="Consumer\FsaShim.cs" />
+    <Compile Include="..\SMB2Model\TestSuite\PtfTestClassBase.cs" Link="Consumer\Smb2ModelShim.cs" />
+    <ProjectReference Include="..\..\..\Common\Diagnostics.Ptf\Microsoft.Protocols.TestSuites.Diagnostics.Ptf.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.9.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.9.1" />
+    <None Update="FileServerLifecycleFixture.ptfconfig" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+</Project>
