@@ -444,6 +444,36 @@ The protocol adapter uses Test Suite Library to generate protocol messages, whic
 ### <a name="_Toc427489511"/>Traditional Test Case Design
 The Traditional test approach is used to design all test cases. The test cases are designed to cover all in-scope testable requirements, including both positive and negative requirements. 
 
+#### Hardware-free adapter regression coverage
+
+The following methods in `tests/NegotiationReviewTests.cs` are managed MSTest
+regressions, not live SUT conformance cases (no SUT test-category attribute).
+They substitute transport/provider boundaries while retaining production
+decoding, request accounting, upper-layer reassembly, and public test entry
+points. They do not establish native MR/MW permissions, live RDMA behavior, or
+provider cancellation/drain acceptance.
+
+| Test method | Scenario and pass criteria |
+| --- | --- |
+| `PendingReadCompletesAndAccountsCreditsOnceIncludingFinalError` | Public READ accepts repeated matching pending messages and success/error finals; charge and MessageId advance once, interim grants once each, and a subsequent request remains usable. |
+| `PendingReadDiscardsUnmatchedAndWrongAsyncIdWithoutGrant` | Wrong MessageId/AsyncId cannot supply credits or complete the request; the matching final does. |
+| `PlainReadRetainsFinalGrantAndStatus` | Ordinary synchronous final response retains its grant and status accounting. |
+| `PendingWriteFinalErrorAccountsChargeAndPreservesNextRequest` | Public WRITE returns the final error, accounts once, and leaves the next request usable. |
+| `AsyncFinalCannotGrantCredits` | Nonzero async final grants fail explicitly without accepting the grant. |
+| `PendingStreamDoesNotRestartOverallDeadline` | Repeated pending messages cannot restart the overall wait; the real receive boundary receives decreasing budgets. |
+| `SharedEnvelopeConsumesEachInterimOnceNotEachAsyncId` | Reusing an envelope cannot double-grant; a distinct repeated pending envelope with the same full 64-bit AsyncId may grant again. |
+| `SharedReceiveRetainsCompoundRemainderForOutstandingRequests` | Both compound members remain available with one transport receive. |
+| `PendingReadRetainsUnsolicitedOplockNotificationForExplicitReceive` | A notification interleaved before a final READ is retained for explicit reception without consuming request credits. |
+| `NegotiatedCapabilitiesCacheActualServerResponseNotClientOffer` | Response capability changes replace the cached flags rather than reflecting the request offer. |
+| `TransportReassemblyUsesRemainingMessageDeadline` | Actual upper-layer reassembly returns both fragments, or bounded timeout when the last fragment is missing; each receive uses the remaining budget. |
+| `MultichannelPublicEntrySeedsExactInlineChunks` | The public mixed TCP/RDMA BVT executes its original seed loop: multi-chunk, exact-chunk and short-file payloads have matching lengths, offsets, response counts and reconstructed content. TCP inline writes use each chunk, not the entire file. |
+| `SigningNegativePublicEntryMutatesEqualBytesInEncodedTransform` | The public signing-negative path changes exactly one bit of the encoded signature even when the bytes previously swapped are equal. |
+
+The pending/final oracles use MS-SMB2 sections 3.3.4.2, 3.2.5.1.2,
+3.2.5.1.5, 3.3.4.3 and 3.3.4.4 (revision 88.0, September 28, 2026).
+The timeout regression checks the caller's bounded test wait; it does not change
+the specification's optional request-expiration timer extension policy.
+
 ### <a name="_Toc427489512"/>Test Cases Description 
 
 The test suite is a synthetic SMBD client. In the following descriptions, all instance of the term “Test Suite” can be understood as the SMBD client.

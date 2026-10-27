@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -215,6 +217,247 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             var client = new ReceivingClient { Failure = timeout };
             Assert.AreSame(timeout, Assert.ThrowsExactly<TimeoutException>(
                 () => client.ExpectPacket<Smb2EchoResponsePacket>(0)));
+        }
+
+        [DataTestMethod]
+        [DataRow(false)]
+        [DataRow(true)]
+        public void PendingReadCompletesAndAccountsCreditsOnceIncludingFinalError(bool error)
+        {
+            var client = new QueuedResponseClient(
+                ErrorResponse(0, Smb2Status.STATUS_PENDING, 3, 0x1234567887654321),
+                ErrorResponse(0, Smb2Status.STATUS_PENDING, 2, 0x1234567887654321),
+                error ? ErrorResponse(0, Smb2Status.STATUS_ACCESS_DENIED, 0, 0x1234567887654321)
+                    : FinalRead(0, 0, 0x1234567887654321),
+                FinalRead(2, 1));
+            uint status = client.Smb2Read(0, 131072, out _, out _);
+            Assert.AreEqual(error ? Smb2Status.STATUS_ACCESS_DENIED : Smb2Status.STATUS_SUCCESS, status);
+            Assert.AreEqual((ushort)11, client.Smb2AvailableCredits, "8+3+2-2+0");
+            Assert.AreEqual(2ul, Get(client, "messageId"));
+            Assert.AreEqual(3, client.ReceiveCount);
+            Assert.AreEqual(1, client.SendCount);
+            Assert.AreEqual(Smb2Status.STATUS_SUCCESS, client.Smb2Read(0, 1, out _, out _));
+            Assert.AreEqual((ushort)11, client.Smb2AvailableCredits);
+            Assert.AreEqual(3ul, Get(client, "messageId"), "Final errors leave the existing ledger reusable.");
+        }
+
+        [TestMethod]
+        public void PendingReadDiscardsUnmatchedAndWrongAsyncIdWithoutGrant()
+        {
+            var client = new QueuedResponseClient(
+                ErrorResponse(42, Smb2Status.STATUS_PENDING, 20, 7),
+                ErrorResponse(0, Smb2Status.STATUS_PENDING, 3, 0x1234567887654321),
+                FinalRead(0, 0, 0x9999999987654321),
+                FinalRead(0, 0, 0x1234567887654321));
+            Assert.AreEqual(Smb2Status.STATUS_SUCCESS, client.Smb2Read(0, 131072, out _, out _));
+            Assert.AreEqual((ushort)9, client.Smb2AvailableCredits, "8+3-2; unmatched grant is ignored");
+            Assert.AreEqual(4, client.ReceiveCount);
+        }
+
+        [TestMethod]
+        public void PlainReadRetainsFinalGrantAndStatus()
+        {
+            var client = new QueuedResponseClient(FinalRead(0, 4));
+            Assert.AreEqual(Smb2Status.STATUS_SUCCESS, client.Smb2Read(0, 1, out _, out _));
+            Assert.AreEqual((ushort)11, client.Smb2AvailableCredits);
+            Assert.AreEqual(1ul, Get(client, "messageId"));
+        }
+
+        [TestMethod]
+        public void PendingWriteFinalErrorAccountsChargeAndPreservesNextRequest()
+        {
+            var client = new QueuedResponseClient(
+                ErrorResponse(0, Smb2Status.STATUS_PENDING, 3, 7, Smb2Command.WRITE),
+                ErrorResponse(0, Smb2Status.STATUS_ACCESS_DENIED, 0, 7, Smb2Command.WRITE),
+                FinalRead(2, 1));
+            Assert.AreEqual(Smb2Status.STATUS_ACCESS_DENIED, client.Smb2Write(0, new byte[131072], out _));
+            Assert.AreEqual((ushort)9, client.Smb2AvailableCredits);
+            Assert.AreEqual(2ul, Get(client, "messageId"));
+            Assert.AreEqual(Smb2Status.STATUS_SUCCESS, client.Smb2Read(0, 1, out _, out _));
+            Assert.AreEqual((ushort)9, client.Smb2AvailableCredits);
+            Assert.AreEqual(3ul, Get(client, "messageId"));
+        }
+
+        [TestMethod]
+        public void AsyncFinalCannotGrantCredits()
+        {
+            var client = new QueuedResponseClient(
+                ErrorResponse(0, Smb2Status.STATUS_PENDING, 3, 7),
+                FinalRead(0, 9, 7));
+            Assert.ThrowsExactly<InvalidOperationException>(() => client.Smb2Read(0, 1, out _, out _));
+            Assert.AreEqual((ushort)11, client.Smb2AvailableCredits);
+        }
+
+        [TestMethod]
+        public void PendingStreamDoesNotRestartOverallDeadline()
+        {
+            var client = new QueuedResponseClient { RepeatPending = true };
+            typeof(Smb2OverSmbdTestClient).GetField("smb2ConnectionTimeout", BindingFlags.NonPublic | BindingFlags.Instance)
+                .SetValue(client, TimeSpan.FromMilliseconds(50));
+            var watch = Stopwatch.StartNew();
+            Assert.ThrowsExactly<TimeoutException>(() => client.Smb2Read(0, 1, out _, out _));
+            Assert.IsTrue(watch.Elapsed < TimeSpan.FromSeconds(2));
+            Assert.IsTrue(client.ReceiveCount > 1);
+            Assert.IsTrue(client.ReceiveBudgets.Last() < client.ReceiveBudgets.First());
+        }
+
+        [TestMethod]
+        public void SharedEnvelopeConsumesEachInterimOnceNotEachAsyncId()
+        {
+            var client = new QueuedResponseClient();
+            ulong? asyncId = null;
+            byte[] pending = ErrorResponse(0, Smb2Status.STATUS_PENDING, 3, 0x1234567887654321);
+            var first = client.DecodeSmb2Responses(pending).Single();
+            Assert.IsTrue(client.TryAcceptResponse(first, 0, ref asyncId));
+            Assert.IsFalse(client.TryAcceptResponse(first, 0, ref asyncId));
+            Assert.IsTrue(client.TryAcceptResponse(client.DecodeSmb2Responses(pending).Single(), 0, ref asyncId));
+            Assert.AreEqual((ushort)14, client.Smb2AvailableCredits);
+            Assert.AreEqual(0ul, Get(client, "messageId"));
+            Assert.AreEqual(0x1234567887654321ul, asyncId);
+        }
+
+        [TestMethod]
+        public void SharedReceiveRetainsCompoundRemainderForOutstandingRequests()
+        {
+            var first = ReadResponse();
+            first.Header.MessageId = 8;
+            first.Header.NextCommand = 80;
+            first.Buffer = Array.Empty<byte>();
+            var client = new QueuedResponseClient(first.ToBytes().Concat(FinalRead(9, 1)).ToArray());
+            Assert.AreEqual(8ul, client.ReceiveSmb2Response(TimeSpan.FromSeconds(1)).MessageId);
+            Assert.AreEqual(9ul, client.ReceiveSmb2Response(TimeSpan.FromSeconds(1)).MessageId);
+            Assert.AreEqual(1, client.ReceiveCount);
+        }
+
+        [TestMethod]
+        public void PendingReadRetainsUnsolicitedOplockNotificationForExplicitReceive()
+        {
+            var notification = new Smb2OpLockBreakNotificationPacket();
+            notification.Header.Command = Smb2Command.OPLOCK_BREAK;
+            notification.Header.Flags = Packet_Header_Flags_Values.FLAGS_SERVER_TO_REDIR;
+            notification.Header.MessageId = ulong.MaxValue;
+            notification.PayLoad.StructureSize = 24;
+            var client = new QueuedResponseClient(
+                ErrorResponse(0, Smb2Status.STATUS_PENDING, 3, 7),
+                notification.ToBytes(), FinalRead(0, 0, 7));
+            Assert.AreEqual(Smb2Status.STATUS_SUCCESS, client.Smb2Read(0, 131072, out _, out _));
+            var received = client.ExpectPacket<Smb2OpLockBreakNotificationPacket>(0);
+            Assert.AreEqual(ulong.MaxValue, received.Header.MessageId);
+            Assert.AreEqual(3, client.ReceiveCount);
+            Assert.AreEqual((ushort)9, client.Smb2AvailableCredits);
+        }
+
+        [TestMethod]
+        public void NegotiatedCapabilitiesCacheActualServerResponseNotClientOffer()
+        {
+            var client = new RdmaNegotiationClient(DialectRevision.Smb302);
+            client.ResponseCapabilities = NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_DFS;
+            client.Smb2Negotiate(new[] { DialectRevision.Smb302 }, out _);
+            Assert.AreEqual(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_DFS, client.NegotiatedServerCapabilities);
+            client.ResponseCapabilities = NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_MULTI_CHANNEL;
+            client.Smb2Negotiate(new[] { DialectRevision.Smb302 }, out _);
+            Assert.AreEqual(NEGOTIATE_Response_Capabilities_Values.GLOBAL_CAP_MULTI_CHANNEL, client.NegotiatedServerCapabilities);
+        }
+
+        [DataTestMethod]
+        [DataRow(false)]
+        [DataRow(true)]
+        public void TransportReassemblyUsesRemainingMessageDeadline(bool missingFinal)
+        {
+            var client = new FragmentResponseClient { MissingFinal = missingFinal };
+            NtStatus status = client.ReceiveMessage(TimeSpan.FromMilliseconds(50), out byte[] message);
+            Assert.AreEqual(missingFinal ? NtStatus.STATUS_IO_TIMEOUT : NtStatus.STATUS_SUCCESS, status);
+            if (missingFinal) Assert.IsNull(message);
+            else CollectionAssert.AreEqual(new byte[] { 1, 1 }, message);
+            Assert.IsTrue(client.ReceiveBudgets.Count > 1);
+            Assert.IsTrue(client.ReceiveBudgets.Last() < client.ReceiveBudgets.First());
+        }
+
+        [DataTestMethod]
+        [DataRow(16391u, 3)]
+        [DataRow(8192u, 1)]
+        [DataRow(7u, 1)]
+        public void MultichannelPublicEntrySeedsExactInlineChunks(uint total, int count)
+        {
+            var properties = Properties();
+            var test = InitializeMultichannel(properties);
+            ((TestConfig)Get(test, "testConfig")).LargeFileSizeInByte = total;
+            var client = new InlineChunkClient
+            {
+                Smb2MaxReadSize = 8192, Smb2MaxWriteSize = 8192
+            };
+            Set(test, "mainChannelClient", client);
+            RunToCapturedBoundary(
+                test.BVT_Smb2MultipleChannel_2Channels_DiffNicTypeDiffTransport);
+            Assert.AreEqual(count, client.Writes.Count);
+            Assert.AreEqual(total, (uint)client.FileContent.Length);
+            ulong offset = 0;
+            foreach (var request in client.Writes)
+            {
+                Assert.AreEqual(Channel_Values.CHANNEL_NONE, request.Channel);
+                Assert.AreEqual(offset, request.Offset);
+                Assert.AreEqual((uint)Math.Min(8192ul, total - offset), request.Length);
+                offset += request.Length;
+            }
+            Assert.AreEqual((ulong)total, offset);
+            CollectionAssert.AreEqual(client.FileContent, client.Payloads.SelectMany(bytes => bytes).ToArray());
+        }
+
+        [TestMethod]
+        public void SigningNegativePublicEntryMutatesEqualBytesInEncodedTransform()
+        {
+            var properties = Properties();
+            properties["RdmaChannelDataSizeInByte"] = "4096";
+            var test = new Smb2OverRdmaChannelTransformSigning();
+            Configure(test, properties);
+            var client = new SignatureMutationClient();
+            SetConnection(client, new SmbdConnection { MaxReadWriteSize = 65536, MaxSendSize = 65536 });
+            client.ServerConnection.MaxReadWriteSize = client.ServerConnection.MaxReceiveSize = 65536;
+            Set(Get(test, "smbdAdapter"), "client", client);
+            RunToCapturedBoundary(() => test.WriteOverRdma_Signing(
+                smb2RdmaTransformIds: new[] { Smb2RDMATransformId.SMB2_RDMA_TRANSFORM_SIGNING },
+                setInvalidSignature: true, enableRemoteInvalidation: false));
+            Assert.IsNotNull(client.EncodedSignature);
+            Assert.AreEqual(1, client.OriginalSignature.Zip(client.EncodedSignature).Count(p => p.First != p.Second));
+            CollectionAssert.AreEqual(client.OriginalSignature.Skip(1).ToArray(),
+                client.EncodedSignature.Skip(1).ToArray());
+        }
+
+        private static byte[] ErrorResponse(ulong mid, uint status, ushort grant, ulong asyncId,
+            Smb2Command command = Smb2Command.READ)
+        {
+            var packet = new Smb2ErrorResponsePacket();
+            packet.Header.Command = command;
+            packet.Header.MessageId = mid;
+            packet.Header.Status = status;
+            packet.Header.CreditRequestResponse = grant;
+            packet.Header.Flags = Packet_Header_Flags_Values.FLAGS_SERVER_TO_REDIR
+                | Packet_Header_Flags_Values.FLAGS_ASYNC_COMMAND;
+            packet.AsyncId = asyncId;
+            packet.PayLoad.StructureSize = 9;
+            packet.PayLoad.ErrorData = new byte[1];
+            return packet.ToBytes();
+        }
+
+        private static void RunToCapturedBoundary(Action action)
+        {
+            try { action(); }
+            catch (BoundaryReachedException) { return; }
+            Assert.Fail("Production entry did not reach the captured boundary.");
+        }
+
+        private static byte[] FinalRead(ulong mid, ushort grant, ulong? asyncId = null)
+        {
+            var response = ReadResponse();
+            response.Header.MessageId = mid;
+            response.Header.CreditRequestResponse = grant;
+            if (asyncId.HasValue)
+            {
+                response.Header.Flags |= Packet_Header_Flags_Values.FLAGS_ASYNC_COMMAND;
+                response.AsyncId = asyncId.Value;
+            }
+            response.Buffer = Array.Empty<byte>();
+            return response.ToBytes();
         }
 
         [DataTestMethod]
@@ -1283,6 +1526,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             public Smb2NegotiateRequestPacket Request { get; private set; }
             public DialectRevision SelectedDialect { get; private set; }
             public bool SelectSigning { get; set; } = true;
+            public NEGOTIATE_Response_Capabilities_Values ResponseCapabilities { get; set; }
             public RdmaNegotiationClient(DialectRevision supportedDialect) : base(TimeSpan.Zero)
             {
                 this.supportedDialect = supportedDialect;
@@ -1318,6 +1562,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                 response.PayLoad.MaxReadSize = Smb2MaxReadSize;
                 response.PayLoad.MaxWriteSize = Smb2MaxWriteSize;
                 response.PayLoad.MaxTransactSize = 65536;
+                response.PayLoad.Capabilities = ResponseCapabilities;
                 if (compatible && supportedDialect == DialectRevision.Smb311)
                 {
                     var preauth = new SMB2_PREAUTH_INTEGRITY_CAPABILITIES
@@ -1336,7 +1581,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             }
         }
 
-        private sealed class PositiveRdmaClient : RdmaNegotiationClient
+        private class PositiveRdmaClient : RdmaNegotiationClient
         {
             private readonly Dictionary<uint, byte[]> memory = new();
             private readonly Dictionary<uint, SmbdBufferReadWrite> permissions = new();
@@ -1352,6 +1597,8 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             public List<uint> MemoryWrites { get; } = new();
             public List<uint> MemoryReads { get; } = new();
             public PositiveRdmaClient(DialectRevision dialect) : base(dialect) { }
+
+            public override void ConnectOverTCP(IPAddress serverIp, IPAddress clientIp, ushort serverPort = 445) { }
 
             public override uint Smb2SessionSetup(SecurityPackageType package,
                 string domain, string user, string password, string server,
@@ -1588,6 +1835,32 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             }
         }
 
+        private sealed class FragmentResponseClient : SmbdClient
+        {
+            public bool MissingFinal { get; set; }
+            public List<TimeSpan> ReceiveBudgets { get; } = new();
+
+            public FragmentResponseClient()
+            {
+                Connection = new SmbdConnection();
+                Connection.ReceiveCredits = 4;
+                Connection.FragmentReassemblyBuffer = new byte[1024];
+            }
+
+            public override NtStatus ReceiveDataTransferMessage(TimeSpan timeout, out SmbdDataTransferMessage message)
+            {
+                ReceiveBudgets.Add(timeout);
+                System.Threading.Thread.Sleep(5);
+                message = new SmbdDataTransferMessage
+                {
+                    DataLength = 1,
+                    RemainingDataLength = MissingFinal || ReceiveBudgets.Count == 1 ? 1u : 0u,
+                    Buffer = new byte[] { 1 }
+                };
+                return ReceiveBudgets.Count > 20 ? NtStatus.STATUS_IO_TIMEOUT : NtStatus.STATUS_SUCCESS;
+            }
+        }
+
         private sealed class ReceivingClient : Smb2OverSmbdTestClient
         {
             public NtStatus Status { get; set; }
@@ -1596,7 +1869,7 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             {
                 Decoder.TransportType = Smb2TransportType.Rdma;
             }
-            protected override NtStatus ReceiveSmbdMessage(out byte[] message)
+            protected override NtStatus ReceiveSmbdMessage(TimeSpan timeout, out byte[] message)
             {
                 message = null;
                 if (Failure != null)
@@ -1604,6 +1877,75 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                     throw Failure;
                 }
                 return Status;
+            }
+        }
+
+        private sealed class QueuedResponseClient : Smb2OverSmbdTestClient
+        {
+            private readonly Queue<byte[]> responses;
+            public int ReceiveCount { get; private set; }
+            public int SendCount { get; private set; }
+            public bool RepeatPending { get; set; }
+            public List<TimeSpan> ReceiveBudgets { get; } = new();
+            public QueuedResponseClient(params byte[][] responses) : base(TimeSpan.FromSeconds(1))
+            {
+                this.responses = new Queue<byte[]>(responses);
+                Decoder.TransportType = Smb2TransportType.Rdma;
+                Smb2AvailableCredits = 8;
+            }
+            public override void SendPacket(byte[] data) => SendCount++;
+            protected override NtStatus ReceiveSmbdMessage(TimeSpan timeout, out byte[] message)
+            {
+                ReceiveCount++;
+                ReceiveBudgets.Add(timeout);
+                if (RepeatPending)
+                {
+                    System.Threading.Thread.Sleep(5);
+                    message = ErrorResponse(0, Smb2Status.STATUS_PENDING, 0, 7);
+                    return NtStatus.STATUS_SUCCESS;
+                }
+                message = responses.Count > 0 ? responses.Dequeue() : null;
+                return message == null ? NtStatus.STATUS_IO_TIMEOUT : NtStatus.STATUS_SUCCESS;
+            }
+        }
+
+        private sealed class InlineChunkClient : PositiveRdmaClient
+        {
+            public List<byte[]> Payloads { get; } = new();
+            public InlineChunkClient() : base(DialectRevision.Smb30) { }
+            public override void SendPacket(byte[] data)
+            {
+                var header = TypeMarshal.ToStruct<Packet_Header>(data);
+                if (header.Command == Smb2Command.IOCTL) throw new BoundaryReachedException();
+                base.SendPacket(data);
+                if (header.Command == Smb2Command.WRITE)
+                {
+                    var request = TypeMarshal.ToStruct<WRITE_Request>(data.Skip(64).ToArray());
+                    Payloads.Add(data.Skip(request.DataOffset).Take((int)request.Length).ToArray());
+                }
+            }
+        }
+
+        private sealed class SignatureMutationClient : PositiveRdmaClient
+        {
+            public byte[] OriginalSignature { get; } = Enumerable.Repeat((byte)0x33, 16).ToArray();
+            public byte[] EncodedSignature { get; private set; }
+            public SignatureMutationClient() : base(DialectRevision.Smb311) { }
+            public override void SignByteArray(byte[] original, out byte[] nonce, out byte[] signature, Smb2Command command)
+            {
+                nonce = Array.Empty<byte>();
+                signature = (byte[])OriginalSignature.Clone();
+            }
+            public override void SendPacket(byte[] data)
+            {
+                base.SendPacket(data);
+                var header = TypeMarshal.ToStruct<Packet_Header>(data);
+                if (header.Command != Smb2Command.WRITE) return;
+                var request = TypeMarshal.ToStruct<WRITE_Request>(data.Skip(64).ToArray());
+                var transform = TypeMarshal.ToStruct<SMB2_RDMA_TRANSFORM>(data.Skip(request.WriteChannelInfoOffset).ToArray());
+                EncodedSignature = TypeMarshal.ToStruct<SMB2_RDMA_CRYPTO_TRANSFORM>(
+                    data.Skip(request.WriteChannelInfoOffset + TypeMarshal.ToBytes(transform).Length).ToArray()).Signature;
+                throw new BoundaryReachedException();
             }
         }
 

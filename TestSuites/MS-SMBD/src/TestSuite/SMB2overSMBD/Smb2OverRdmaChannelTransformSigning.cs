@@ -412,10 +412,7 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
             if (setInvalidSignature)
             {
-                // Invalidate the signature
-                byte temp = signature[3];
-                signature[3] = signature[2];
-                signature[2] = temp;
+                signature[0] ^= 1;
             }
 
             // WHAT: when the scenario is "session without signing", send the WRITE with SMB2_FLAGS_SIGNED cleared.

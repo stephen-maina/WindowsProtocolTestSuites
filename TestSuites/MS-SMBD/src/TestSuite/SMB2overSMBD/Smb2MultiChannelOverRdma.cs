@@ -204,7 +204,8 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 }
 
                 WRITE_Response writeResponse;
-                status = (NtStatus)mainChannelClient.Smb2Write((UInt64)offset, content, out writeResponse);
+                status = (NtStatus)mainChannelClient.Smb2Write((UInt64)offset,
+                    content.Skip((int)offset).Take((int)length).ToArray(), out writeResponse);
                 BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of SMB2 Write File is {0}", status);
                 BaseTestSite.Assert.AreEqual<uint>((uint)length, writeResponse.Count, "DataLength in WRITE response is {0}", writeResponse.Count);
 
