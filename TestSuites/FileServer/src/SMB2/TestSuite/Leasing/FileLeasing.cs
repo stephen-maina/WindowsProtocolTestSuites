@@ -113,7 +113,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
         [TestCategory(TestCategories.LeaseV1)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle LeaseV1 context with the same lease key")]
-        // SPEC: [MS-SMB2] 3.3.5.9.8 - same LeaseKey from same ClientGuid maps to the same Lease; server MUST NOT promote on non-superset request or while Lease.Breaking.
+        // SPEC: [MS-SMB2] 3.3.5.9.8 - same ClientGuid/LeaseKey, equal RWH requests; checks the existing lease state and absence of a break, not non-superset or pending-break branches.
         public void Leasing_FileLeasingV1_SameLeaseKey()
         {
             #region Check Applicability
@@ -136,7 +136,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.Leasing
         [TestCategory(TestCategories.LeaseV2)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("This test case is designed to test whether server can handle LeaseV2 context with the same lease key")]
-        // SPEC: [MS-SMB2] 3.3.5.9.11 - same LeaseKey from same ClientGuid maps to the same Lease; server MUST NOT promote on non-superset request or while Lease.Breaking.
+        // SPEC: [MS-SMB2] 3.3.5.9.11 - same ClientGuid/LeaseKey, equal RWH requests; checks the existing lease state and absence of a break, not non-superset or pending-break branches.
         public void Leasing_FileLeasingV2_SameLeaseKey()
         {
             #region Check Applicability

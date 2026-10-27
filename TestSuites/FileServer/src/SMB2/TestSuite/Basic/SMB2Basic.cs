@@ -2784,6 +2784,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             {
                 if (status == Smb2Status.STATUS_NOT_SUPPORTED || status == Smb2Status.STATUS_INVALID_INFO_CLASS)
                 {
+                    // Both statuses leave this positive-evidence scenario inconclusive; neither proves server non-support.
+                    // [MS-SMB2] 3.3.5.20.1 permits object-store-error propagation; [MS-FSCC] 2.4.35 defines this class.
                     BaseTestSite.Assert.Inconclusive("Positive FileNormalizedNameInformation evidence is unavailable (status {0}); this response alone does not establish server non-support.", status);
                 }
                 else

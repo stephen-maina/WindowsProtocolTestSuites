@@ -294,7 +294,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.HvrsFsa)]
         [TestCategory(TestCategories.UnexpectedFields)]
         [Description("Test the server response when non-zero value is set to the Key field of FSCTL_FILE_LEVEL_TRIM request.")]
-        // SPEC: [MS-SMB2] 3.3.5.15 pass-through FSCTL_FILE_LEVEL_TRIM; invalid request MUST be failed by the object store ([MS-FSA])
+        // SPEC: [MS-SMB2] 3.3.5.15.14 - the SMB server MUST reject nonzero Key with STATUS_INVALID_PARAMETER before pass-through under 3.3.5.15.8; [MS-FSCC] 2.3.13 defines the request.
         public void FileLevelTrim_Negative_NonZeroKeyInRequest()
         {
             uint treeId;

@@ -65,7 +65,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Smb30)]
         [TestCategory(TestCategories.FsctlEnumerateSnapShots)]
         [Description("This test case is designed to test basic functionality of FSCTL_SRV_ENUMERATE_SNAPSHOTS.")]
-        // SPEC: [MS-SMB2] 3.3.5.15.8 (FSCTL_SRV_ENUMERATE_SNAPSHOTS) - response SnapShotArraySize/NumberOfSnapShots; BUFFER_OVERFLOW per 3.3.5.15 when MaxOutputResponse small
+        // SPEC: [MS-SMB2] 3.3.5.15.1 / 2.2.32.2 - header-only and full-capacity snapshot queries both expect SUCCESS; checks returned counts/array, not a BUFFER_OVERFLOW branch.
         public void BVT_EnumerateSnapShots()
         {
             #region Check Applicability

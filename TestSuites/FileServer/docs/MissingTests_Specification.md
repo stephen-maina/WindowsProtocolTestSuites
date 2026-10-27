@@ -68,13 +68,15 @@ state is not a subset of BreakToLeaseState; `STATUS_OBJECT_NAME_NOT_FOUND` if th
 | ID | Test (V2 variant also needed unless noted) | Spec | Scenario / pass criteria | Pri |
 |---|---|---|---|---|
 | A1 | `BVT_Leasing_LeaseState_DowngradeNotAllowed` (+V2) | 3.3.5.9.8: if the requested state is not a superset of Lease.LeaseState, or Lease.Breaking is TRUE, the server MUST NOT promote | Open with RWH; reopen same LeaseKey requesting a lower state. Response LeaseState remains the held state. | P2 |
-| A2 | `BVT_Leasing_PartialOverlapRequest_NotDowngrade` (+V2) | 3.3.5.9.8 (same rule) | Hold RH; request RW (not a superset). No promotion; held state is not reduced. | P2 |
-| A3 | `BVT_Leasing_UpgradeOnSupersetRequest` (+V2) | 3.3.5.9.8: superset and not Breaking, server MUST request promotion from the object store | Hold R; request RWH, same key, no other opener. Granted state is the requested one. | P2 |
+| A2 | `BVT_Leasing_PartialOverlapRequest_NotDowngrade` (+V2) | 3.3.5.9.8, 3.3.5.9.11 | Establish RH with no break pending; use the same ClientGuid and LeaseKey to request RW (not a superset). Server MUST NOT promote the lease: the state remains RH, not the union RWH. | P2 |
+| A3 | `BVT_Leasing_UpgradeOnSupersetRequest` (+V2) | 3.3.5.9.8, 3.3.5.9.11 | Establish R with no break pending; use the same ClientGuid and LeaseKey to request RWH. Server MUST request promotion from the object store. If that promotion succeeds, the state MUST become RWH; without independently established store success, do not require an unconditional RWH grant. | P2 |
 | A4 | `BVT_Leasing_CreateDuringLeaseBreak_SameLeaseKey_NotBlocked` (+V2) | 3.3.5.9.8 (Lease.Breaking TRUE: server returns the existing LeaseState with SMB2_LEASE_FLAG_BREAK_IN_PROGRESS), 3.3.4.7 | While a break is pending, CREATE with the same LeaseKey completes without waiting for the ack; response has BREAK_IN_PROGRESS and existing state. | P2 |
 | A5 | `BVT_Leasing_WriteCache_BreakOnIncompatibleShareMode` (+V2) | 3.3.4.7 (notification fields: ACK_REQUIRED flag, CurrentLeaseState, NewLeaseState), [MS-FSA] 2.1.5.1 | A holds RWH; B opens with incompatible ShareAccess. A gets a break; B completes after ack. | P2 |
 | A6 | `BVT_Leasing_WriteCache_BreakOnReadDataAccess` (+V2) | 3.3.4.7 | A holds RWH; B opens FILE_READ_DATA. A is broken to drop Write caching. | P2 |
 | A7 | `BVT_Leasing_WriteCache_BreakOnWriteDataAccess` (+V2) | 3.3.4.7 | A holds RWH; B opens FILE_WRITE_DATA. A is broken. | P2 |
 | A8 | `BVT_Leasing_WriteCache_NoBreakOnReadControl` (+V2) | 3.3.4.7 | A holds RWH; B opens READ_CONTROL only. No break (wait, assert none). | P2 |
+
+The existing `Leasing_FileLeasingV1_SameLeaseKey` and `Leasing_FileLeasingV2_SameLeaseKey` methods exercise equal-state RWH reopens with the same ClientGuid and LeaseKey. They do not implement A2/A3 or the pending-break branch in A4; those scenarios remain planned, not covered by the equal-state tests.
 
 ## B. Spec requirements with no test
 
@@ -144,7 +146,7 @@ state is not a subset of BreakToLeaseState; `STATUS_OBJECT_NAME_NOT_FOUND` if th
 | B7.4 | COPYCHUNK / SRV_REQUEST_RESUME_KEY limits, invalid key, zero chunks | Section **(locate)** under 3.3.5.15.x; read for exact statuses | P2 |
 | B7.5 | Pipe FSCTLs (PIPE_TRANSCEIVE, PIPE_WAIT) | Section **(locate)** under 3.3.5.15.x | P3 |
 | B7.6 | InputCount, MaxInputResponse or MaxOutputResponse > MaxTransactSize (SHOULD INVALID_PARAMETER); output never exceeds MaxOutputResponse (store BUFFER_OVERFLOW -> `STATUS_BUFFER_OVERFLOW`); InputOffset/InputCount bounds violations (not multiple of 8, past message end, inside header: MUST INVALID_PARAMETER); shared-VHD FSCTLs when unsupported: INVALID_DEVICE_REQUEST | See left | P2 |
-| B7.7 | FSCTL_LMR_REQUEST_RESILIENCY on a non-durable open | Section **(locate)** under 3.3.5.15.x | P3 |
+| B7.7 | FSCTL_LMR_REQUEST_RESILIENCY converts a non-durable open | With SMB 2.1/3.x, supported resiliency, a valid open and sufficient input with an allowed Timeout, require a successful response and resilient-open behavior per 3.3.5.15.9. Prior durability is not required: Open.IsDurable becomes FALSE and Open.IsResilient becomes TRUE. Unsupported-feature and malformed-input cases are separate branches. | P3 |
 
 ### B8. ECHO / CANCEL / FLUSH / READ / WRITE / LOCK
 | ID | Scenario | Spec | Pass criteria | Pri |

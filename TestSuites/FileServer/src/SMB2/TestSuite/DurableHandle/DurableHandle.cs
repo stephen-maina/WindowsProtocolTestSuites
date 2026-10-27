@@ -380,7 +380,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.Positive)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context and include create durable request.")]
-        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect also carrying SMB2_CREATE_DURABLE_HANDLE_REQUEST: server MUST fail with STATUS_INVALID_PARAMETER.
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - with DHnC, the server MUST ignore the additional DHnQ context; this valid reconnect expects SUCCESS.
         public void DurableHandleV1_Reconnect_IncludeCreateDurableHandle()
         {
             //Client requests a durable handle with LeaseV1.
@@ -408,7 +408,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context and include SMB2_CREATE_DURABLE_HANDLE_REQUEST_V2.")]
-        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect also carrying SMB2_CREATE_DURABLE_HANDLE_REQUEST_V2: server MUST fail with STATUS_INVALID_PARAMETER.
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - with DHnC plus DH2Q, the server SHOULD fail with STATUS_INVALID_PARAMETER; the helper tests that rejection policy.
         public void DurableHandleV1_Reconnect_IncludeRequestV2()
         {
             //Client requests a durable handle with LeaseV1.
@@ -423,7 +423,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context and include SMB2_CREATE_DURABLE_HANDLE_RECONNECT_V2")]
-        // SPEC: [MS-SMB2] 3.3.5.9.7 - DHnC reconnect also carrying SMB2_CREATE_DURABLE_HANDLE_RECONNECT_V2: server MUST fail with STATUS_INVALID_PARAMETER.
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - with DHnC plus DH2C, the server SHOULD fail with STATUS_INVALID_PARAMETER; the helper tests that rejection policy.
         public void DurableHandleV1_Reconnect_IncludeReconnectV2()
         {
             //Client requests a durable handle with LeaseV1.
@@ -437,7 +437,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context without FileId.Persistent")]
-        // SPEC: [MS-SMB2] 3.3.5.9.7 - Open lookup by FileId.Persistent fails: server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - failed FileId.Persistent lookup SHOULD fail with STATUS_OBJECT_NAME_NOT_FOUND; the helper tests that rejection policy.
         public void DurableHandleV1_Reconnect_WithoutFileIdPersistent()
         {
             //Client requests a durable handle with LeaseV1.
@@ -465,7 +465,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite.DurableHandl
         [TestCategory(TestCategories.UnexpectedContext)]
         [TestCategory(TestCategories.DurableHandleV1LeaseV1)]
         [Description("Test reconnect with DurableHandleV1 and LeaseV1 context when request Lease is Null")]
-        // SPEC: [MS-SMB2] 3.3.5.9.7 - Open.Lease is not NULL but the request has no lease (Lease V1): server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
+        // SPEC: [MS-SMB2] 3.3.5.9.7 - the helper makes Open.Lease NULL, then includes a Lease V1 context; the server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV1_Reconnect_LeaseIsNull()
         {
             //Client requests a durable handle with no LeaseV1.

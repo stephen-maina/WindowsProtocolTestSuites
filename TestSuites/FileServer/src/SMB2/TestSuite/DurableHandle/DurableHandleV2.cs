@@ -377,7 +377,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2BatchOplock)]
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("Test reconnect with DurableHandleV2 and an additional SMB2_CREATE_DURABLE_HANDLE_REQUEST create context.")]
-        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C with an additional SMB2_CREATE_DURABLE_HANDLE_REQUEST context: server MUST fail with STATUS_INVALID_PARAMETER.
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - after FileId.Persistent lookup succeeds, DH2C plus DHnQ MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV2_Reconnect_IncludeDurableHandleRequest()
         {
             /// 1. Client requests a durable handle V2 with BatchOplock.
@@ -399,7 +399,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2BatchOplock)]
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("Test reconnect with DurableHandleV2 and an additional SMB2_CREATE_DURABLE_HANDLE_RECONNECT create context.")]
-        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C with an additional SMB2_CREATE_DURABLE_HANDLE_RECONNECT context: server MUST fail with STATUS_INVALID_PARAMETER.
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - after FileId.Persistent lookup succeeds, DH2C plus DHnC MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV2_Reconnect_IncludeDurableHandleReconnect()
         {
             /// 1. Client requests a durable handle V2 with BatchOplock.
@@ -421,7 +421,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2BatchOplock)]
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("Test reconnect with DurableHandleV2 and an additional SMB2_CREATE_DURABLE_HANDLE_REQUEST_V2 create context.")]
-        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C with an additional SMB2_CREATE_DURABLE_HANDLE_REQUEST_V2 context: server MUST fail with STATUS_INVALID_PARAMETER.
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - after FileId.Persistent lookup succeeds, DH2C plus DH2Q MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV2_Reconnect_IncludeDurableHandleRequestV2()
         {
             /// 1. Client requests a durable handle V2 with BatchOplock.
@@ -558,7 +558,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.DurableHandleV2LeaseV1)]
         [TestCategory(TestCategories.Compatibility)]
         [Description("Test reconnect with DurableHandleV2 and LeaseV1 context, but the file name is different.")]
-        // SPEC: [MS-SMB2] 3.3.5.9.12 - DH2C reconnect with a different FileName than Open.FileName: server MUST fail with STATUS_INVALID_PARAMETER.
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - FileId.Persistent lookup finds a leased open with FileDeleteOnClose FALSE and a different FileName; the server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
         public void DurableHandleV2_Reconnect_WithLeaseV1_WithDifferentFileName()
         {
             /// 1. Client requests a durable handle V2 with LeaseV1 context
@@ -776,7 +776,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.PersistentHandle)]
         [TestCategory(TestCategories.InvalidIdentifier)]
         [Description("Test that reconnect fails when both the FileId.Persistent lookup and the CreateGuid lookup fail.")]
-        // SPEC: [MS-SMB2] 3.3.5.9.12 - Both FileId.Persistent and CreateGuid lookups fail: server MUST fail with STATUS_OBJECT_NAME_NOT_FOUND.
+        // SPEC: [MS-SMB2] 3.3.5.9.12 - failed persistent-handle CreateGuid lookup SHOULD fail with STATUS_OBJECT_NAME_NOT_FOUND; this platform-gated helper tests that rejection policy.
         public void PersistentHandle_Reconnect_ViaCreateGuid_CreateGuidNotFound()
         {
             if (TestConfig.Platform >= Platform.WindowsServer2022 || TestConfig.Platform == Platform.NonWindows)
