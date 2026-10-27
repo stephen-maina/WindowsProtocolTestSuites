@@ -59,6 +59,7 @@ These are synthetic `Diagnostics.Tests` checks, not normative MS-SMBD wire test 
 | `StartAsync_IndeterminateRecovery_PreservesUnresolvedWriterWithoutStopping` | Managed netsh ownership | Timeout, denied, unparseable, foreign and canceled recovery cannot claim writer absence or stop a session with an unproven output path. Explicit no-session and proven-owned recovery retain their existing cases. |
 | `StartAsync_IndeterminateNativeStart_BlocksReuseWithoutClaimingOwnership` | Managed sniffer admission | A timed-out or canceled native start retains unresolved admission without granting stop authority or starting another writer. |
 | Maximum-duration and sequential-invocation provider cases | Managed collection completeness | Both providers finalize duration-limited files as incomplete collection; ordinary stopped/reused captures remain complete. All native calls are faked. |
+| `RunnerExecutableTests.Run_StorageFailure_PreservesChildAndReportsDiagnostics` | Managed runner executable | Sixteen cases cover bootstrap, each output open, mid-copy, flush, append, broken warning console, unavailable result directory, healthy pass/fail, disabled diagnostics, invalid configuration, child launch failure and invalid CLI. Preserve exactly one child launch and its true exit; drain verbose output through EOF despite failed evidence sinks. Deliberate invalid CLI remains runner exit 2. |
 
 The existing lifecycle and composite-provider regressions also preserve the original protocol error ledger and independently attempt both provider stops.
 

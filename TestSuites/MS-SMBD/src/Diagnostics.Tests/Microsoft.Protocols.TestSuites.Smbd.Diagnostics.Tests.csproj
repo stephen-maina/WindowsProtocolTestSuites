@@ -12,8 +12,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Runner\ExecutableFixture\**\*.cs" />
+    <ProjectReference Include="Runner\ExecutableFixture\Runner.TestSupport.csproj" ReferenceOutputAssembly="false" />
     <Compile Include="..\..\..\..\AssemblyInfo\SharedAssemblyInfo.cs" Link="SharedAssemblyInfo.cs" />
   </ItemGroup>
+  <Target Name="CopyRunnerExecutableFixture" AfterTargets="Build">
+    <ItemGroup>
+      <RunnerFixtureFiles Include="..\Diagnostics.Runner\bin\$(Configuration)\net8.0\**\*" />
+      <RunnerHook Include="Runner\ExecutableFixture\bin\$(Configuration)\net8.0\Microsoft.Protocols.TestSuites.Smbd.Diagnostics.Runner.TestSupport.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(RunnerFixtureFiles)" DestinationFiles="@(RunnerFixtureFiles->'$(OutDir)runner-host\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(RunnerHook)" DestinationFolder="$(OutDir)runner-host" />
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Common\Diagnostics\Microsoft.Protocols.TestSuites.Diagnostics.csproj" />

@@ -19,6 +19,9 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Diagnostics.RunnerHost;
 
 internal static class Program
 {
+    internal static RunnerEvidenceStorage EvidenceStorage { get; set; } = new();
+    internal static string DotnetExecutable { get; set; } = "dotnet";
+
     public static async Task<int> Main(string[] args)
     {
         try
@@ -28,37 +31,37 @@ internal static class Program
         }
         catch (RunnerConfigurationException exception)
         {
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 $"MS-SMBD diagnostics runner configuration error: {exception.Message}");
             return 2;
         }
         catch (RunnerEvidenceException exception)
         {
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 $"MS-SMBD diagnostics runner evidence error: {exception.Message}");
             return 2;
         }
         catch (ArgumentException exception)
         {
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 $"MS-SMBD diagnostics runner argument error: {exception.Message}");
             return 2;
         }
         catch (IOException)
         {
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics runner encountered an I/O error.");
             return 2;
         }
         catch (UnauthorizedAccessException)
         {
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics runner encountered an access error.");
             return 2;
         }
         catch (Win32Exception)
         {
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics runner could not start dotnet test.");
             return 2;
         }
@@ -165,11 +168,13 @@ internal static class Program
                 .ConfigureAwait(false);
         }
 
-        WriteBootstrap(
-            layout.BootstrapPath,
-            plan.RunId,
-            options.BinaryPaths.Count,
-            string.IsNullOrEmpty(options.Filter));
+        TryEvidence(
+            () => WriteBootstrap(
+                layout.BootstrapPath,
+                plan.RunId,
+                options.BinaryPaths.Count,
+                string.IsNullOrEmpty(options.Filter)),
+            "bootstrap-write");
         int runnerExitCode;
         try
         {
@@ -181,10 +186,10 @@ internal static class Program
         }
         catch (Win32Exception)
         {
-            AppendBootstrap(
+            TryAppendBootstrap(
                 layout.BootstrapPath,
                 "test-process-start=failed");
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics runner could not start the dotnet test process.");
             return 1;
         }
@@ -202,58 +207,58 @@ internal static class Program
         }
         catch (RunnerEvidenceException exception)
         {
-            AppendBootstrap(
+            TryAppendBootstrap(
                 layout.BootstrapPath,
                 "reconciliation=unavailable");
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 $"MS-SMBD diagnostics reconciliation warning: {exception.Message}");
         }
         catch (IOException)
         {
-            AppendBootstrap(
+            TryAppendBootstrap(
                 layout.BootstrapPath,
                 "reconciliation=unavailable");
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics reconciliation warning: evidence I/O was unavailable.");
         }
         catch (UnauthorizedAccessException)
         {
-            AppendBootstrap(
+            TryAppendBootstrap(
                 layout.BootstrapPath,
                 "reconciliation=unavailable");
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics reconciliation warning: evidence access was unavailable.");
         }
         catch (ManifestSerializationException)
         {
-            AppendBootstrap(
+            TryAppendBootstrap(
                 layout.BootstrapPath,
                 "reconciliation=unavailable");
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics reconciliation warning: a provisional manifest was invalid.");
         }
         catch (ArtifactStorageException)
         {
-            AppendBootstrap(
+            TryAppendBootstrap(
                 layout.BootstrapPath,
                 "reconciliation=unavailable");
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics reconciliation warning: artifact storage was unavailable.");
         }
         catch (InvalidOperationException)
         {
-            AppendBootstrap(
+            TryAppendBootstrap(
                 layout.BootstrapPath,
                 "reconciliation=unavailable");
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics reconciliation warning: evidence finalization was unavailable.");
         }
         catch (ArgumentException)
         {
-            AppendBootstrap(
+            TryAppendBootstrap(
                 layout.BootstrapPath,
                 "reconciliation=unavailable");
-            Console.Error.WriteLine(
+            WriteDiagnostic(
                 "MS-SMBD diagnostics reconciliation warning: correlation input was invalid.");
         }
 
@@ -264,7 +269,7 @@ internal static class Program
         RunnerCliOptions options,
         string reasonCode)
     {
-        Console.Error.WriteLine(
+        WriteDiagnostic(
             $"MS-SMBD diagnostics unavailable ({reasonCode}); continuing the test run without runner evidence.");
         return await ExecuteDisabledAsync(options).ConfigureAwait(false);
     }
@@ -277,10 +282,11 @@ internal static class Program
                 Path.GetDirectoryName(options.BinaryPaths[0])) ??
                 Path.GetDirectoryName(options.BinaryPaths[0])!,
             "TestResults");
-        Directory.CreateDirectory(resultRoot);
+        bool resultStorageAvailable = TryEvidence(
+            () => EvidenceStorage.CreateResultsDirectory(resultRoot), "results-directory");
         using Process process = CreateProcess(
             options,
-            resultRoot,
+            resultStorageAvailable ? resultRoot : null,
             trxFileName: null,
             redirectOutput: false,
             runId: null);
@@ -304,38 +310,48 @@ internal static class Program
             "results.trx",
             redirectOutput: true,
             runId);
-        using FileStream stdout = CreateOutput(layout.StdoutPath);
-        using FileStream stderr = CreateOutput(layout.StderrPath);
-        if (!process.Start())
+        Stream stdout = OpenOutputOrDiscard(layout.StdoutPath, "stdout-open");
+        Stream stderr = OpenOutputOrDiscard(layout.StderrPath, "stderr-open");
+        try
         {
-            return 1;
-        }
+            if (!process.Start())
+            {
+                return 1;
+            }
 
-        Task stdoutCopy = CopyOutputAsync(
-            process.StandardOutput.BaseStream,
-            stdout,
-            Console.OpenStandardOutput());
-        Task stderrCopy = CopyOutputAsync(
-            process.StandardError.BaseStream,
-            stderr,
-            Console.OpenStandardError());
-        await process.WaitForExitAsync().ConfigureAwait(false);
-        await Task.WhenAll(stdoutCopy, stderrCopy).ConfigureAwait(false);
-        stdout.Flush(flushToDisk: true);
-        stderr.Flush(flushToDisk: true);
-        return process.ExitCode;
+            Task stdoutCopy = CopyOutputAsync(
+                process.StandardOutput.BaseStream,
+                stdout,
+                Console.OpenStandardOutput());
+            Task stderrCopy = CopyOutputAsync(
+                process.StandardError.BaseStream,
+                stderr,
+                Console.OpenStandardError());
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            await Task.WhenAll(stdoutCopy, stderrCopy).ConfigureAwait(false);
+            if (stdout != Stream.Null)
+                TryEvidence(() => EvidenceStorage.FlushOutput(stdout), "stdout-flush");
+            if (stderr != Stream.Null)
+                TryEvidence(() => EvidenceStorage.FlushOutput(stderr), "stderr-flush");
+            return process.ExitCode;
+        }
+        finally
+        {
+            TryEvidence(stdout.Dispose, "stdout-close");
+            TryEvidence(stderr.Dispose, "stderr-close");
+        }
     }
 
     private static Process CreateProcess(
         RunnerCliOptions options,
-        string resultsDirectory,
+        string? resultsDirectory,
         string? trxFileName,
         bool redirectOutput,
         string? runId)
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = "dotnet",
+            FileName = DotnetExecutable,
             CreateNoWindow = true,
             RedirectStandardError = redirectOutput,
             RedirectStandardOutput = redirectOutput,
@@ -353,13 +369,16 @@ internal static class Program
             startInfo.ArgumentList.Add(options.Filter);
         }
 
-        startInfo.ArgumentList.Add("--logger");
-        startInfo.ArgumentList.Add(
-            trxFileName is null
-                ? "trx"
-                : $"trx;LogFileName={trxFileName}");
-        startInfo.ArgumentList.Add("--results-directory");
-        startInfo.ArgumentList.Add(resultsDirectory);
+        if (resultsDirectory is not null)
+        {
+            startInfo.ArgumentList.Add("--logger");
+            startInfo.ArgumentList.Add(
+                trxFileName is null
+                    ? "trx"
+                    : $"trx;LogFileName={trxFileName}");
+            startInfo.ArgumentList.Add("--results-directory");
+            startInfo.ArgumentList.Add(resultsDirectory);
+        }
         if (runId is not null)
         {
             startInfo.Environment[
@@ -367,17 +386,6 @@ internal static class Program
         }
 
         return new Process { StartInfo = startInfo };
-    }
-
-    private static FileStream CreateOutput(string path)
-    {
-        return new FileStream(
-            path,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.Read,
-            bufferSize: 81920,
-            FileOptions.Asynchronous | FileOptions.WriteThrough);
     }
 
     private static async Task CopyOutputAsync(
@@ -396,16 +404,57 @@ internal static class Program
                 break;
             }
 
-            await evidence
-                .WriteAsync(buffer.AsMemory(0, read))
-                .ConfigureAwait(false);
-            await console
-                .WriteAsync(buffer.AsMemory(0, read))
-                .ConfigureAwait(false);
+            if (!await TryWriteAsync(evidence, buffer.AsMemory(0, read), "evidence-copy").ConfigureAwait(false))
+                evidence = Stream.Null;
+            if (!await TryWriteAsync(console, buffer.AsMemory(0, read), "console-copy").ConfigureAwait(false))
+                console = Stream.Null;
         }
 
-        await evidence.FlushAsync().ConfigureAwait(false);
-        await console.FlushAsync().ConfigureAwait(false);
+        TryEvidence(evidence.Flush, "evidence-copy-flush");
+        TryEvidence(console.Flush, "console-copy-flush");
+    }
+
+    private static Stream OpenOutputOrDiscard(string path, string stage)
+    {
+        Stream stream = Stream.Null;
+        TryEvidence(() => stream = EvidenceStorage.OpenOutput(path), stage);
+        return stream;
+    }
+
+    private static async Task<bool> TryWriteAsync(Stream stream, ReadOnlyMemory<byte> bytes, string stage)
+    {
+        try
+        {
+            await stream.WriteAsync(bytes).ConfigureAwait(false);
+            return true;
+        }
+        catch (IOException) { ReportEvidenceFailure(stage); }
+        catch (UnauthorizedAccessException) { ReportEvidenceFailure(stage); }
+        catch (ObjectDisposedException) { ReportEvidenceFailure(stage); }
+        return false;
+    }
+
+    private static bool TryEvidence(Action action, string stage)
+    {
+        try { action(); return true; }
+        catch (IOException) { ReportEvidenceFailure(stage); }
+        catch (UnauthorizedAccessException) { ReportEvidenceFailure(stage); }
+        catch (ObjectDisposedException) { ReportEvidenceFailure(stage); }
+        return false;
+    }
+
+    private static void ReportEvidenceFailure(string stage)
+    {
+        // Do not include paths, exception messages or command-line secrets in the fallback channel.
+        WriteDiagnostic($"MS-SMBD diagnostics evidence unavailable ({stage}); preserving the test process result.");
+    }
+
+    private static void WriteDiagnostic(string message)
+    {
+        try { Console.Error.WriteLine(message); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private static void WriteBootstrap(
@@ -423,18 +472,14 @@ internal static class Program
             $"filter={(emptyFilter ? "empty" : "sha256-projected")}",
             "test-process=dotnet-test",
             string.Empty);
-        File.WriteAllText(
-            path,
-            content,
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        EvidenceStorage.WriteText(path, content);
     }
 
-    private static void AppendBootstrap(string path, string status)
+    private static void TryAppendBootstrap(string path, string status)
     {
-        File.AppendAllText(
+        TryEvidence(() => EvidenceStorage.AppendText(
             path,
-            status + Environment.NewLine,
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            status + Environment.NewLine), "bootstrap-append");
     }
 }
 
