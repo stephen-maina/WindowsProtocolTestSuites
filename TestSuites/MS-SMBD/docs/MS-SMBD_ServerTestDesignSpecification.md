@@ -2840,6 +2840,34 @@ artifact retention, full validation, publication approval and the fresh
 review anchor. Local raw TRX/logs must be retained with the durable task record
 before worktree disposal. Final-source and native acceptance remain open.
 
+## Managed RDMA response regressions
+
+`RdmaResponseReviewTests` is a hardware-free MSTest fixture. It queues encoded
+SMB2 responses at the receive boundary and calls the existing public production
+READ, WRITE and `ExpectPacket` paths; it does not replace their receive loops,
+decoder, request builder or credit accounting. Transport tests call the real
+`SmbdClient.ReceiveMessage` with controlled Data Transfer receives.
+
+| Test method | Scenario and pass criteria |
+|---|---|
+| `PublicReadWaitsForFinalAndAccountsRepeatedPendingOnce` | Repeated pending responses with the same full-width AsyncId precede success or ACCESS_DENIED. Consume each interim grant once, return only the final status, charge/advance MessageId once, and allow the next request. |
+| `PublicReadRejectsWrongMessageAndFullWidthAsyncIdWithoutTheirGrants` | Ignore an unmatched MessageId and a final response with different high AsyncId bits; their credits cannot enter the request's ledger. |
+| `PlainFinalPreservesStatusGrantAndHistoricalWireCharge` | Preserve ordinary success/error statuses and nonzero synchronous final grants, including the head's existing 64-KiB wire-charge contract. |
+| `PublicWriteFinalErrorAccountsOnlyOnceAndKeepsNextReadUsable` | A pending WRITE ends in ACCESS_DENIED; account the original charge once and complete the following READ normally. |
+| `AsyncFinalCannotSupplyAnotherGrant` | Reject a nonzero asynchronous final grant without charging/advancing the request again. |
+| `PublicReadKeepsOverallDeadlineAcrossEmptyOrPendingMessages` | Empty or repeated pending messages spend one overall timeout; receive budgets decrease and no final charge or MessageId advancement occurs. |
+| `PublicExpectRetainsCompoundRemainder` | Return both members of one compound message through successive public receives without consuming a second transport message. |
+| `PublicReadRetainsUnsolicitedOplockForItsExistingReceive` | Retain an intervening oplock notification for its explicit receive while the READ waits for its own final. |
+| `PublicExpectPreservesTimeoutVersusProviderFailure` | Report timeout statuses as timeouts and cancellation/disconnection as explicit provider failures, retaining status diagnostics. |
+| `RealTransportReassemblySpendsOnlyRemainingDeadline` | Successful and missing-final fragment streams receive decreasing budgets; a missing final returns timeout rather than extending the message deadline. |
+
+These regressions establish managed receive, correlation and accounting behavior
+only. They do not execute native MR/MW permissions, provider cancellation/drain,
+live duplicate contexts or an RDMA server. On historical heads without an adapter
+unit-test project, use an isolated copy of the existing adapter test runner
+manifest referencing that head's own production test-suite project; record this
+synthetic-fixture limitation separately from normal managed-neighbor results.
+
 ## <a name="_Toc427489520"/>Appendix
 
 ### <a name="_Toc427489521"/>Glossary
