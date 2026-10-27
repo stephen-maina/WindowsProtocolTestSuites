@@ -2784,10 +2784,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             {
                 if (status == Smb2Status.STATUS_NOT_SUPPORTED || status == Smb2Status.STATUS_INVALID_INFO_CLASS)
                 {
-                    // WHAT: treat STATUS_INVALID_INFO_CLASS like STATUS_NOT_SUPPORTED.
-                    // WHY: FileNormalizedNameInformation is supported only by some file systems; others reject the class.
-                    // SPEC: [MS-SMB2] 3.3.5.20.1, [MS-FSCC] 2.4.28.
-                    BaseTestSite.Assert.Inconclusive("Query FileNormalizedNameInformation is not supported by server.");
+                    BaseTestSite.Assert.Inconclusive("Positive FileNormalizedNameInformation evidence is unavailable (status {0}); this response alone does not establish server non-support.", status);
                 }
                 else
                 {
