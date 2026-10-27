@@ -1064,6 +1064,119 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             return (test, client);
         }
 
+        [DataTestMethod]
+        [DataRow(false)]
+        [DataRow(true)]
+        public void FragmentedRead_InterimDoesNotBecomeFinalOrCountTowardFinalFragments(bool fragmentInterim)
+        {
+            var messages = FragmentedReadMessages(fragmentInterim, true);
+            var (test, client) = FragmentedReadScenario(messages);
+
+            Invoke(test, "ValidateFragmentedReadResponse", 256u, 200u, 9ul, TimeSpan.FromSeconds(1));
+
+            Assert.AreEqual(messages.Count, client.Received);
+            Assert.AreEqual((ushort)12, client.Smb2AvailableCredits);
+            Assert.IsTrue(client.ReceiveTimeouts.All(t => t > TimeSpan.Zero && t <= TimeSpan.FromSeconds(1)));
+        }
+
+        [TestMethod]
+        public void FragmentedRead_SynchronousFinalKeepsSingleFinalCreditGrant()
+        {
+            var response = ReadResponse();
+            response.Header.MessageId = 9;
+            response.Header.CreditRequestResponse = 3;
+            response.Buffer = new byte[256];
+            response.PayLoad.DataLength = 256;
+            byte[] bytes = response.ToBytes();
+            var messages = new[]
+            {
+                Transfer(bytes.Take(168).ToArray(), (uint)bytes.Length - 168, 1),
+                Transfer(bytes.Skip(168).ToArray(), 0, 1)
+            };
+            var (test, client) = FragmentedReadScenario(messages);
+
+            Invoke(test, "ValidateFragmentedReadResponse", 256u, 200u, 9ul, TimeSpan.FromSeconds(1));
+
+            Assert.AreEqual((ushort)10, client.Smb2AvailableCredits);
+            Assert.AreEqual(0ul, (ulong)Get(client, "messageId"));
+        }
+
+        [TestMethod]
+        public void FragmentedRead_FragmentedInterimCannotSatisfyFinalFragmentationOracle()
+        {
+            var (test, _) = FragmentedReadScenario(FragmentedReadMessages(true, false));
+            var failure = Assert.ThrowsExactly<AssertFailedException>(() =>
+                Invoke(test, "ValidateFragmentedReadResponse", 256u, 512u, 9ul, TimeSpan.FromSeconds(1)));
+            StringAssert.Contains(failure.Message, "at least 2");
+        }
+
+        [TestMethod]
+        public void FragmentedRead_MalformedRemainingIsRejectedWithinCurrentUpperLayerMessage()
+        {
+            var messages = FragmentedReadMessages(false, true);
+            var last = messages.Last();
+            last.RemainingDataLength = 1;
+            messages[messages.Count - 1] = last;
+            var (test, _) = FragmentedReadScenario(messages);
+            Assert.ThrowsExactly<AssertFailedException>(() =>
+                Invoke(test, "ValidateFragmentedReadResponse", 256u, 200u, 9ul, TimeSpan.FromSeconds(1)));
+        }
+
+        [DataTestMethod]
+        [DataRow(255)]
+        [DataRow(257)]
+        public void FragmentedRead_WrongFinalSizeIsNotHiddenByInterim(int length)
+        {
+            var (test, _) = FragmentedReadScenario(FragmentedReadMessages(false, true, length));
+            var failure = Assert.ThrowsExactly<AssertFailedException>(() =>
+                Invoke(test, "ValidateFragmentedReadResponse", 256u, 200u, 9ul, TimeSpan.FromSeconds(1)));
+            StringAssert.Contains(failure.Message, "Total final READ response bytes");
+        }
+
+        [TestMethod]
+        public void FragmentedRead_FinalStatusIsCheckedBeforeSuccessfulReadLength()
+        {
+            var messages = new List<SmbdDataTransferMessage>
+            {
+                Transfer(AsyncReadError(NtStatus.STATUS_PENDING, 5), 0, 1),
+                Transfer(AsyncReadError(NtStatus.STATUS_ACCESS_DENIED, 0), 0, 1)
+            };
+            var (test, client) = FragmentedReadScenario(messages);
+            var failure = Assert.ThrowsExactly<AssertFailedException>(() =>
+                Invoke(test, "ValidateFragmentedReadResponse", 256u, 200u, 9ul, TimeSpan.FromSeconds(1)));
+            StringAssert.Contains(failure.Message, "STATUS_ACCESS_DENIED");
+            Assert.AreEqual((ushort)12, client.Smb2AvailableCredits);
+        }
+
+        [TestMethod]
+        public void FragmentedRead_MissingFinalKeepsBoundedReceiveBudget()
+        {
+            var messages = new[] { Transfer(AsyncReadError(NtStatus.STATUS_PENDING, 5), 0, 1) };
+            var (test, client) = FragmentedReadScenario(messages);
+            client.TimeoutWhenExhausted = true;
+            client.ClientConnection.ReceiveCredits = 2;
+            Assert.ThrowsExactly<TimeoutException>(() =>
+                Invoke(test, "ValidateFragmentedReadResponse", 256u, 200u, 9ul, TimeSpan.FromMilliseconds(100)));
+            Assert.AreEqual(2, client.Received);
+            Assert.IsTrue(client.ReceiveTimeouts.All(t => t > TimeSpan.Zero && t <= TimeSpan.FromMilliseconds(100)));
+        }
+
+        private static (SmbdProtocolGaps, CreditClient) FragmentedReadScenario(
+            IEnumerable<SmbdDataTransferMessage> messages)
+        {
+            var test = new SmbdProtocolGaps();
+            Configure(test, Properties());
+            var client = new CreditClient(messages) { Smb2AvailableCredits = 7 };
+            SetConnection(client, new SmbdConnection
+            {
+                ReceiveCredits = (uint)messages.Count(),
+                MaxFragmentedSize = 4096,
+                MaxReceiveSize = 200
+            });
+            Set(Get(test, "smbdAdapter"), "client", client);
+            return (test, client);
+        }
+
         private static Action PositiveRdmaEntry(Smb2OverRdmaChannelRemoteInvalidation test, string entry) => entry switch
         {
             "invalidate-write" => test.BVT_Smb2OverRdma_Smb302_Write_SMB2_CHANNEL_RDMA_V1_INVALIDATE,
@@ -1354,6 +1467,52 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                 LinkSpeed = 1000000000,
                 AddressStorage = TypeMarshal.ToStruct<NETWORK_INTERFACE_INFO_Response_SockAddr_Storage>(address)
             });
+        }
+
+        private static List<SmbdDataTransferMessage> FragmentedReadMessages(
+            bool fragmentInterim, bool fragmentFinal, int finalLength = 256)
+        {
+            byte[] interim = AsyncReadError(NtStatus.STATUS_PENDING, 5);
+            var response = ReadResponse();
+            response.Header.MessageId = 9;
+            response.Header.Flags |= Packet_Header_Flags_Values.FLAGS_ASYNC_COMMAND;
+            response.Header.TreeId = 0x80000001;
+            response.Header.ProcessId = 7;
+            response.Header.CreditRequestResponse = 0;
+            response.Buffer = new byte[finalLength];
+            response.PayLoad.DataLength = (uint)finalLength;
+            byte[] final = response.ToBytes();
+            var messages = new List<SmbdDataTransferMessage>();
+            foreach (var item in new[] { (interim, fragmentInterim), (final, fragmentFinal) })
+            {
+                if (item.Item2)
+                {
+                    int half = item.Item1.Length / 2;
+                    messages.Add(Transfer(item.Item1.Take(half).ToArray(), (uint)item.Item1.Length - (uint)half, 1));
+                    messages.Add(Transfer(item.Item1.Skip(half).ToArray(), 0, 1));
+                }
+                else
+                {
+                    messages.Add(Transfer(item.Item1, 0, 1));
+                }
+            }
+            return messages;
+        }
+
+        private static byte[] AsyncReadError(NtStatus status, ushort grant)
+        {
+            var packet = new Smb2ErrorResponsePacket();
+            packet.Header.Command = Smb2Command.READ;
+            packet.Header.MessageId = 9;
+            packet.Header.Status = (uint)status;
+            packet.Header.Flags = Packet_Header_Flags_Values.FLAGS_SERVER_TO_REDIR | Packet_Header_Flags_Values.FLAGS_ASYNC_COMMAND;
+            packet.Header.TreeId = 0x80000001;
+            packet.Header.ProcessId = 7;
+            packet.Header.CreditRequestResponse = grant;
+            packet.PayLoad.StructureSize = 9;
+            packet.PayLoad.ErrorData = new byte[1];
+            packet.PayLoad.ByteCount = 1;
+            return packet.ToBytes();
         }
 
         private static SmbdDataTransferMessage Transfer(byte[] buffer, uint remaining, ushort grant) =>
@@ -1959,6 +2118,8 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
             public int PostLimit { get; set; } = int.MaxValue;
             public int StopAfterSends { get; set; } = int.MaxValue;
             public uint LastRemaining { get; private set; }
+            public bool TimeoutWhenExhausted { get; set; }
+            public List<TimeSpan> ReceiveTimeouts { get; } = new();
             public CreditClient(IEnumerable<SmbdDataTransferMessage> messages) : base(TimeSpan.Zero)
             {
                 this.messages = new Queue<SmbdDataTransferMessage>(messages);
@@ -1968,6 +2129,11 @@ namespace Microsoft.Protocols.TestSuites.Smbd.UnitTests
                 TimeSpan timeout, out SmbdDataTransferMessage message)
             {
                 Received++;
+                ReceiveTimeouts.Add(timeout);
+                if (messages.Count == 0 && TimeoutWhenExhausted)
+                {
+                    throw new TimeoutException("No final READ response.");
+                }
                 if (ReceiveStatus != NtStatus.STATUS_SUCCESS)
                 {
                     if (Received > 1)

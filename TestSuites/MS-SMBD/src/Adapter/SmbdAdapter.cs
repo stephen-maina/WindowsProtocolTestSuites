@@ -6,6 +6,7 @@ using Microsoft.Protocols.TestTools.StackSdk;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd;
 using System;
+using System.Collections.Generic;
 using System.Net;
 
 
@@ -57,6 +58,12 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         public uint Smb2EffectiveMaxWriteSize
         {
             get { return Math.Min(client.Smb2MaxWriteSize, ServerConnection.MaxReadWriteSize); }
+        }
+
+        public ushort Smb2AvailableCredits
+        {
+            get { return client.Smb2AvailableCredits; }
+            set { client.Smb2AvailableCredits = value; }
         }
         #endregion
 
@@ -395,6 +402,13 @@ namespace Microsoft.Protocols.TestSuites.Smbd.Adapter
         {
             return this.client.Smb2GetReadRequestPackage(length);
         }
+
+        public IReadOnlyList<Smb2OverSmbdTestClient.ResponseEnvelope> DecodeSmb2Responses(byte[] message) =>
+            client.DecodeSmb2Responses(message);
+
+        public bool TryAcceptResponse(
+            Smb2OverSmbdTestClient.ResponseEnvelope response, ulong messageId, ref ulong? asyncId) =>
+            client.TryAcceptResponse(response, messageId, ref asyncId);
 
 
         public uint Smb2Read(UInt64 offset, uint byteCount, out byte[] readData, out READ_Response readResponse)

@@ -9,6 +9,7 @@ using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smbd;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 {
@@ -375,7 +376,11 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
             // Largest message the server may send: the smaller of the client's MaxReceiveSize and the server's PreferredSendSize.
             uint maxMessageSize = smbdAdapter.ClientConnection.MaxReceiveSize;
-            uint readLength = maxMessageSize * TARGET_FRAGMENTS;
+            if (smbdAdapter.ClientConnection.MaxFragmentedSize <= Smb2OverSmbdTestClient.READ_RESPONSE_HEADER_SIZE)
+            {
+                BaseTestSite.Assert.Inconclusive("Negotiated MaxFragmentedSize cannot carry a READ response.");
+            }
+            uint readLength = (uint)Math.Min(uint.MaxValue, (ulong)maxMessageSize * TARGET_FRAGMENTS);
             readLength = Math.Min(readLength, smbdAdapter.ClientConnection.MaxFragmentedSize - (uint)Smb2OverSmbdTestClient.READ_RESPONSE_HEADER_SIZE);
             readLength = Math.Min(readLength, smbdAdapter.Smb2MaxReadSize);
             readLength = Math.Min(readLength, PROVISIONED_LARGE_FILE_SIZE);
@@ -388,7 +393,15 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
             }
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send SMB2 READ for " + readLength + " bytes with Channel NONE.");
+            ushort charge = checked((ushort)Math.Max(1L, (readLength + 65535L) / 65536));
+            if (smbdAdapter.Smb2AvailableCredits < charge)
+            {
+                BaseTestSite.Assert.Inconclusive("The READ fixture needs {0} SMB2 credits; only {1} are available.",
+                    charge, smbdAdapter.Smb2AvailableCredits);
+            }
             byte[] readRequest = smbdAdapter.Smb2GetReadRequest(readLength);
+            Packet_Header requestHeader = TypeMarshal.ToStruct<Packet_Header>(readRequest);
+            smbdAdapter.Smb2AvailableCredits -= requestHeader.CreditCharge;
             NtStatus status = smbdAdapter.SmbdSendDataTransferMessage(
                 smbdAdapter.ClientConnection.SendCreditTarget,
                 1,
@@ -399,21 +412,35 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                 readRequest);
             BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of send SMB2 READ request is {0}.", status);
 
+            ValidateFragmentedReadResponse(readLength, maxMessageSize, requestHeader.MessageId,
+                TimeSpan.FromSeconds(SmbdConnection.KEEP_ALIVE_INTERVAL));
+            smbdAdapter.Smb2CloseFile();
+        }
+
+        private void ValidateFragmentedReadResponse(
+            uint readLength, uint maxMessageSize, ulong expectedMessageId, TimeSpan timeout)
+        {
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Receive and validate every Data Transfer message of the response.");
-            byte[] response = new byte[totalResponseSize];
+            uint totalResponseSize = checked(readLength + (uint)Smb2OverSmbdTestClient.READ_RESPONSE_HEADER_SIZE);
+            byte[] response = null;
             uint received = 0;
             uint previousRemaining = 0;
             int fragmentCount = 0;
-            DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(SmbdConnection.KEEP_ALIVE_INTERVAL);
+            ulong? asyncId = null;
+            Stopwatch watch = Stopwatch.StartNew();
             bool done = false;
             while (!done)
             {
-                BaseTestSite.Assert.IsTrue(DateTime.UtcNow < deadline, "READ response not complete after {0} bytes.", received);
+                BaseTestSite.Assert.IsTrue(watch.Elapsed < timeout, "READ response not complete after {0} bytes.", received);
 
                 while (!done && smbdAdapter.ClientConnection.ReceiveCredits > 0)
                 {
+                    TimeSpan remaining = timeout - watch.Elapsed;
+                    BaseTestSite.Assert.IsTrue(remaining > TimeSpan.Zero, "READ response did not complete before its deadline.");
+                    TimeSpan receiveTimeout = remaining < smbdAdapter.TestConfig.Smb2ConnectionTimeout
+                        ? remaining : smbdAdapter.TestConfig.Smb2ConnectionTimeout;
                     SmbdDataTransferMessage message;
-                    status = smbdAdapter.SmbdReceivDataTransferMessage(smbdAdapter.TestConfig.Smb2ConnectionTimeout, out message);
+                    NtStatus status = smbdAdapter.SmbdReceivDataTransferMessage(receiveTimeout, out message);
                     BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, status, "Status of receive Data Transfer message is {0}.", status);
 
                     // An empty message only grants credits ([MS-SMBD] 3.1.5.4 / 3.1.5.8).
@@ -434,18 +461,18 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
                     if (fragmentCount == 0)
                     {
-                        BaseTestSite.Assert.AreEqual<uint>(
-                            totalResponseSize,
-                            message.DataLength + message.RemainingDataLength,
-                            "First fragment: DataLength {0} + RemainingDataLength {1} must equal the response size.",
-                            message.DataLength, message.RemainingDataLength);
+                        ulong messageSize = (ulong)message.DataLength + message.RemainingDataLength;
+                        BaseTestSite.Assert.IsTrue(
+                            messageSize <= smbdAdapter.ClientConnection.MaxFragmentedSize && messageSize <= int.MaxValue,
+                            "Upper-layer message size {0} exceeds negotiated MaxFragmentedSize {1}.",
+                            messageSize, smbdAdapter.ClientConnection.MaxFragmentedSize);
+                        response = new byte[(int)messageSize];
                     }
                     else
                     {
                         BaseTestSite.Assert.IsTrue(
-                            message.RemainingDataLength < previousRemaining,
-                            "RemainingDataLength {0} must be smaller than the previous {1}.",
-                            message.RemainingDataLength, previousRemaining);
+                            message.DataLength <= previousRemaining,
+                            "DataLength {0} exceeds previous RemainingDataLength {1}.", message.DataLength, previousRemaining);
                         BaseTestSite.Assert.AreEqual<uint>(
                             previousRemaining - message.DataLength,
                             message.RemainingDataLength,
@@ -462,8 +489,9 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     }
 
                     BaseTestSite.Assert.IsTrue(
-                        (ulong)received + message.DataLength <= totalResponseSize,
-                        "Received data exceeds the READ response size.");
+                        message.Buffer != null && message.Buffer.Length >= message.DataLength
+                            && (ulong)received + message.DataLength <= (ulong)response.Length,
+                        "Received data exceeds the current upper-layer message bounds.");
                     Array.Copy(message.Buffer, 0, response, received, message.DataLength);
                     received += message.DataLength;
                     previousRemaining = message.RemainingDataLength;
@@ -471,7 +499,31 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
 
                     if (message.RemainingDataLength == 0)
                     {
-                        done = true;
+                        foreach (var envelope in smbdAdapter.DecodeSmb2Responses(response))
+                        {
+                            if (!smbdAdapter.TryAcceptResponse(envelope, expectedMessageId, ref asyncId) || envelope.IsInterim)
+                            {
+                                continue;
+                            }
+                            smbdAdapter.Smb2AvailableCredits = checked((ushort)(
+                                smbdAdapter.Smb2AvailableCredits + envelope.Packet.Header.CreditRequestResponse));
+                            BaseTestSite.Assert.AreEqual<NtStatus>(
+                                NtStatus.STATUS_SUCCESS, (NtStatus)envelope.Packet.Header.Status,
+                                "Status of SMB2 READ is {0}.", (NtStatus)envelope.Packet.Header.Status);
+                            BaseTestSite.Assert.IsTrue(envelope.Packet is Smb2ReadResponsePacket,
+                                "The final response must be an SMB2 READ.");
+                            Smb2ReadResponsePacket readResponse = (Smb2ReadResponsePacket)envelope.Packet;
+                            BaseTestSite.Assert.AreEqual<uint>(totalResponseSize, received, "Total final READ response bytes.");
+                            BaseTestSite.Assert.AreEqual<uint>(readLength, readResponse.PayLoad.DataLength, "DataLength in SMB2 READ response.");
+                            BaseTestSite.Assert.IsTrue(fragmentCount >= 2,
+                                "Final READ response must be fragmented over at least 2 messages; got {0}.", fragmentCount);
+                            done = true;
+                            break;
+                        }
+                        response = null;
+                        received = 0;
+                        previousRemaining = 0;
+                        fragmentCount = 0;
                     }
                 }
 
@@ -480,22 +532,6 @@ namespace Microsoft.Protocol.TestSuites.Smbd.TestSuite
                     ReplenishReceiveCredits();
                 }
             }
-
-            BaseTestSite.Assert.AreEqual<uint>(totalResponseSize, received, "Total received bytes.");
-            BaseTestSite.Assert.IsTrue(
-                fragmentCount >= 2,
-                "Response of {0} bytes must be fragmented over at least 2 messages of at most {1} bytes, got {2}.",
-                totalResponseSize, maxMessageSize, fragmentCount);
-
-            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Decode the reassembled SMB2 READ response.");
-            int consumedLength;
-            int expectedLength;
-            StackPacket[] packets = smbdAdapter.Decoder.Smb2DecodePacketCallback(new object(), response, out consumedLength, out expectedLength);
-            Smb2ReadResponsePacket readResponse = (Smb2ReadResponsePacket)packets[0];
-            BaseTestSite.Assert.AreEqual<NtStatus>(NtStatus.STATUS_SUCCESS, (NtStatus)readResponse.Header.Status, "Status of SMB2 READ is {0}.", (NtStatus)readResponse.Header.Status);
-            BaseTestSite.Assert.AreEqual<uint>(readLength, readResponse.PayLoad.DataLength, "DataLength in SMB2 READ response.");
-
-            smbdAdapter.Smb2CloseFile();
         }
         #endregion
 

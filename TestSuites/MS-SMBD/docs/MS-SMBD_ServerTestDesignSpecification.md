@@ -2606,6 +2606,14 @@ this context-list validation. The single-context feature-specific tests retain t
 | Test name | Category | Scenario and pass criteria | Specification |
 |---|---|---|---|
 | `Smb2OverRdmaChannel_Read_ExactMaxReadWriteSize` | Smb2OverRdmaChannel, SmbdProtocolGaps | Verify SMB2 READ of exactly MaxReadWriteSize bytes over RDMA_V1 succeeds with correct content. Require STATUS_SUCCESS from every registered-buffer read before comparing the single READ with chunked READs; an untouched zero-filled buffer after a failed memory read must not count as verified content (MLNX-RDMA-READ-STATUS-01). | [MS-SMBD] 2.2.2 Negotiate Response Message; 3.1.4.5 RDMA Write to Peer Buffer; [MS-SMB2] 3.3.5.12 Receiving an SMB2 READ Request |
+| `Smb2OverRdmaChannel_Write_ExactMaxReadWriteSize` | Smb2OverRdmaChannel, SmbdProtocolGaps | Verify SMB2 WRITE of exactly MaxReadWriteSize bytes over RDMA_V1 succeeds with correct content. | [MS-SMBD] 2.2.2 Negotiate Response Message; 3.1.4.6 RDMA Read from Peer Buffer; [MS-SMB2] 3.3.5.13 Receiving an SMB2 WRITE Request |
+| `SmbdCreditMgmt_CreditsRequestedAboveServerMax_CappedAndUsable` | SmbdCreditMgmt, SmbdProtocolGaps | Verify the server grants a usable, bounded number of credits when CreditsRequested is ushort.MaxValue. | [MS-SMBD] 3.1.5.9 Managing Credits Prior to Sending; 3.1.5.6 Receiving a Negotiate Request Message |
+| `SmbdCreditMgmt_CreditsRequestedRises_ServerGrantsMore` | SmbdCreditMgmt, SmbdProtocolGaps | Verify the server grants additional credits when the client's CreditsRequested rises. | [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; 3.1.5.9 Managing Credits Prior to Sending |
+| `SmbdDataTransfer_ReservedAndPaddingNonZero_Ignored` | SmbdDataTransfer, SmbdProtocolGaps | Verify the server ignores non-zero Reserved and Padding fields in SMBD Data Transfer messages. | [MS-SMBD] 2.2.3 Data Transfer Message; 3.1.5.8 Receiving a Data Transfer Message |
+| `SmbdDataTransfer_ServerFragmentedReadResponse_HeadersValid` | SmbdDataTransfer, SmbdProtocolGaps | Validate every transport frame and reassemble each upper-layer message independently. Accept correlated STATUS_PENDING, including fragmented interim messages, without completing the READ or counting interim frames toward final fragmentation. Within one bounded deadline, require the final READ's SUCCESS, exact size/DataLength and at least two final frames. Keep Reserved/Padding receiver-ignore behavior; account each SMB2 interim grant once and the precharged raw request's final grant once. | [MS-SMBD] 3.1.5.4 Sending a Data Transfer Message; 2.2.3 Data Transfer Message; [MS-SMB2] 3.2.5.1.2; 3.2.5.1.5; 3.3.4.2 |
+| `SmbdNegotiate_DataTransferBeforeNegotiate_Rejected` | SmbdNegotiate, SmbdProtocolGaps | Verify a Data Transfer message sent before SMBD negotiation is treated as a Negotiate Request and rejected. | [MS-SMBD] 3.1.5.6 Receiving a Negotiate Request Message; 3.1.5.3 Sending a Negotiate Response Message |
+| `SmbdNegotiate_ReservedFieldNonZero_Ignored` | SmbdNegotiate, SmbdProtocolGaps | Verify the server ignores a non-zero Reserved field in the SMBD Negotiate Request and answers STATUS_SUCCESS. | [MS-SMBD] 2.2.1 Negotiate Request Message; 3.1.5.6 Receiving a Negotiate Request Message |
+| `SmbdNegotiate_SecondNegotiateRequestAfterEstablished_Terminated` | SmbdNegotiate, SmbdProtocolGaps | Verify the server terminates the connection when a second Negotiate Request is received after the connection is established. | [MS-SMBD] 3.1.5.8 Receiving a Data Transfer Message; 2.2.1 Negotiate Request Message |
 
 ### Hardware-free implementation regressions
 
@@ -2615,6 +2623,11 @@ in `TestSuites\MS-SMBD\tests\NegotiationReviewTests.cs`. Run
 This selects managed Linux paths even on Windows; native builds and live RDMA remain separate validation requirements.
 The detector is compiled from its actual source; adapter and negotiation assertions execute from the actual suite assemblies.
 Packet-builder tests capture encoded requests instead of using a provider.
+
+The `FragmentedRead_*` regressions invoke the production frame checker and shared decoder with queued
+SMBD frames. They cover unfragmented/fragmented interims, final-only fragmentation, malformed remaining
+length, wrong final size, final error status before length checks, exactly-once grants, and remaining
+receive budget when the final response is absent. These managed receipts do not validate native shutdown.
 
 | Test name | Scenario and pass criteria |
 | --- | --- |
